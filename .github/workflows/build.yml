@@ -29,8 +29,7 @@ jobs:
                       target: aarch64-unknown-linux-gnu
 
         steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+            - uses: actions/checkout@v4
 
             - name: Install Rust
               uses: dtolnay/rust-toolchain@stable
@@ -43,21 +42,29 @@ jobs:
                   version: 18.1.8
                   cached: true
 
-            # デバッグ用（任意）
-            - name: Show LLVM info
-              shell: bash
-              run: |
-                  echo "LLVM_PATH=$LLVM_PATH"
-                  ls -la "$LLVM_PATH" || true
-                  "$LLVM_PATH/bin/llvm-config" --version || true
-
             - name: Install Linux cross toolchain
               if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
               run: |
                   sudo apt-get update
                   sudo apt-get install -y gcc-aarch64-linux-gnu
 
-            - name: Build
+            # Windows build (PowerShell)
+            - name: Build (Windows)
+              if: ${{ startsWith(matrix.os, 'windows') }}
+              shell: pwsh
+              env:
+                  LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
+                  LLVM_CONFIG_PATH: ${{ env.LLVM_PATH }}\bin\llvm-config.exe
+              run: |
+                  $env:Path = "$env:LLVM_PATH\bin;$env:Path"
+                  Get-Command cargo
+                  cargo --version
+                  & "$env:LLVM_PATH\bin\llvm-config.exe" --version
+                  cargo build --release --target ${{ matrix.target }}
+
+            # Linux/macOS build (bash)
+            - name: Build (Unix)
+              if: ${{ !startsWith(matrix.os, 'windows') }}
               shell: bash
               env:
                   LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
