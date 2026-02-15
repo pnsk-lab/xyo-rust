@@ -1,5 +1,3 @@
-[build]
-
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
   "-C", "link-arg=-rdynamic",
@@ -16,6 +14,11 @@ rustflags = [
 
 [target.aarch64-apple-darwin]
 rustflags = [
-  # 必要なら rt_* を公開（Mach-O は先頭アンダースコア）
   "-C", "link-arg=-Wl,-exported_symbol,_rt_*",
 ]
+
+[target.x86_64-pc-windows-msvc]
+# WindowsはGNU ldフラグを入れない
+
+[target.aarch64-pc-windows-msvc]
+# WindowsはGNU ldフラグを入れない

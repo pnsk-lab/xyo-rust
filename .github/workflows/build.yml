@@ -15,64 +15,87 @@ jobs:
                     - name: windows-x86_64
                       os: windows-latest
                       target: x86_64-pc-windows-msvc
-                    - name: windows-arm64
-                      os: windows-latest
-                      target: aarch64-pc-windows-msvc
+
+                    # Windows ARM64 は環境差分で壊れやすいので、まずは安定化優先で無効化
+                    # 必要なら最後に戻す
+                    # - name: windows-arm64
+                    #   os: windows-latest
+                    #   target: aarch64-pc-windows-msvc
+
                     - name: macos-arm64
                       os: macos-14
                       target: aarch64-apple-darwin
+
                     - name: linux-x86_64
                       os: ubuntu-22.04
                       target: x86_64-unknown-linux-gnu
+
                     - name: linux-arm64
                       os: ubuntu-22.04
                       target: aarch64-unknown-linux-gnu
 
         steps:
-            - uses: actions/checkout@v4
+            - name: Checkout
+              uses: actions/checkout@v4
 
             - name: Install Rust
               uses: dtolnay/rust-toolchain@stable
               with:
                   targets: ${{ matrix.target }}
 
-            # ---------- LLVM install (Linux) ----------
+            # ---------------- Linux: LLVM 18 ----------------
             - name: Install LLVM 18 (Linux)
               if: ${{ startsWith(matrix.os, 'ubuntu') }}
               shell: bash
               run: |
+                  set -eux
                   sudo apt-get update
                   sudo apt-get install -y wget gpg lsb-release software-properties-common
-                  wget https://apt.llvm.org/llvm.sh
+                  wget -q https://apt.llvm.org/llvm.sh
                   chmod +x llvm.sh
                   sudo ./llvm.sh 18
                   /usr/bin/llvm-config-18 --version
 
-            # ---------- LLVM install (macOS) ----------
+                  # クロスコンパイル用（linux-arm64 ターゲット時）
+                  if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+                    sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+                  fi
+
+            # ---------------- macOS: LLVM 18 ----------------
             - name: Install LLVM 18 (macOS)
               if: ${{ startsWith(matrix.os, 'macos') }}
               shell: bash
               run: |
+                  set -eux
                   brew update
                   brew install llvm@18
                   /opt/homebrew/opt/llvm@18/bin/llvm-config --version
 
-            # ---------- LLVM install (Windows) ----------
-            # --- Install LLVM (Windows) ---
+            # ---------------- Windows: LLVM 18 ----------------
             - name: Install LLVM 18 (Windows)
               if: ${{ startsWith(matrix.os, 'windows') }}
               shell: pwsh
               run: |
                   choco install llvm --version=18.1.8 --allow-downgrade -y --no-progress
 
-                  # llvm-config.exe を探索
-                  $llvmConfig = Get-ChildItem -Path "C:\" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue |
-                  Sort-Object FullName |
-                  Select-Object -First 1 -ExpandProperty FullName
+                  # よくある候補を優先
+                  $candidates = @(
+                    "C:\Program Files\LLVM\bin\llvm-config.exe",
+                    "C:\Program Files (x86)\LLVM\bin\llvm-config.exe"
+                  )
+
+                  $llvmConfig = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+                  # 念のためフォールバック探索
+                  if (-not $llvmConfig) {
+                    $found = Get-ChildItem -Path "C:\Program Files","C:\Program Files (x86)" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+                    if ($found) { $llvmConfig = $found.FullName }
+                  }
 
                   if (-not $llvmConfig) {
-                  Write-Error "llvm-config.exe not found after installing LLVM 18"
-                  exit 1
+                    Write-Error "llvm-config.exe not found after LLVM install"
+                    exit 1
                   }
 
                   $llvmPrefix = Split-Path (Split-Path $llvmConfig -Parent) -Parent
@@ -83,66 +106,105 @@ jobs:
                   & $llvmConfig --version
                   Write-Host "LLVM_SYS_181_PREFIX=$llvmPrefix"
 
-            - name: Install Linux cross toolchain
-              if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
-              shell: bash
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-            # ---------- Build Windows ----------
-            # --- Build (Windows) ---
-            - name: Build (Windows)
-              if: ${{ startsWith(matrix.os, 'windows') }}
-              shell: pwsh
-              env:
-                  LLVM_SYS_181_PREFIX: ${{ env.LLVM_SYS_181_PREFIX }}
-                  LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
-                  LLVM_LINK_LLVM_DYLIB: "1"
-              run: |
-                  if (-not $env:LLVM_CONFIG_PATH) {
-                  Write-Error "LLVM_CONFIG_PATH is empty"
-                  exit 1
-                  }
-                  $llvmBin = Split-Path $env:LLVM_CONFIG_PATH -Parent
-                  $env:Path = "$llvmBin;$env:Path"
-
-                  cargo --version
-                  & $env:LLVM_CONFIG_PATH --version
-                  cargo build --release --target ${{ matrix.target }}
-
-            # ---------- Build Linux ----------
+            # ---------------- Build: Linux ----------------
             - name: Build (Linux)
               if: ${{ startsWith(matrix.os, 'ubuntu') }}
               shell: bash
               env:
                   LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
                   LLVM_CONFIG_PATH: /usr/bin/llvm-config-18
+                  LLVM_LINK_LLVM_DYLIB: "1"
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
-                  LLVM_LINK_LLVM_DYLIB: "1"
               run: |
+                  set -eux
                   export PATH="/usr/lib/llvm-18/bin:$PATH"
+
+                  # 余計な環境汚染を除去
+                  unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CC CXX AR RUSTFLAGS CARGO_ENCODED_RUSTFLAGS || true
+
                   cargo --version
                   "$LLVM_CONFIG_PATH" --version
+                  cargo clean -p llvm-sys || true
                   cargo build --release --target ${{ matrix.target }}
 
-            # ---------- Build macOS ----------
+            # ---------------- Build: macOS ----------------
             - name: Build (macOS)
               if: ${{ startsWith(matrix.os, 'macos') }}
               shell: bash
               env:
                   LLVM_SYS_181_PREFIX: /opt/homebrew/opt/llvm@18
                   LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm@18/bin/llvm-config
+                  LLVM_LINK_LLVM_DYLIB: "1"
               run: |
+                  set -eux
                   export PATH="/opt/homebrew/opt/llvm@18/bin:$PATH"
+
+                  # 余計な環境汚染を除去
+                  unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CC CXX AR RUSTFLAGS CARGO_ENCODED_RUSTFLAGS || true
+
                   cargo --version
                   "$LLVM_CONFIG_PATH" --version
+                  cargo clean -p llvm-sys || true
                   cargo build --release --target ${{ matrix.target }}
 
-            - name: Upload artifact
+            # ---------------- Build: Windows ----------------
+            - name: Build (Windows)
+              if: ${{ startsWith(matrix.os, 'windows') }}
+              shell: pwsh
+              env:
+                  LLVM_LINK_LLVM_DYLIB: "1"
+              run: |
+                  if (-not $env:LLVM_CONFIG_PATH) {
+                    Write-Error "LLVM_CONFIG_PATH is empty"
+                    exit 1
+                  }
+                  if (-not $env:LLVM_SYS_181_PREFIX) {
+                    Write-Error "LLVM_SYS_181_PREFIX is empty"
+                    exit 1
+                  }
+
+                  $llvmBin = Split-Path $env:LLVM_CONFIG_PATH -Parent
+                  $env:Path = "$llvmBin;$env:Path"
+
+                  # GHC/MinGW 由来の環境汚染を除去
+                  foreach ($k in @(
+                    "CFLAGS","CXXFLAGS","CPPFLAGS","LDFLAGS",
+                    "CC","CXX","AR",
+                    "TARGET_CFLAGS","HOST_CFLAGS",
+                    "CRATE_CC_NO_DEFAULTS",
+                    "RUSTFLAGS","CARGO_ENCODED_RUSTFLAGS",
+                    "BINDGEN_EXTRA_CLANG_ARGS"
+                  )) {
+                    Remove-Item "Env:$k" -ErrorAction SilentlyContinue
+                  }
+
+                  # ターゲット別 CFLAGS も空で上書き
+                  $env:CFLAGS_x86_64_pc_windows_msvc = ""
+                  $env:CFLAGS_x86_64-pc-windows-msvc = ""
+                  $env:CFLAGS_aarch64_pc_windows_msvc = ""
+                  $env:CFLAGS_aarch64-pc-windows-msvc = ""
+
+                  cargo --version
+                  & $env:LLVM_CONFIG_PATH --version
+
+                  cargo clean -p llvm-sys
+                  cargo build --release --target ${{ matrix.target }}
+
+            - name: Upload artifact (Unix)
+              if: ${{ !startsWith(matrix.os, 'windows') }}
               uses: actions/upload-artifact@v4
               with:
                   name: scratch-native-runtime-${{ matrix.target }}
                   path: target/${{ matrix.target }}/release/scratch-native-runtime*
+                  if-no-files-found: error
+
+            - name: Upload artifact (Windows)
+              if: ${{ startsWith(matrix.os, 'windows') }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: scratch-native-runtime-${{ matrix.target }}
+                  path: |
+                      target/${{ matrix.target }}/release/scratch-native-runtime*.exe
+                      target/${{ matrix.target }}/release/scratch-native-runtime*.pdb
                   if-no-files-found: error
