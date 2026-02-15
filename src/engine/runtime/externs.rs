@@ -297,7 +297,11 @@ pub extern "C" fn rt_sensing_touching_object(state: *mut RuntimeState, object: f
                     dx * dx + dy * dy <= 1.0
                 }),
         };
-        if touching { 1.0 } else { 0.0 }
+        if touching {
+            1.0
+        } else {
+            0.0
+        }
     }
 }
 
@@ -617,12 +621,10 @@ pub extern "C" fn rt_control_stop(state: *mut RuntimeState, mode_code: u64) {
             eprintln!("[debug][stop] control_stop mode={}", mode_code);
         }
         match mode_code {
-            // "stop this script" – zero out the step budget so that every
-            // loop guard in the call chain returns false, unwinding the
-            // entire script regardless of procedure nesting depth.
-            0 => {
-                state.remaining_steps = 0;
-            }
+            // "stop this script" – JIT emits an immediate return for the
+            // current function after this extern call, so avoid mutating the
+            // global step budget (which would incorrectly impact other scripts).
+            0 => {}
             1 => state.stop_all_scripts(),
             2 => state.stop_other_scripts_in_active_target(),
             _ => {}
@@ -690,7 +692,11 @@ pub extern "C" fn rt_operator_contains(state: *mut RuntimeState, text: f64, part
         };
         let haystack = state.value_as_string(text).to_lowercase();
         let needle = state.value_as_string(part).to_lowercase();
-        if haystack.contains(&needle) { 1.0 } else { 0.0 }
+        if haystack.contains(&needle) {
+            1.0
+        } else {
+            0.0
+        }
     }
 }
 
@@ -991,11 +997,13 @@ fn dispatch_broadcast(
             }
             state_ref.active_fiber_control = saved_fiber;
         }
-        // After all handlers have run, reset the step budget so that the
-        // calling script (and any subsequent scripts) gets a fresh
-        // allocation.  Without this, interactive wait-loops inside the
-        // handlers would exhaust the budget and starve later computation.
-        state_ref.remaining_steps = state_ref.step_budget;
+        // In paced mode, keep each frame/tick responsive by refreshing the
+        // current fiber's script budget after broadcast-and-wait handlers.
+        // In un-paced mode (`--no-gui`/turbo), keep the global budget monotonic
+        // so CLI execution still terminates when the step budget is exhausted.
+        if state_ref.frame_duration.is_some() {
+            state_ref.remaining_steps = state_ref.step_budget;
+        }
     }
 }
 
@@ -1021,7 +1029,12 @@ fn loop_should_continue(
         }
         state.remaining_steps -= 1;
     }
-    if pace_frames {
+    let first_guard_this_resume = if pace_frames && state.active_fiber_control.is_some() {
+        state.note_paced_loop_guard()
+    } else {
+        false
+    };
+    if pace_frames && !first_guard_this_resume && state.should_yield_for_work_time() {
         state.wait_for_next_frame();
     }
     // In fiber mode the scheduler handles canvas sync, key-press polling,

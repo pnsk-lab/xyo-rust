@@ -185,6 +185,8 @@ const STRING_TAG_BITS: u64 = 0x7ff9_0000_0000_0000;
 const STRING_PAYLOAD_MASK: u64 = 0x0000_ffff_ffff_ffff;
 const DEFAULT_LIVE_CANVAS_SYNC_INTERVAL: Duration = Duration::from_millis(16);
 const FRAME_SLEEP_COARSE_MARGIN: Duration = Duration::from_micros(800);
+// scratch-vm Sequencer uses WORK_TIME = currentStepTime * 0.75.
+const SCRATCH_VM_WORK_TIME_RATIO: f64 = 0.75;
 
 #[derive(Debug, Clone)]
 pub struct InputState {
@@ -396,6 +398,7 @@ pub struct RuntimeState {
     paced_frame_count: u64,
     paced_frame_started_at: Option<Instant>,
     paced_frame_last_at: Option<Instant>,
+    paced_loop_guards_in_resume: u64,
     script_functions: Vec<ScriptEntry>,
     script_names: Vec<String>,
     broadcast_messages: Vec<String>,
@@ -504,6 +507,7 @@ impl RuntimeState {
             paced_frame_count: 0,
             paced_frame_started_at: None,
             paced_frame_last_at: None,
+            paced_loop_guards_in_resume: 0,
             script_functions: Vec::new(),
             script_names: Vec::new(),
             broadcast_messages: Vec::new(),
@@ -1086,7 +1090,11 @@ impl RuntimeState {
                 .get(index)
                 .and_then(|text| self.parse_scratch_number_for_compare(text));
         }
-        if value.is_nan() { None } else { Some(value) }
+        if value.is_nan() {
+            None
+        } else {
+            Some(value)
+        }
     }
 
     fn compare_values(&self, left: f64, right: f64) -> i8 {
@@ -1170,9 +1178,6 @@ impl RuntimeState {
         // ---- fiber mode ----
         if let Some(ref control) = self.active_fiber_control {
             if self.frame_duration.is_some() {
-                // With frame pacing: yield to the scheduler so that other
-                // fibers get their turn and the scheduler can apply frame
-                // pacing between ticks.
                 let control = Arc::clone(control);
                 control.yield_to_scheduler();
             }
@@ -1208,6 +1213,23 @@ impl RuntimeState {
         }
         self.paced_frame_count = self.paced_frame_count.saturating_add(1);
         self.paced_frame_last_at = Some(now);
+    }
+
+    fn should_yield_for_work_time(&mut self) -> bool {
+        let Some(frame_duration) = self.frame_duration else {
+            return false;
+        };
+        let now = Instant::now();
+        let tick_started_at = *self.current_tick_started_at.get_or_insert(now);
+        let work_time =
+            Duration::from_secs_f64(frame_duration.as_secs_f64() * SCRATCH_VM_WORK_TIME_RATIO);
+        now.duration_since(tick_started_at) >= work_time
+    }
+
+    fn note_paced_loop_guard(&mut self) -> bool {
+        let is_first = self.paced_loop_guards_in_resume == 0;
+        self.paced_loop_guards_in_resume = self.paced_loop_guards_in_resume.saturating_add(1);
+        is_first
     }
 
     /// Apply frame pacing (sleep until next frame deadline).  Called by the
@@ -1318,6 +1340,7 @@ impl RuntimeState {
 
                 // Install the fiber's control so yield-points use it.
                 self.active_fiber_control = Some(Arc::clone(&fiber.control));
+                self.paced_loop_guards_in_resume = 0;
 
                 if tick < 3 {
                     eprintln!(

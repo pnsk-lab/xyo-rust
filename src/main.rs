@@ -8,11 +8,13 @@ use constants::*;
 use engine::{ir, jit, runtime};
 use frontend::gui;
 use project::sb3;
-use utils::{embedded_project, image};
+use utils::{embedded_project, escape_listener, image};
 
 use anyhow::{Context, Result, bail};
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 struct CliOptions {
@@ -196,17 +198,26 @@ fn run() -> Result<()> {
             }
         })
         .unwrap_or(DEFAULT_STEP_BUDGET as u64);
+    let stop_requested = Arc::new(AtomicBool::new(false));
     let mut runtime_state = runtime::RuntimeState::new(
         initial_variables,
         initial_lists,
         program.strings.clone(),
         step_budget,
     );
+    runtime_state.attach_stop_flag(Arc::clone(&stop_requested));
     runtime_state.set_debug_mode(cli.debug_enabled);
     runtime_state.set_break_on_messages(cli.break_on_messages.clone());
     let (target_render_data, target_initial_visuals) =
         build_render_configuration(&project).context("failed to build render configuration")?;
     runtime_state.configure_render_targets(target_render_data, target_initial_visuals);
+    let mut escape_listener_handle = None;
+    if !cli.gui_enabled {
+        match escape_listener::spawn_escape_listener(Arc::clone(&stop_requested)) {
+            Ok(handle) => escape_listener_handle = handle,
+            Err(error) => eprintln!("warning: failed to watch for Esc: {error}"),
+        }
+    }
 
     let default_fps = if cli.gui_enabled {
         if cli.vsync_enabled {
@@ -337,6 +348,9 @@ fn run() -> Result<()> {
         .write_canvas_ppm(&output_path)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
     println!("Rendered pen image: {}", output_path.display());
+    if let Some(handle) = escape_listener_handle {
+        let _ = handle.join();
+    }
 
     Ok(())
 }
