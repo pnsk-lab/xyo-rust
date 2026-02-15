@@ -1303,12 +1303,11 @@ impl RuntimeState {
         }
 
         // Main tick loop.
-        let mut tick = 0u64;
         loop {
             let mut any_active = false;
 
             // --- step each active fiber one yield ---
-            for (fi, fiber) in fibers.iter_mut().enumerate() {
+            for fiber in fibers.iter_mut() {
                 if fiber.is_done() {
                     continue;
                 }
@@ -1349,7 +1348,7 @@ impl RuntimeState {
                 fiber.control.resume();
 
                 // Wait until it yields or finishes.
-                let result = fiber.control.wait_for_yield_or_done();
+                let _ = fiber.control.wait_for_yield_or_done();
 
                 // Save actor state back – persist into whichever actor is
                 // currently loaded (may differ from the original if the
@@ -1392,7 +1391,6 @@ impl RuntimeState {
 
             // --- frame pacing (applied once per tick) ---
             self.pace_frame();
-            tick += 1;
         }
 
         // Clean up: signal remaining fibers so their threads can exit, then
