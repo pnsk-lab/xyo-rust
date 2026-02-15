@@ -45,6 +45,9 @@ pub fn decode_costume_rgba(
 fn rasterize_svg_with_convert(svg_bytes: &[u8]) -> Result<Vec<u8>> {
     let sanitized_svg = sanitize_svg_for_convert(&String::from_utf8_lossy(svg_bytes));
     let mut child = Command::new("convert")
+        // Scratch SVG costumes rely on transparent background; preserve alpha.
+        .arg("-background")
+        .arg("none")
         .arg("svg:-")
         .arg("png:-")
         .stdin(Stdio::piped())
