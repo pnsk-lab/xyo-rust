@@ -2,6 +2,7 @@ use super::*;
 use std::ffi::CStr;
 use std::io::{self, IsTerminal, Write};
 use std::os::raw::c_char;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -943,11 +944,7 @@ fn dispatch_broadcast(
     wait: bool,
     event_name: &str,
 ) {
-    // Collect the (script_id, actor_id) pairs that THIS broadcast
-    // should handle.  When `wait` is true we must NOT enqueue them into
-    // the shared script_queue because nested broadcast-and-wait calls
-    // would dequeue handlers from the parent's queue.  Instead we build
-    // a local task list and run them directly.
+    // Collect the (script_id, actor_id) pairs that THIS broadcast should handle.
     let mut tasks: Vec<(u64, u64)> = Vec::new();
     for script_id in target_scripts {
         let Some(target_index) = state_ref
@@ -959,52 +956,75 @@ fn dispatch_broadcast(
         };
         let actor_ids = state_ref.actor_ids_for_target(target_index);
         for actor_id in actor_ids {
-            if wait {
-                // Collect locally – do NOT touch the shared queue.
-                if state_ref.should_trace_events() {
-                    eprintln!(
-                        "[debug][queue] event={} script={} (id={}) actor={}",
-                        event_name,
-                        state_ref.script_name_for_id(script_id),
-                        script_id,
-                        state_ref.actor_label(actor_id)
-                    );
-                }
-                tasks.push((script_id, actor_id));
-            } else {
-                state_ref.enqueue_task(script_id, actor_id, Some(event_name));
+            if state_ref.should_trace_events() {
+                eprintln!(
+                    "[debug][queue] event={} script={} (id={}) actor={}",
+                    event_name,
+                    state_ref.script_name_for_id(script_id),
+                    script_id,
+                    state_ref.actor_label(actor_id)
+                );
             }
+            tasks.push((script_id, actor_id));
         }
     }
-    if wait {
-        if state_ref.frame_duration.is_some() {
-            // Paced mode (GUI / --fps): keep `active_fiber_control` so that
-            // yield-points inside the handlers (e.g. loop guards,
-            // wait_until) yield the calling fiber to the scheduler instead
-            // of sleeping.  `run_script` manages actor state switching for
-            // each handler via saved/restored snapshots on the call stack,
-            // which is preserved across yields.
-            for (script_id, actor_id) in tasks {
-                state_ref.run_script(script_id, actor_id);
-            }
-        } else {
-            // Un-paced mode (no-gui turbo): run handlers inline with
-            // legacy blocking for fast budget consumption.  Temporarily
-            // clear fiber control so that loop guards consume step budget
-            // directly without yielding (avoids excessive context-switching
-            // overhead).
-            let saved_fiber = state_ref.active_fiber_control.take();
-            for (script_id, actor_id) in tasks {
-                state_ref.run_script(script_id, actor_id);
-            }
-            state_ref.active_fiber_control = saved_fiber;
+
+    if !wait {
+        for (script_id, actor_id) in tasks {
+            state_ref.enqueue_task(script_id, actor_id, Some(event_name), None);
         }
-        // In paced mode, keep each frame/tick responsive by refreshing the
-        // current fiber's script budget after broadcast-and-wait handlers.
-        // In un-paced mode (`--no-gui`/turbo), keep the global budget monotonic
-        // so CLI execution still terminates when the step budget is exhausted.
+        return;
+    }
+
+    // Broadcast-and-wait must run all handlers concurrently and wait until all
+    // launched scripts complete.
+    let wait_group_id = state_ref.create_wait_group();
+    for (script_id, actor_id) in tasks {
+        state_ref.enqueue_task(script_id, actor_id, Some(event_name), Some(wait_group_id));
+    }
+
+    if state_ref.active_fiber_control.is_some() {
+        while state_ref.wait_group_has_pending_tasks(wait_group_id) {
+            if state_ref.frame_duration.is_some() {
+                state_ref.wait_for_next_frame();
+            } else if let Some(control) = state_ref.active_fiber_control.as_ref().map(Arc::clone) {
+                control.yield_to_scheduler();
+            } else {
+                break;
+            }
+            if state_ref
+                .stop_requested
+                .as_ref()
+                .is_some_and(|stop| stop.load(Ordering::Relaxed))
+            {
+                break;
+            }
+        }
         if state_ref.frame_duration.is_some() {
+            // Keep each frame/tick responsive by refreshing the current fiber's
+            // script budget after broadcast-and-wait handlers.
             state_ref.remaining_steps = state_ref.step_budget;
+        }
+        return;
+    }
+
+    // Legacy non-fiber mode: process queued handlers inline until this wait
+    // group drains.
+    while state_ref.wait_group_has_pending_tasks(wait_group_id) {
+        if let Some(task) = state_ref.dequeue_script() {
+            state_ref.processing_queued_script = true;
+            state_ref.run_script(task.script_id, task.actor_id);
+            state_ref.processing_queued_script = false;
+            state_ref.complete_wait_group_task(task.wait_group_id);
+        } else {
+            state_ref.wait_for_next_frame();
+        }
+        if state_ref
+            .stop_requested
+            .as_ref()
+            .is_some_and(|stop| stop.load(Ordering::Relaxed))
+        {
+            break;
         }
     }
 }
@@ -1047,10 +1067,11 @@ fn loop_should_continue(
         }
         state.enqueue_key_pressed_scripts();
         if !state.processing_queued_script {
-            if let Some((script_id, actor_id)) = state.dequeue_script() {
+            if let Some(task) = state.dequeue_script() {
                 state.processing_queued_script = true;
-                state.run_script(script_id, actor_id);
+                state.run_script(task.script_id, task.actor_id);
                 state.processing_queued_script = false;
+                state.complete_wait_group_task(task.wait_group_id);
             }
         }
     }

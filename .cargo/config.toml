@@ -1,9 +1,21 @@
 [build]
+
+[target.x86_64-unknown-linux-gnu]
 rustflags = [
-	"-C",
-	"link-arg=-rdynamic",
-	"-C",
-	"link-arg=-Wl,--exclude-libs,ALL",
-	"-C",
-	"link-arg=-Wl,--export-dynamic-symbol=rt_*",
+  "-C", "link-arg=-rdynamic",
+  "-C", "link-arg=-Wl,--exclude-libs,ALL",
+  "-C", "link-arg=-Wl,--export-dynamic-symbol=rt_*",
+]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+  "-C", "link-arg=-rdynamic",
+  "-C", "link-arg=-Wl,--exclude-libs,ALL",
+  "-C", "link-arg=-Wl,--export-dynamic-symbol=rt_*",
+]
+
+[target.aarch64-apple-darwin]
+rustflags = [
+  # 必要なら rt_* を公開（Mach-O は先頭アンダースコア）
+  "-C", "link-arg=-Wl,-exported_symbol,_rt_*",
 ]

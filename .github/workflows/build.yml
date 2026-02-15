@@ -95,6 +95,10 @@ jobs:
             - name: Build (Windows)
               if: ${{ startsWith(matrix.os, 'windows') }}
               shell: pwsh
+              env:
+                  LLVM_SYS_181_PREFIX: ${{ env.LLVM_SYS_181_PREFIX }}
+                  LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
+                  LLVM_LINK_LLVM_DYLIB: "1"
               run: |
                   if (-not $env:LLVM_CONFIG_PATH) {
                   Write-Error "LLVM_CONFIG_PATH is empty"
@@ -116,6 +120,7 @@ jobs:
                   LLVM_CONFIG_PATH: /usr/bin/llvm-config-18
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+                  LLVM_LINK_LLVM_DYLIB: "1"
               run: |
                   export PATH="/usr/lib/llvm-18/bin:$PATH"
                   cargo --version

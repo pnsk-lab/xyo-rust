@@ -126,6 +126,7 @@ pub struct Fiber {
     /// a `run_script` call for a different actor (e.g. during
     /// broadcast-and-wait handler execution).
     current_actor_id: u64,
+    wait_group_id: Option<u64>,
     control: Arc<FiberControl>,
     handle: Option<thread::JoinHandle<()>>,
 }
@@ -139,6 +140,7 @@ impl Fiber {
         function: ScriptEntry,
         script_id: u64,
         actor_id: u64,
+        wait_group_id: Option<u64>,
     ) -> Self {
         let control = Arc::new(FiberControl::new());
         let control_for_thread = Arc::clone(&control);
@@ -164,6 +166,7 @@ impl Fiber {
             script_id,
             actor_id,
             current_actor_id: actor_id,
+            wait_group_id,
             control,
             handle: Some(handle),
         }
@@ -338,6 +341,7 @@ pub fn decode_string_id(value: f64) -> Option<usize> {
 struct ScriptTask {
     script_id: u64,
     actor_id: u64,
+    wait_group_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -416,6 +420,8 @@ pub struct RuntimeState {
     actors: Vec<ActorState>,
     active_actor_id: u64,
     script_queue: VecDeque<ScriptTask>,
+    wait_group_pending: HashMap<u64, u64>,
+    next_wait_group_id: u64,
     processing_queued_script: bool,
     /// When set, the runtime is executing inside a fiber and yield-points
     /// should cooperatively yield to the scheduler instead of sleeping.
@@ -529,6 +535,8 @@ impl RuntimeState {
             actors: Vec::new(),
             active_actor_id: 0,
             script_queue: VecDeque::new(),
+            wait_group_pending: HashMap::new(),
+            next_wait_group_id: 1,
             processing_queued_script: false,
             active_fiber_control: None,
             rng_state: 0x4d595df4d0f33173,
@@ -616,6 +624,8 @@ impl RuntimeState {
             self.load_actor_from_snapshot(actor);
         }
         self.script_queue.clear();
+        self.wait_group_pending.clear();
+        self.next_wait_group_id = 1;
         self.live_canvas_dirty = true;
     }
 
@@ -628,10 +638,8 @@ impl RuntimeState {
         }
     }
 
-    pub fn dequeue_script(&mut self) -> Option<(u64, u64)> {
-        self.script_queue
-            .pop_front()
-            .map(|task| (task.script_id, task.actor_id))
+    fn dequeue_script(&mut self) -> Option<ScriptTask> {
+        self.script_queue.pop_front()
     }
 
     pub fn run_script(&mut self, script_id: u64, actor_id: u64) {
@@ -749,10 +757,16 @@ impl RuntimeState {
         else {
             return;
         };
-        self.enqueue_task(script_id, actor_id, reason);
+        self.enqueue_task(script_id, actor_id, reason, None);
     }
 
-    fn enqueue_task(&mut self, script_id: u64, actor_id: u64, reason: Option<&str>) {
+    fn enqueue_task(
+        &mut self,
+        script_id: u64,
+        actor_id: u64,
+        reason: Option<&str>,
+        wait_group_id: Option<u64>,
+    ) {
         if (script_id as usize) >= self.script_functions.len() {
             return;
         }
@@ -765,7 +779,12 @@ impl RuntimeState {
         self.script_queue.push_back(ScriptTask {
             script_id,
             actor_id,
+            wait_group_id,
         });
+        if let Some(group_id) = wait_group_id {
+            let entry = self.wait_group_pending.entry(group_id).or_insert(0);
+            *entry = entry.saturating_add(1);
+        }
         if self.should_trace_events() {
             if let Some(reason) = reason {
                 eprintln!(
@@ -784,6 +803,39 @@ impl RuntimeState {
                 );
             }
         }
+    }
+
+    fn create_wait_group(&mut self) -> u64 {
+        let id = self.next_wait_group_id;
+        self.next_wait_group_id = self.next_wait_group_id.saturating_add(1);
+        self.wait_group_pending.insert(id, 0);
+        id
+    }
+
+    fn complete_wait_group_task(&mut self, wait_group_id: Option<u64>) {
+        let Some(group_id) = wait_group_id else {
+            return;
+        };
+        let mut remove_entry = false;
+        if let Some(remaining) = self.wait_group_pending.get_mut(&group_id) {
+            if *remaining > 0 {
+                *remaining -= 1;
+            }
+            if *remaining == 0 {
+                remove_entry = true;
+            }
+        }
+        if remove_entry {
+            self.wait_group_pending.remove(&group_id);
+        }
+    }
+
+    fn wait_group_has_pending_tasks(&self, wait_group_id: u64) -> bool {
+        self.wait_group_pending
+            .get(&wait_group_id)
+            .copied()
+            .unwrap_or(0)
+            > 0
     }
 
     fn actor_ids_for_target(&self, target_index: u64) -> Vec<u64> {
@@ -864,7 +916,7 @@ impl RuntimeState {
             );
         }
         for script_id in clone_scripts {
-            self.enqueue_task(script_id, new_actor_id, Some("clone start"));
+            self.enqueue_task(script_id, new_actor_id, Some("clone start"), None);
         }
         self.live_canvas_dirty = true;
     }
@@ -878,7 +930,17 @@ impl RuntimeState {
             return;
         }
         actor.alive = false;
-        self.script_queue.retain(|task| task.actor_id != actor_id);
+        let mut removed_wait_groups = Vec::new();
+        self.script_queue.retain(|task| {
+            let keep = task.actor_id != actor_id;
+            if !keep {
+                removed_wait_groups.push(task.wait_group_id);
+            }
+            keep
+        });
+        for wait_group_id in removed_wait_groups {
+            self.complete_wait_group_task(wait_group_id);
+        }
         self.live_canvas_dirty = true;
     }
 
@@ -1271,7 +1333,7 @@ impl RuntimeState {
 
     /// Execute the program sequentially in the current thread.
     pub fn execute_serial(&mut self) {
-        while let Some((script_id, actor_id)) = self.dequeue_script() {
+        while let Some(task) = self.dequeue_script() {
             if self
                 .stop_requested
                 .as_ref()
@@ -1280,8 +1342,9 @@ impl RuntimeState {
                 break;
             }
             self.processing_queued_script = true;
-            self.run_script(script_id, actor_id);
+            self.run_script(task.script_id, task.actor_id);
             self.processing_queued_script = false;
+            self.complete_wait_group_task(task.wait_group_id);
         }
         self.flush_live_canvas();
     }
@@ -1294,12 +1357,29 @@ impl RuntimeState {
         let mut fibers: Vec<Fiber> = Vec::new();
 
         // Spawn fibers for all initially-queued scripts.
-        while let Some((script_id, actor_id)) = self.dequeue_script() {
-            let function = match self.script_functions.get(script_id as usize).copied() {
+        while let Some(task) = self.dequeue_script() {
+            let function = match self.script_functions.get(task.script_id as usize).copied() {
                 Some(f) => f,
-                None => continue,
+                None => {
+                    self.complete_wait_group_task(task.wait_group_id);
+                    continue;
+                }
             };
-            fibers.push(Fiber::spawn(state_ptr, function, script_id, actor_id));
+            let Some(actor) = self.actor_snapshot(task.actor_id) else {
+                self.complete_wait_group_task(task.wait_group_id);
+                continue;
+            };
+            if !actor.alive {
+                self.complete_wait_group_task(task.wait_group_id);
+                continue;
+            }
+            fibers.push(Fiber::spawn(
+                state_ptr,
+                function,
+                task.script_id,
+                task.actor_id,
+                task.wait_group_id,
+            ));
         }
 
         // Main tick loop.
@@ -1348,7 +1428,7 @@ impl RuntimeState {
                 fiber.control.resume();
 
                 // Wait until it yields or finishes.
-                let _ = fiber.control.wait_for_yield_or_done();
+                let result = fiber.control.wait_for_yield_or_done();
 
                 // Save actor state back – persist into whichever actor is
                 // currently loaded (may differ from the original if the
@@ -1356,19 +1436,40 @@ impl RuntimeState {
                 self.persist_runtime_into_actor(self.active_actor_id);
                 fiber.current_actor_id = self.active_actor_id;
                 self.active_fiber_control = None;
+                if matches!(result, FiberSyncState::Done) {
+                    self.complete_wait_group_task(fiber.wait_group_id);
+                    fiber.wait_group_id = None;
+                }
             }
 
             // --- spawn fibers for newly-queued scripts (broadcasts, clones) ---
-            let mut new_tasks: Vec<(u64, u64)> = Vec::new();
-            while let Some((script_id, actor_id)) = self.dequeue_script() {
-                new_tasks.push((script_id, actor_id));
+            let mut new_tasks: Vec<ScriptTask> = Vec::new();
+            while let Some(task) = self.dequeue_script() {
+                new_tasks.push(task);
             }
-            for (script_id, actor_id) in new_tasks {
-                let function = match self.script_functions.get(script_id as usize).copied() {
+            for task in new_tasks {
+                let function = match self.script_functions.get(task.script_id as usize).copied() {
                     Some(f) => f,
-                    None => continue,
+                    None => {
+                        self.complete_wait_group_task(task.wait_group_id);
+                        continue;
+                    }
                 };
-                fibers.push(Fiber::spawn(state_ptr, function, script_id, actor_id));
+                let Some(actor) = self.actor_snapshot(task.actor_id) else {
+                    self.complete_wait_group_task(task.wait_group_id);
+                    continue;
+                };
+                if !actor.alive {
+                    self.complete_wait_group_task(task.wait_group_id);
+                    continue;
+                }
+                fibers.push(Fiber::spawn(
+                    state_ptr,
+                    function,
+                    task.script_id,
+                    task.actor_id,
+                    task.wait_group_id,
+                ));
                 any_active = true;
             }
 
@@ -2053,7 +2154,9 @@ impl RuntimeState {
     }
 
     fn stop_all_scripts(&mut self) {
-        self.script_queue.clear();
+        while let Some(task) = self.script_queue.pop_front() {
+            self.complete_wait_group_task(task.wait_group_id);
+        }
         self.remaining_steps = 0;
     }
 
@@ -2070,11 +2173,19 @@ impl RuntimeState {
             .iter()
             .map(|actor| actor.target_index)
             .collect::<Vec<_>>();
+        let mut removed_wait_groups = Vec::new();
         self.script_queue.retain(|task| {
-            actor_targets
+            let keep = actor_targets
                 .get(task.actor_id as usize)
-                .is_none_or(|actor_target| *actor_target != target_index)
+                .is_none_or(|actor_target| *actor_target != target_index);
+            if !keep {
+                removed_wait_groups.push(task.wait_group_id);
+            }
+            keep
         });
+        for wait_group_id in removed_wait_groups {
+            self.complete_wait_group_task(wait_group_id);
+        }
     }
 
     fn switch_costume_to(&mut self, costume: f64) {

@@ -7,7 +7,7 @@ pub const STAGE_WIDTH: usize = 480;
 pub const STAGE_HEIGHT: usize = 360;
 
 /// Default FPS for GUI mode when not in turbo.
-pub const DEFAULT_FPS: f64 = 60.0;
+pub const DEFAULT_FPS: f64 = 30.0;
 
 /// Default vsync FPS.
 pub const DEFAULT_VSYNC_FPS: usize = 60;
