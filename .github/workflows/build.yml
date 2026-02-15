@@ -16,8 +16,7 @@ jobs:
                       os: windows-latest
                       target: x86_64-pc-windows-msvc
 
-                    # Windows ARM64 は環境差分で壊れやすいので、まずは安定化優先で無効化
-                    # 必要なら最後に戻す
+                    # まず安定化優先。必要なら最後に再有効化
                     # - name: windows-arm64
                     #   os: windows-latest
                     #   target: aarch64-pc-windows-msvc
@@ -48,7 +47,7 @@ jobs:
               if: ${{ startsWith(matrix.os, 'ubuntu') }}
               shell: bash
               run: |
-                  set -eux
+                  set -euxo pipefail
                   sudo apt-get update
                   sudo apt-get install -y wget gpg lsb-release software-properties-common
                   wget -q https://apt.llvm.org/llvm.sh
@@ -56,7 +55,6 @@ jobs:
                   sudo ./llvm.sh 18
                   /usr/bin/llvm-config-18 --version
 
-                  # クロスコンパイル用（linux-arm64 ターゲット時）
                   if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
                     sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
                   fi
@@ -66,7 +64,7 @@ jobs:
               if: ${{ startsWith(matrix.os, 'macos') }}
               shell: bash
               run: |
-                  set -eux
+                  set -euxo pipefail
                   brew update
                   brew install llvm@18
                   /opt/homebrew/opt/llvm@18/bin/llvm-config --version
@@ -78,15 +76,12 @@ jobs:
               run: |
                   choco install llvm --version=18.1.8 --allow-downgrade -y --no-progress
 
-                  # よくある候補を優先
                   $candidates = @(
                     "C:\Program Files\LLVM\bin\llvm-config.exe",
                     "C:\Program Files (x86)\LLVM\bin\llvm-config.exe"
                   )
-
                   $llvmConfig = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-                  # 念のためフォールバック探索
                   if (-not $llvmConfig) {
                     $found = Get-ChildItem -Path "C:\Program Files","C:\Program Files (x86)" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue |
                       Select-Object -First 1
@@ -94,8 +89,7 @@ jobs:
                   }
 
                   if (-not $llvmConfig) {
-                    Write-Error "llvm-config.exe not found after LLVM install"
-                    exit 1
+                    throw "llvm-config.exe not found after LLVM install"
                   }
 
                   $llvmPrefix = Split-Path (Split-Path $llvmConfig -Parent) -Parent
@@ -117,16 +111,16 @@ jobs:
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
               run: |
-                  set -eux
+                  set -euxo pipefail
                   export PATH="/usr/lib/llvm-18/bin:$PATH"
 
-                  # 余計な環境汚染を除去
+                  # runner 汚染対策
                   unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CC CXX AR RUSTFLAGS CARGO_ENCODED_RUSTFLAGS || true
 
                   cargo --version
                   "$LLVM_CONFIG_PATH" --version
                   cargo clean -p llvm-sys || true
-                  cargo build --release --target ${{ matrix.target }}
+                  cargo build --release --target ${{ matrix.target }} -vv
 
             # ---------------- Build: macOS ----------------
             - name: Build (macOS)
@@ -137,16 +131,16 @@ jobs:
                   LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm@18/bin/llvm-config
                   LLVM_LINK_LLVM_DYLIB: "1"
               run: |
-                  set -eux
+                  set -euxo pipefail
                   export PATH="/opt/homebrew/opt/llvm@18/bin:$PATH"
 
-                  # 余計な環境汚染を除去
+                  # runner 汚染対策
                   unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CC CXX AR RUSTFLAGS CARGO_ENCODED_RUSTFLAGS || true
 
                   cargo --version
                   "$LLVM_CONFIG_PATH" --version
                   cargo clean -p llvm-sys || true
-                  cargo build --release --target ${{ matrix.target }}
+                  cargo build --release --target ${{ matrix.target }} -vv
 
             # ---------------- Build: Windows ----------------
             - name: Build (Windows)
@@ -155,19 +149,13 @@ jobs:
               env:
                   LLVM_LINK_LLVM_DYLIB: "1"
               run: |
-                  if (-not $env:LLVM_CONFIG_PATH) {
-                    Write-Error "LLVM_CONFIG_PATH is empty"
-                    exit 1
-                  }
-                  if (-not $env:LLVM_SYS_181_PREFIX) {
-                    Write-Error "LLVM_SYS_181_PREFIX is empty"
-                    exit 1
-                  }
+                  if (-not $env:LLVM_CONFIG_PATH) { throw "LLVM_CONFIG_PATH is empty" }
+                  if (-not $env:LLVM_SYS_181_PREFIX) { throw "LLVM_SYS_181_PREFIX is empty" }
 
                   $llvmBin = Split-Path $env:LLVM_CONFIG_PATH -Parent
                   $env:Path = "$llvmBin;$env:Path"
 
-                  # GHC/MinGW 由来の環境汚染を除去
+                  # GHC/MinGW 汚染対策
                   foreach ($k in @(
                     "CFLAGS","CXXFLAGS","CPPFLAGS","LDFLAGS",
                     "CC","CXX","AR",
@@ -176,20 +164,20 @@ jobs:
                     "RUSTFLAGS","CARGO_ENCODED_RUSTFLAGS",
                     "BINDGEN_EXTRA_CLANG_ARGS"
                   )) {
-                    Remove-Item "Env:$k" -ErrorAction SilentlyContinue
+                    Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue
                   }
 
-                  # ターゲット別 CFLAGS も空で上書き
-                  $env:CFLAGS_x86_64_pc_windows_msvc = ""
-                  $env:CFLAGS_x86_64-pc-windows-msvc = ""
-                  $env:CFLAGS_aarch64_pc_windows_msvc = ""
-                  $env:CFLAGS_aarch64-pc-windows-msvc = ""
+                  # '-' を含む環境変数名は Set-Item で設定
+                  Set-Item -Path Env:'CFLAGS_x86_64-pc-windows-msvc' -Value ''
+                  Set-Item -Path Env:'CFLAGS_aarch64-pc-windows-msvc' -Value ''
+                  Set-Item -Path Env:'CFLAGS_x86_64_pc_windows_msvc' -Value ''
+                  Set-Item -Path Env:'CFLAGS_aarch64_pc_windows_msvc' -Value ''
 
                   cargo --version
                   & $env:LLVM_CONFIG_PATH --version
 
                   cargo clean -p llvm-sys
-                  cargo build --release --target ${{ matrix.target }}
+                  cargo build --release --target ${{ matrix.target }} -vv
 
             - name: Upload artifact (Unix)
               if: ${{ !startsWith(matrix.os, 'windows') }}

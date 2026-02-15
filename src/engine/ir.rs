@@ -166,6 +166,11 @@ pub enum Stmt {
         list_index: usize,
     },
     LooksSwitchCostumeTo(Expr),
+    LooksSwitchBackdropTo(Expr),
+    LooksSetEffectTo {
+        effect: Expr,
+        value: Expr,
+    },
     LooksSetSize(Expr),
     LooksShow,
     LooksSay(SayExpr),
@@ -340,6 +345,7 @@ pub enum Expr {
     SensingTimer,
     SensingDaysSince2000,
     SensingTouchingObject(Box<Expr>),
+    SensingTouchingColor(Box<Expr>),
     MathOp {
         op: MathOp,
         value: Box<Expr>,
@@ -782,6 +788,16 @@ impl<'a> ProgramBuilder<'a> {
             "looks_switchcostumeto" => Some(Stmt::LooksSwitchCostumeTo(
                 self.lower_numeric_input(target, block, "COSTUME"),
             )),
+            "looks_switchbackdropto" => Some(Stmt::LooksSwitchBackdropTo(
+                self.lower_numeric_input(target, block, "BACKDROP"),
+            )),
+            "looks_seteffectto" => Some(Stmt::LooksSetEffectTo {
+                effect: self.lower_scalar_literal(&Value::String(
+                    self.field_value_as_string(block, "EFFECT")
+                        .unwrap_or_default(),
+                )),
+                value: self.lower_numeric_input(target, block, "VALUE"),
+            }),
             "looks_setsizeto" => Some(Stmt::LooksSetSize(
                 self.lower_numeric_input(target, block, "SIZE"),
             )),
@@ -1266,6 +1282,10 @@ impl<'a> ProgramBuilder<'a> {
                 self.field_value_as_string(block, "COSTUME")
                     .unwrap_or_default(),
             )),
+            "looks_backdrops" => self.lower_scalar_literal(&Value::String(
+                self.field_value_as_string(block, "BACKDROP")
+                    .unwrap_or_default(),
+            )),
             "sensing_of" => {
                 let property_text = self
                     .field_value_as_string(block, "PROPERTY")
@@ -1292,6 +1312,9 @@ impl<'a> ProgramBuilder<'a> {
             ))),
             "sensing_touchingobject" => Expr::SensingTouchingObject(Box::new(
                 self.lower_numeric_input(target, block, "TOUCHINGOBJECTMENU"),
+            )),
+            "sensing_touchingcolor" => Expr::SensingTouchingColor(Box::new(
+                self.lower_numeric_input(target, block, "COLOR"),
             )),
             "data_variable" => {
                 let Some(variable_id) = self.variable_id_from_field(block, "VARIABLE") else {

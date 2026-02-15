@@ -19,6 +19,10 @@ pub extern "C" fn rt_count_executed_block(state: *mut RuntimeState) {
 pub extern "C" fn rt_motion_move_steps(state: *mut RuntimeState, steps: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let steps = state.value_to_number(steps);
+            if !steps.is_finite() {
+                return;
+            }
             let radians = (90.0 - state.direction_deg).to_radians();
             let new_x = state.sprite_x + steps * radians.cos();
             let new_y = state.sprite_y + steps * radians.sin();
@@ -31,6 +35,10 @@ pub extern "C" fn rt_motion_move_steps(state: *mut RuntimeState, steps: f64) {
 pub extern "C" fn rt_motion_set_direction(state: *mut RuntimeState, direction: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let direction = state.value_to_number(direction);
+            if !direction.is_finite() {
+                return;
+            }
             state.direction_deg = direction;
             state.live_canvas_dirty = true;
         }
@@ -41,6 +49,10 @@ pub extern "C" fn rt_motion_set_direction(state: *mut RuntimeState, direction: f
 pub extern "C" fn rt_motion_change_x(state: *mut RuntimeState, dx: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let dx = state.value_to_number(dx);
+            if !dx.is_finite() {
+                return;
+            }
             state.move_sprite_to(state.sprite_x + dx, state.sprite_y);
         }
     }
@@ -50,6 +62,10 @@ pub extern "C" fn rt_motion_change_x(state: *mut RuntimeState, dx: f64) {
 pub extern "C" fn rt_motion_change_y(state: *mut RuntimeState, dy: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let dy = state.value_to_number(dy);
+            if !dy.is_finite() {
+                return;
+            }
             state.move_sprite_to(state.sprite_x, state.sprite_y + dy);
         }
     }
@@ -59,6 +75,10 @@ pub extern "C" fn rt_motion_change_y(state: *mut RuntimeState, dy: f64) {
 pub extern "C" fn rt_motion_set_x(state: *mut RuntimeState, x: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let x = state.value_to_number(x);
+            if !x.is_finite() {
+                return;
+            }
             state.move_sprite_to(x, state.sprite_y);
         }
     }
@@ -68,6 +88,10 @@ pub extern "C" fn rt_motion_set_x(state: *mut RuntimeState, x: f64) {
 pub extern "C" fn rt_motion_set_y(state: *mut RuntimeState, y: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let y = state.value_to_number(y);
+            if !y.is_finite() {
+                return;
+            }
             state.move_sprite_to(state.sprite_x, y);
         }
     }
@@ -77,6 +101,11 @@ pub extern "C" fn rt_motion_set_y(state: *mut RuntimeState, y: f64) {
 pub extern "C" fn rt_motion_goto_xy(state: *mut RuntimeState, x: f64, y: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
+            let x = state.value_to_number(x);
+            let y = state.value_to_number(y);
+            if !x.is_finite() || !y.is_finite() {
+                return;
+            }
             state.move_sprite_to(x, y);
         }
     }
@@ -298,11 +327,18 @@ pub extern "C" fn rt_sensing_touching_object(state: *mut RuntimeState, object: f
                     dx * dx + dy * dy <= 1.0
                 }),
         };
-        if touching {
-            1.0
-        } else {
-            0.0
-        }
+        if touching { 1.0 } else { 0.0 }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rt_sensing_touching_color(state: *mut RuntimeState, color: f64) -> f64 {
+    unsafe {
+        let Some(state) = state.as_mut() else {
+            return 0.0;
+        };
+        let rgb = state.parse_color_value(color);
+        if state.touching_color(rgb) { 1.0 } else { 0.0 }
     }
 }
 
@@ -401,12 +437,32 @@ pub extern "C" fn rt_looks_set_size(state: *mut RuntimeState, size: f64) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn rt_looks_set_effect_to(state: *mut RuntimeState, effect: f64, value: f64) {
+    unsafe {
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+        state.set_effect_to(effect, value);
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn rt_looks_switch_costume_to(state: *mut RuntimeState, costume: f64) {
     unsafe {
         let Some(state) = state.as_mut() else {
             return;
         };
         state.switch_costume_to(costume);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rt_looks_switch_backdrop_to(state: *mut RuntimeState, backdrop: f64) {
+    unsafe {
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+        state.switch_backdrop_to(backdrop);
     }
 }
 
@@ -463,7 +519,11 @@ pub extern "C" fn rt_pen_clear(state: *mut RuntimeState) {
 pub extern "C" fn rt_pen_set_size(state: *mut RuntimeState, size: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {
-            state.pen_size = size.max(1.0);
+            let numeric = state.value_to_number(size);
+            if !numeric.is_finite() {
+                return;
+            }
+            state.pen_size = numeric.max(1.0);
         }
     }
 }
@@ -576,13 +636,18 @@ pub extern "C" fn rt_control_wait(state: *mut RuntimeState, duration: f64) {
         }
 
         if seconds <= 0.0 {
-            state.wait_for_next_frame();
+            control_wait_yield_once(state);
             return;
         }
 
         let deadline = Instant::now() + Duration::from_secs_f64(seconds);
         while Instant::now() < deadline {
-            state.wait_for_next_frame();
+            if state.frame_duration.is_none() && state.active_fiber_control.is_none() {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                std::thread::sleep(remaining.min(Duration::from_millis(1)));
+            } else {
+                control_wait_yield_once(state);
+            }
             if state
                 .stop_requested
                 .as_ref()
@@ -591,6 +656,18 @@ pub extern "C" fn rt_control_wait(state: *mut RuntimeState, duration: f64) {
                 break;
             }
         }
+    }
+}
+
+fn control_wait_yield_once(state: &mut RuntimeState) {
+    if state.active_fiber_control.is_some() {
+        if state.frame_duration.is_some() {
+            state.wait_for_next_frame();
+        } else if let Some(control) = state.active_fiber_control.as_ref().map(Arc::clone) {
+            control.yield_to_scheduler();
+        }
+    } else {
+        state.wait_for_next_frame();
     }
 }
 
@@ -695,11 +772,7 @@ pub extern "C" fn rt_operator_contains(state: *mut RuntimeState, text: f64, part
         };
         let haystack = state.value_as_string(text).to_lowercase();
         let needle = state.value_as_string(part).to_lowercase();
-        if haystack.contains(&needle) {
-            1.0
-        } else {
-            0.0
-        }
+        if haystack.contains(&needle) { 1.0 } else { 0.0 }
     }
 }
 
@@ -1097,7 +1170,9 @@ pub extern "C" fn rt_forever_should_continue_warp(state: *mut RuntimeState) -> b
         // Warp-mode `forever` loops still consume step budget because they
         // have no condition that will eventually become true – budget
         // exhaustion is the only exit mechanism (besides `stop`).
-        loop_should_continue(state, false, false, true)
+        // Even in warp mode, periodically yield in fiber execution so a
+        // single long-running custom block cannot starve other scripts.
+        loop_should_continue(state, true, false, true)
     }
 }
 
@@ -1119,8 +1194,9 @@ pub extern "C" fn rt_loop_should_continue_warp(state: *mut RuntimeState) -> bool
             return false;
         };
         // Warp-mode (run without screen refresh) loops run without budget
-        // limits – they only check for stop requests.
-        loop_should_continue(state, false, false, false)
+        // limits. Still periodically yield in fiber mode to avoid starving
+        // other scripts when large warp procedures execute.
+        loop_should_continue(state, true, false, false)
     }
 }
 

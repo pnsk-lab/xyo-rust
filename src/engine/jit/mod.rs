@@ -10,18 +10,19 @@ use crate::engine::runtime::{
     rt_data_list_contains_item, rt_data_replace_item_of_list, rt_event_broadcast_and_wait_value,
     rt_event_broadcast_value, rt_forever_should_continue, rt_forever_should_continue_warp,
     rt_get_var, rt_looks_costume_name, rt_looks_costume_number, rt_looks_hide, rt_looks_say_number,
-    rt_looks_say_text, rt_looks_set_size, rt_looks_show, rt_looks_switch_costume_to,
-    rt_loop_should_continue, rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y,
-    rt_motion_goto_xy, rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x,
-    rt_motion_set_y, rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo,
-    rt_operator_contains, rt_operator_equals, rt_operator_greater_than, rt_operator_join,
-    rt_operator_length, rt_operator_less_than, rt_operator_letter_of, rt_operator_mathop,
-    rt_operator_round, rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param,
-    rt_pen_set_size, rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
+    rt_looks_say_text, rt_looks_set_effect_to, rt_looks_set_size, rt_looks_show,
+    rt_looks_switch_backdrop_to, rt_looks_switch_costume_to, rt_loop_should_continue,
+    rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y, rt_motion_goto_xy,
+    rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x, rt_motion_set_y,
+    rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo, rt_operator_contains,
+    rt_operator_equals, rt_operator_greater_than, rt_operator_join, rt_operator_length,
+    rt_operator_less_than, rt_operator_letter_of, rt_operator_mathop, rt_operator_round,
+    rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param, rt_pen_set_size,
+    rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
     rt_sensing_ask_and_wait, rt_sensing_current, rt_sensing_days_since_2000,
     rt_sensing_key_pressed, rt_sensing_mouse_down, rt_sensing_mouse_x, rt_sensing_mouse_y,
-    rt_sensing_of, rt_sensing_reset_timer, rt_sensing_timer, rt_sensing_touching_object,
-    rt_set_var,
+    rt_sensing_of, rt_sensing_reset_timer, rt_sensing_timer, rt_sensing_touching_color,
+    rt_sensing_touching_object, rt_set_var,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use inkwell::builder::{Builder, BuilderError};
@@ -353,6 +354,8 @@ struct RuntimeFunctions<'ctx> {
     say_number: FunctionValue<'ctx>,
     say_text: FunctionValue<'ctx>,
     looks_switch_costume_to: FunctionValue<'ctx>,
+    looks_switch_backdrop_to: FunctionValue<'ctx>,
+    looks_set_effect_to: FunctionValue<'ctx>,
     looks_set_size: FunctionValue<'ctx>,
     looks_costume_number: FunctionValue<'ctx>,
     looks_costume_name: FunctionValue<'ctx>,
@@ -366,6 +369,7 @@ struct RuntimeFunctions<'ctx> {
     sensing_timer: FunctionValue<'ctx>,
     sensing_days_since_2000: FunctionValue<'ctx>,
     sensing_touching_object: FunctionValue<'ctx>,
+    sensing_touching_color: FunctionValue<'ctx>,
     sensing_reset_timer: FunctionValue<'ctx>,
     pen_down: FunctionValue<'ctx>,
     pen_up: FunctionValue<'ctx>,
@@ -711,6 +715,21 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 self.call_void(
                     self.runtime.looks_switch_costume_to,
                     &[runtime_ptr.into(), costume.into()],
+                )?;
+            }
+            Stmt::LooksSwitchBackdropTo(backdrop) => {
+                let backdrop = self.compile_expr(runtime_ptr, backdrop)?;
+                self.call_void(
+                    self.runtime.looks_switch_backdrop_to,
+                    &[runtime_ptr.into(), backdrop.into()],
+                )?;
+            }
+            Stmt::LooksSetEffectTo { effect, value } => {
+                let effect = self.compile_expr(runtime_ptr, effect)?;
+                let value = self.compile_expr(runtime_ptr, value)?;
+                self.call_void(
+                    self.runtime.looks_set_effect_to,
+                    &[runtime_ptr.into(), effect.into(), value.into()],
                 )?;
             }
             Stmt::LooksSetSize(size) => {
@@ -1669,6 +1688,14 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                     self.runtime.sensing_touching_object,
                     &[runtime_ptr.into(), object.into()],
                     "sensing.touching_object",
+                )
+            }
+            Expr::SensingTouchingColor(color) => {
+                let color = self.compile_expr(runtime_ptr, color)?;
+                self.call_f64(
+                    self.runtime.sensing_touching_color,
+                    &[runtime_ptr.into(), color.into()],
+                    "sensing.touching_color",
                 )
             }
             Expr::MathOp { op, value } => {

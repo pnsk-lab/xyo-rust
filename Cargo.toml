@@ -1,11 +1,11 @@
 [package]
-name = "scratch-native-runtime"
+name = "xyo-rust"
 version = "0.1.0"
 edition = "2024"
 authors = ["Scratch Native Runtime Contributors"]
 description = "A native Scratch project runtime that compiles .sb3 files to native code via LLVM"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourorg/scratch-native-runtime"
+license = "MIT"
+repository = "https://github.com/pnsk-lab/xyo-rust"
 readme = "README.md"
 keywords = ["scratch", "llvm", "jit", "compiler", "runtime"]
 categories = ["compilers", "development-tools"]
@@ -20,7 +20,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
-inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+
+inkwell = { version = "0.6.0", default-features = false, features = ["llvm18-1", "llvm18-1-prefer-dynamic"] }
+
+llvm-sys = "=181.3.0"
+
 libloading = "0.8"
 termios = "0.3"
 eframe = "0.31"

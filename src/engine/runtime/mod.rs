@@ -190,6 +190,7 @@ const DEFAULT_LIVE_CANVAS_SYNC_INTERVAL: Duration = Duration::from_millis(16);
 const FRAME_SLEEP_COARSE_MARGIN: Duration = Duration::from_micros(800);
 // scratch-vm Sequencer uses WORK_TIME = currentStepTime * 0.75.
 const SCRATCH_VM_WORK_TIME_RATIO: f64 = 0.75;
+const TURBO_WORK_TIME_SLICE: Duration = Duration::from_millis(5);
 
 #[derive(Debug, Clone)]
 pub struct InputState {
@@ -1159,11 +1160,7 @@ impl RuntimeState {
                 .get(index)
                 .and_then(|text| self.parse_scratch_number_for_compare(text));
         }
-        if value.is_nan() {
-            None
-        } else {
-            Some(value)
-        }
+        if value.is_nan() { None } else { Some(value) }
     }
 
     fn compare_values(&self, left: f64, right: f64) -> i8 {
@@ -1246,13 +1243,13 @@ impl RuntimeState {
     fn wait_for_next_frame(&mut self) {
         // ---- fiber mode ----
         if let Some(ref control) = self.active_fiber_control {
-            if self.frame_duration.is_some() {
-                let control = Arc::clone(control);
-                control.yield_to_scheduler();
+            let control = Arc::clone(control);
+            control.yield_to_scheduler();
+            if self.frame_duration.is_none() {
+                // In turbo mode, reset the cooperative work-slice timer when
+                // yielding so long-running loops keep fair interleaving.
+                self.current_tick_started_at = Some(Instant::now());
             }
-            // Without frame pacing (turbo / no-gui): don't yield – let loops
-            // consume step budget at full speed so that interactive wait-
-            // loops terminate via budget exhaustion.
             return;
         }
 
@@ -1285,13 +1282,13 @@ impl RuntimeState {
     }
 
     fn should_yield_for_work_time(&mut self) -> bool {
-        let Some(frame_duration) = self.frame_duration else {
-            return false;
-        };
         let now = Instant::now();
         let tick_started_at = *self.current_tick_started_at.get_or_insert(now);
-        let work_time =
-            Duration::from_secs_f64(frame_duration.as_secs_f64() * SCRATCH_VM_WORK_TIME_RATIO);
+        let work_time = if let Some(frame_duration) = self.frame_duration {
+            Duration::from_secs_f64(frame_duration.as_secs_f64() * SCRATCH_VM_WORK_TIME_RATIO)
+        } else {
+            TURBO_WORK_TIME_SLICE
+        };
         now.duration_since(tick_started_at) >= work_time
     }
 
@@ -1682,11 +1679,18 @@ impl RuntimeState {
     }
 
     fn compose_sprites(&mut self) {
+        self.compose_sprites_internal(None);
+    }
+
+    fn compose_sprites_internal(&mut self, excluded_actor: Option<u64>) {
         let mut draw_order = self
             .actors
             .iter()
             .enumerate()
             .filter_map(|(actor_id, actor)| {
+                if excluded_actor == Some(actor_id as u64) {
+                    return None;
+                }
                 if !actor.alive || !actor.visible || actor.size_percent <= 0.0 {
                     return None;
                 }
@@ -2189,20 +2193,41 @@ impl RuntimeState {
     }
 
     fn switch_costume_to(&mut self, costume: f64) {
+        let target_index = self.active_target_index() as usize;
+        self.switch_costume_for_target(target_index, costume);
+    }
+
+    fn switch_backdrop_to(&mut self, backdrop: f64) {
+        let target_index = self.stage_target_index();
+        self.switch_costume_for_target(target_index, backdrop);
+    }
+
+    fn switch_costume_for_target(&mut self, target_index: usize, costume: f64) {
         if let Some(string_index) = decode_string_id(costume) {
             let raw = self.strings.get(string_index).cloned().unwrap_or_default();
             let selector = raw.trim().to_ascii_lowercase();
             if selector == "next costume" || selector == "next backdrop" {
-                self.set_active_costume_by_zero_based_index(self.costume_number_value());
+                let current = self
+                    .base_actor_by_target
+                    .get(target_index)
+                    .and_then(|actor_id| self.actor_snapshot(*actor_id))
+                    .map(|actor| actor.costume_number.floor().max(1.0))
+                    .unwrap_or(1.0);
+                self.set_target_costume_by_zero_based_index(target_index, current);
                 return;
             }
             if selector == "previous costume" || selector == "previous backdrop" {
-                self.set_active_costume_by_zero_based_index(self.costume_number_value() - 2.0);
+                let current = self
+                    .base_actor_by_target
+                    .get(target_index)
+                    .and_then(|actor_id| self.actor_snapshot(*actor_id))
+                    .map(|actor| actor.costume_number.floor().max(1.0))
+                    .unwrap_or(1.0);
+                self.set_target_costume_by_zero_based_index(target_index, current - 2.0);
                 return;
             }
-            let active_target = self.active_target_index() as usize;
-            if let Some(index) = self.costume_index_by_name_for_target(active_target, &raw) {
-                self.set_active_costume_by_zero_based_index(index as f64);
+            if let Some(index) = self.costume_index_by_name_for_target(target_index, &raw) {
+                self.set_target_costume_by_zero_based_index(target_index, index as f64);
                 return;
             }
             let trimmed = raw.trim();
@@ -2210,12 +2235,22 @@ impl RuntimeState {
                 return;
             }
             if let Ok(number) = trimmed.parse::<f64>() {
-                self.set_active_costume_by_zero_based_index(number - 1.0);
+                self.set_target_costume_by_zero_based_index(target_index, number - 1.0);
             }
             return;
         }
 
-        self.set_active_costume_by_zero_based_index(self.value_to_number(costume) - 1.0);
+        self.set_target_costume_by_zero_based_index(
+            target_index,
+            self.value_to_number(costume) - 1.0,
+        );
+    }
+
+    fn stage_target_index(&self) -> usize {
+        self.target_render_data
+            .iter()
+            .position(|target| target.is_stage)
+            .unwrap_or(0)
     }
 
     fn costume_number_value(&self) -> f64 {
@@ -2265,8 +2300,7 @@ impl RuntimeState {
             .position(|costume| costume.name == name)
     }
 
-    fn set_active_costume_by_zero_based_index(&mut self, index: f64) {
-        let target_index = self.active_target_index() as usize;
+    fn set_target_costume_by_zero_based_index(&mut self, target_index: usize, index: f64) {
         let Some(target) = self.target_render_data.get(target_index) else {
             return;
         };
@@ -2280,8 +2314,114 @@ impl RuntimeState {
             rounded = 0.0;
         }
         let wrapped = (rounded as i64).rem_euclid(costume_count as i64) as usize;
-        self.costume_number = wrapped as f64 + 1.0;
+        let costume_number = wrapped as f64 + 1.0;
+        if let Some(actor_id) = self.base_actor_by_target.get(target_index).copied() {
+            if let Some(actor) = self.actors.get_mut(actor_id as usize) {
+                actor.costume_number = costume_number;
+            }
+        }
+        if self.active_target_index() as usize == target_index {
+            self.costume_number = costume_number;
+        }
         self.live_canvas_dirty = true;
+    }
+
+    fn set_effect_to(&mut self, effect: f64, value: f64) {
+        let effect_name = self.value_as_string(effect).trim().to_ascii_lowercase();
+        let numeric = self.value_to_number(value);
+        if !numeric.is_finite() {
+            return;
+        }
+        match effect_name.as_str() {
+            "color" | "fisheye" | "whirl" | "pixelate" | "mosaic" | "brightness" | "ghost" => {
+                self.live_canvas_dirty = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn parse_color_value(&self, color: f64) -> [u8; 3] {
+        if let Some(index) = decode_string_id(color) {
+            let raw = self.strings.get(index).cloned().unwrap_or_default();
+            if let Some(rgb) = parse_hex_color(&raw) {
+                return rgb;
+            }
+            let trimmed = raw.trim();
+            let number = if let Some(hex) = trimmed
+                .strip_prefix("0x")
+                .or_else(|| trimmed.strip_prefix("0X"))
+            {
+                u64::from_str_radix(hex, 16)
+                    .ok()
+                    .map(|v| v as f64)
+                    .unwrap_or(0.0)
+            } else {
+                trimmed.parse::<f64>().unwrap_or(0.0)
+            };
+            return decimal_to_rgb(number);
+        }
+        decimal_to_rgb(self.value_to_number(color))
+    }
+
+    fn touching_color(&mut self, color: [u8; 3]) -> bool {
+        let Some(actor) = self.actor_snapshot(self.active_actor_id) else {
+            return false;
+        };
+        if !actor.alive || !actor.visible || actor.size_percent <= 0.0 {
+            return false;
+        }
+        let Some(costume) = self
+            .resolve_costume_for_target(actor.target_index as usize, actor.costume_number)
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(transform) = CostumeTransform::new(
+            &costume,
+            actor.sprite_x,
+            actor.sprite_y,
+            actor.direction_deg,
+            actor.size_percent,
+        ) else {
+            return false;
+        };
+
+        let saved_canvas = self.canvas_rgb.clone();
+        self.canvas_rgb.fill(255);
+        self.compose_backdrop();
+        self.blend_pen_layer_into_canvas();
+        self.compose_sprites_internal(Some(self.active_actor_id));
+
+        let (min_x, max_x, min_y, max_y) =
+            costume_pixel_bounds(&costume, self.canvas_width, self.canvas_height, &transform);
+        let mut hit = false;
+        'scan: for py in min_y..=max_y {
+            for px in min_x..=max_x {
+                let world_x = pixel_to_scratch_x(px as usize, self.canvas_width);
+                let world_y = pixel_to_scratch_y(py as usize, self.canvas_height);
+                let Some((src_x, src_y)) =
+                    sample_costume_coordinates(&costume, world_x, world_y, &transform)
+                else {
+                    continue;
+                };
+                let src_offset = (src_y * costume.width + src_x) * 4;
+                if costume.pixels_rgba[src_offset + 3] == 0 {
+                    continue;
+                }
+                let dst_offset = ((py as usize) * self.canvas_width + (px as usize)) * 3;
+                let pixel = [
+                    self.canvas_rgb[dst_offset],
+                    self.canvas_rgb[dst_offset + 1],
+                    self.canvas_rgb[dst_offset + 2],
+                ];
+                if pixel == color {
+                    hit = true;
+                    break 'scan;
+                }
+            }
+        }
+        self.canvas_rgb = saved_canvas;
+        hit
     }
 
     fn costume_name_for_target(&self, target_index: usize, costume_number: f64) -> Option<&str> {

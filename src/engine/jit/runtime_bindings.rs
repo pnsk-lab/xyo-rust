@@ -180,6 +180,23 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             rt_looks_switch_costume_to as usize,
         );
 
+        let looks_switch_backdrop_to = module.add_function(
+            "rt_looks_switch_backdrop_to",
+            void_type.fn_type(&[ptr_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(
+            &looks_switch_backdrop_to,
+            rt_looks_switch_backdrop_to as usize,
+        );
+
+        let looks_set_effect_to = module.add_function(
+            "rt_looks_set_effect_to",
+            void_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&looks_set_effect_to, rt_looks_set_effect_to as usize);
+
         let looks_set_size = module.add_function(
             "rt_looks_set_size",
             void_type.fn_type(&[ptr_type.into(), f64_type.into()], false),
@@ -278,6 +295,14 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             &sensing_touching_object,
             rt_sensing_touching_object as usize,
         );
+
+        let sensing_touching_color = module.add_function(
+            "rt_sensing_touching_color",
+            f64_type.fn_type(&[ptr_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine
+            .add_global_mapping(&sensing_touching_color, rt_sensing_touching_color as usize);
 
         let sensing_reset_timer = module.add_function(
             "rt_sensing_reset_timer",
@@ -569,6 +594,8 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             say_number,
             say_text,
             looks_switch_costume_to,
+            looks_switch_backdrop_to,
+            looks_set_effect_to,
             looks_set_size,
             looks_costume_number,
             looks_costume_name,
@@ -582,6 +609,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             sensing_timer,
             sensing_days_since_2000,
             sensing_touching_object,
+            sensing_touching_color,
             sensing_reset_timer,
             pen_down,
             pen_up,
