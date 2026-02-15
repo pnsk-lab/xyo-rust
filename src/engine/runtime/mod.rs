@@ -278,6 +278,7 @@ impl AskPromptState {
 
 #[derive(Debug, Clone)]
 pub struct CostumeBitmap {
+    pub name: String,
     pub width: usize,
     pub height: usize,
     pub pixels_rgba: Vec<u8>,
@@ -370,6 +371,8 @@ pub struct RuntimeState {
     pub pen_alpha: f64,
     pub tempo_bpm: f64,
     pub variables: Vec<f64>,
+    variable_names: Vec<String>,
+    variable_target_indices: Vec<u64>,
     pub lists: Vec<Vec<f64>>,
     pub executed_block_count: u64,
     pub remaining_steps: u64,
@@ -441,6 +444,8 @@ impl RuntimeState {
 
     pub fn new(
         initial_variables: Vec<f64>,
+        variable_names: Vec<String>,
+        variable_target_indices: Vec<u64>,
         initial_lists: Vec<Vec<f64>>,
         initial_strings: Vec<String>,
         step_budget: u64,
@@ -479,6 +484,8 @@ impl RuntimeState {
             pen_alpha: 1.0,
             tempo_bpm: 60.0,
             variables: initial_variables,
+            variable_names,
+            variable_target_indices,
             lists: initial_lists,
             executed_block_count: 0,
             remaining_steps: step_budget,
@@ -1627,14 +1634,25 @@ impl RuntimeState {
         target_index: usize,
         costume_number: f64,
     ) -> Option<&CostumeBitmap> {
+        let index = self.resolve_costume_index_for_target(target_index, costume_number)?;
+        self.target_render_data
+            .get(target_index)?
+            .costumes
+            .get(index)
+    }
+
+    fn resolve_costume_index_for_target(
+        &self,
+        target_index: usize,
+        costume_number: f64,
+    ) -> Option<usize> {
         let target = self.target_render_data.get(target_index)?;
         if target.costumes.is_empty() {
             return None;
         }
         let count = target.costumes.len() as i64;
         let raw = (costume_number.floor() as i64).saturating_sub(1);
-        let wrapped = raw.rem_euclid(count) as usize;
-        target.costumes.get(wrapped)
+        Some(raw.rem_euclid(count) as usize)
     }
 
     fn blit_actor_costume_to_rgb(&mut self, actor: &ActorState) {
@@ -2077,21 +2095,33 @@ impl RuntimeState {
     }
 
     fn switch_costume_to(&mut self, costume: f64) {
-        let mut numeric = self.value_to_number(costume);
         if let Some(string_index) = decode_string_id(costume) {
-            let selector = self
-                .strings
-                .get(string_index)
-                .map(|text| text.trim().to_ascii_lowercase())
-                .unwrap_or_default();
+            let raw = self.strings.get(string_index).cloned().unwrap_or_default();
+            let selector = raw.trim().to_ascii_lowercase();
             if selector == "next costume" || selector == "next backdrop" {
-                numeric = self.costume_number + 1.0;
+                self.set_active_costume_by_zero_based_index(self.costume_number_value());
+                return;
             }
+            if selector == "previous costume" || selector == "previous backdrop" {
+                self.set_active_costume_by_zero_based_index(self.costume_number_value() - 2.0);
+                return;
+            }
+            let active_target = self.active_target_index() as usize;
+            if let Some(index) = self.costume_index_by_name_for_target(active_target, &raw) {
+                self.set_active_costume_by_zero_based_index(index as f64);
+                return;
+            }
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return;
+            }
+            if let Ok(number) = trimmed.parse::<f64>() {
+                self.set_active_costume_by_zero_based_index(number - 1.0);
+            }
+            return;
         }
-        if numeric.is_finite() && numeric > 0.0 {
-            self.costume_number = numeric.floor().max(1.0);
-            self.live_canvas_dirty = true;
-        }
+
+        self.set_active_costume_by_zero_based_index(self.value_to_number(costume) - 1.0);
     }
 
     fn costume_number_value(&self) -> f64 {
@@ -2099,7 +2129,10 @@ impl RuntimeState {
     }
 
     fn costume_name_value(&mut self) -> f64 {
-        let name = format!("costume{}", self.costume_number_value() as u64);
+        let name = self
+            .costume_name_for_target(self.active_target_index() as usize, self.costume_number)
+            .map(ToOwned::to_owned)
+            .unwrap_or_default();
         let id = self.intern_string(&name);
         encode_string_id(id)
     }
@@ -2130,6 +2163,52 @@ impl RuntimeState {
             .map(|index| index as u64)
     }
 
+    fn costume_index_by_name_for_target(&self, target_index: usize, name: &str) -> Option<usize> {
+        self.target_render_data
+            .get(target_index)?
+            .costumes
+            .iter()
+            .position(|costume| costume.name == name)
+    }
+
+    fn set_active_costume_by_zero_based_index(&mut self, index: f64) {
+        let target_index = self.active_target_index() as usize;
+        let Some(target) = self.target_render_data.get(target_index) else {
+            return;
+        };
+        let costume_count = target.costumes.len();
+        if costume_count == 0 {
+            return;
+        }
+
+        let mut rounded = index.round();
+        if !rounded.is_finite() || rounded == 0.0 {
+            rounded = 0.0;
+        }
+        let wrapped = (rounded as i64).rem_euclid(costume_count as i64) as usize;
+        self.costume_number = wrapped as f64 + 1.0;
+        self.live_canvas_dirty = true;
+    }
+
+    fn costume_name_for_target(&self, target_index: usize, costume_number: f64) -> Option<&str> {
+        let index = self.resolve_costume_index_for_target(target_index, costume_number)?;
+        self.target_render_data
+            .get(target_index)?
+            .costumes
+            .get(index)
+            .map(|costume| costume.name.as_str())
+    }
+
+    fn lookup_variable_value_for_target(&self, target_index: u64, name: &str) -> Option<f64> {
+        for (index, variable_name) in self.variable_names.iter().enumerate() {
+            let owner = self.variable_target_indices.get(index).copied();
+            if owner == Some(target_index) && variable_name == name {
+                return self.variables.get(index).copied();
+            }
+        }
+        None
+    }
+
     fn sensing_of(&mut self, object: f64, property: f64) -> f64 {
         let target_name = self.value_as_string(object);
         let target_index = self
@@ -2140,24 +2219,57 @@ impl RuntimeState {
             .get(target_index as usize)
             .copied()
             .and_then(|actor_id| self.actor_snapshot(actor_id));
+        let property_text = self.value_as_string(property);
+        let is_stage = self
+            .target_render_data
+            .get(target_index as usize)
+            .map(|target| target.is_stage)
+            .unwrap_or(false);
 
-        let property_text = self.value_as_string(property).trim().to_ascii_lowercase();
-        match property_text.as_str() {
-            "x position" => actor.map(|state| state.sprite_x).unwrap_or(0.0),
-            "y position" => actor.map(|state| state.sprite_y).unwrap_or(0.0),
-            "direction" => actor.map(|state| state.direction_deg).unwrap_or(90.0),
-            "size" => actor.map(|state| state.size_percent).unwrap_or(100.0),
-            "costume #" | "costume number" | "backdrop #" | "backdrop number" => actor
-                .map(|state| state.costume_number.floor().max(1.0))
-                .unwrap_or(1.0),
-            "costume name" | "backdrop name" => actor
-                .map(|state| {
-                    let name = format!("costume{}", state.costume_number.floor().max(1.0) as u64);
-                    let id = self.intern_string(&name);
-                    encode_string_id(id)
-                })
-                .unwrap_or_else(|| encode_string_id(EMPTY_STRING_ID)),
-            _ => 0.0,
+        if is_stage {
+            match property_text.as_str() {
+                "background #" | "backdrop #" | "backdrop number" => actor
+                    .map(|state| state.costume_number.floor().max(1.0))
+                    .unwrap_or(1.0),
+                "backdrop name" => actor
+                    .map(|state| {
+                        let name = self
+                            .costume_name_for_target(target_index as usize, state.costume_number)
+                            .map(ToOwned::to_owned)
+                            .unwrap_or_default();
+                        let id = self.intern_string(&name);
+                        encode_string_id(id)
+                    })
+                    .unwrap_or_else(|| encode_string_id(EMPTY_STRING_ID)),
+                "volume" => 0.0,
+                _ => self
+                    .lookup_variable_value_for_target(target_index, &property_text)
+                    .unwrap_or(0.0),
+            }
+        } else {
+            match property_text.as_str() {
+                "x position" => actor.map(|state| state.sprite_x).unwrap_or(0.0),
+                "y position" => actor.map(|state| state.sprite_y).unwrap_or(0.0),
+                "direction" => actor.map(|state| state.direction_deg).unwrap_or(90.0),
+                "size" => actor.map(|state| state.size_percent).unwrap_or(100.0),
+                "costume #" | "costume number" => actor
+                    .map(|state| state.costume_number.floor().max(1.0))
+                    .unwrap_or(1.0),
+                "costume name" => actor
+                    .map(|state| {
+                        let name = self
+                            .costume_name_for_target(target_index as usize, state.costume_number)
+                            .map(ToOwned::to_owned)
+                            .unwrap_or_default();
+                        let id = self.intern_string(&name);
+                        encode_string_id(id)
+                    })
+                    .unwrap_or_else(|| encode_string_id(EMPTY_STRING_ID)),
+                "volume" => 0.0,
+                _ => self
+                    .lookup_variable_value_for_target(target_index, &property_text)
+                    .unwrap_or(0.0),
+            }
         }
     }
 }

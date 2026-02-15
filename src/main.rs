@@ -175,6 +175,16 @@ fn run() -> Result<()> {
         .iter()
         .map(|variable| variable.initial_value)
         .collect::<Vec<_>>();
+    let variable_names = program
+        .variables
+        .iter()
+        .map(|variable| variable.name.clone())
+        .collect::<Vec<_>>();
+    let variable_target_indices = program
+        .variables
+        .iter()
+        .map(|variable| variable.target_index as u64)
+        .collect::<Vec<_>>();
     let initial_lists = program
         .lists
         .iter()
@@ -201,6 +211,8 @@ fn run() -> Result<()> {
     let stop_requested = Arc::new(AtomicBool::new(false));
     let mut runtime_state = runtime::RuntimeState::new(
         initial_variables,
+        variable_names,
+        variable_target_indices,
         initial_lists,
         program.strings.clone(),
         step_budget,
@@ -582,6 +594,7 @@ fn build_render_configuration(
             };
             match image::decode_costume_rgba(costume, bytes) {
                 Ok((width, height, pixels_rgba)) => costumes.push(runtime::CostumeBitmap {
+                    name: costume.name.clone(),
                     width,
                     height,
                     pixels_rgba,

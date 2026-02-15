@@ -434,6 +434,8 @@ pub extern "C" fn rt_pen_down(state: *mut RuntimeState) {
     unsafe {
         if let Some(state) = state.as_mut() {
             state.pen_down = true;
+            state.draw_disc(state.sprite_x, state.sprite_y);
+            state.live_canvas_dirty = true;
         }
     }
 }

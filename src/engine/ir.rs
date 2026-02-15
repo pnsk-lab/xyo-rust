@@ -48,6 +48,8 @@ pub struct VariableDef {
     pub id: String,
     /// Display name of the variable.
     pub name: String,
+    /// Owning target index in `Program::target_names`.
+    pub target_index: usize,
     /// Initial numeric value (strings are converted to 0.0).
     pub initial_value: f64,
 }
@@ -449,7 +451,7 @@ impl<'a> ProgramBuilder<'a> {
     }
 
     fn collect_variables(&mut self) {
-        for target in &self.project.targets {
+        for (target_index, target) in self.project.targets.iter().enumerate() {
             for (var_id, raw) in &target.variables {
                 if self.variable_index.contains_key(var_id) {
                     continue;
@@ -459,6 +461,7 @@ impl<'a> ProgramBuilder<'a> {
                 self.variables.push(VariableDef {
                     id: var_id.clone(),
                     name,
+                    target_index,
                     initial_value,
                 });
                 self.variable_index.insert(var_id.clone(), index);
@@ -1259,7 +1262,10 @@ impl<'a> ProgramBuilder<'a> {
                     Expr::LooksCostumeNumber
                 }
             }
-            "looks_costume" => Expr::LooksCostumeNumber,
+            "looks_costume" => self.lower_scalar_literal(&Value::String(
+                self.field_value_as_string(block, "COSTUME")
+                    .unwrap_or_default(),
+            )),
             "sensing_of" => {
                 let property_text = self
                     .field_value_as_string(block, "PROPERTY")
