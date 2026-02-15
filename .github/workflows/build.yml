@@ -36,46 +36,86 @@ jobs:
               with:
                   targets: ${{ matrix.target }}
 
-            - name: Install LLVM 18.1
-              uses: KyleMayes/install-llvm-action@v2
-              with:
-                  version: 18.1.8
-                  cached: true
+            # ---------- LLVM install (Linux) ----------
+            - name: Install LLVM 18 (Linux)
+              if: ${{ startsWith(matrix.os, 'ubuntu') }}
+              shell: bash
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y wget gpg lsb-release software-properties-common
+                  wget https://apt.llvm.org/llvm.sh
+                  chmod +x llvm.sh
+                  sudo ./llvm.sh 18
+                  /usr/bin/llvm-config-18 --version
+
+            # ---------- LLVM install (macOS) ----------
+            - name: Install LLVM 18 (macOS)
+              if: ${{ startsWith(matrix.os, 'macos') }}
+              shell: bash
+              run: |
+                  brew update
+                  brew install llvm@18
+                  /opt/homebrew/opt/llvm@18/bin/llvm-config --version
+
+            # ---------- LLVM install (Windows) ----------
+            - name: Install LLVM 18 (Windows)
+              if: ${{ startsWith(matrix.os, 'windows') }}
+              shell: pwsh
+              run: |
+                  choco install llvm --version=18.1.8 -y --no-progress
+                  $llvmConfig = "C:\Program Files\LLVM\bin\llvm-config.exe"
+                  if (!(Test-Path $llvmConfig)) {
+                    Write-Error "llvm-config.exe not found at $llvmConfig"
+                    exit 1
+                  }
+                  & $llvmConfig --version
 
             - name: Install Linux cross toolchain
               if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
+              shell: bash
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y gcc-aarch64-linux-gnu
+                  sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-            # Windows build (PowerShell)
+            # ---------- Build Windows ----------
             - name: Build (Windows)
               if: ${{ startsWith(matrix.os, 'windows') }}
               shell: pwsh
               env:
-                  LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
-                  LLVM_CONFIG_PATH: ${{ env.LLVM_PATH }}\bin\llvm-config.exe
+                  LLVM_SYS_181_PREFIX: C:\Program Files\LLVM
+                  LLVM_CONFIG_PATH: C:\Program Files\LLVM\bin\llvm-config.exe
               run: |
-                  $env:Path = "$env:LLVM_PATH\bin;$env:Path"
-                  Get-Command cargo
+                  $env:Path = "C:\Program Files\LLVM\bin;$env:Path"
                   cargo --version
-                  & "$env:LLVM_PATH\bin\llvm-config.exe" --version
+                  & "$env:LLVM_CONFIG_PATH" --version
                   cargo build --release --target ${{ matrix.target }}
 
-            # Linux/macOS build (bash)
-            - name: Build (Unix)
-              if: ${{ !startsWith(matrix.os, 'windows') }}
+            # ---------- Build Linux ----------
+            - name: Build (Linux)
+              if: ${{ startsWith(matrix.os, 'ubuntu') }}
               shell: bash
               env:
-                  LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
-                  LLVM_CONFIG_PATH: ${{ env.LLVM_PATH }}/bin/llvm-config
+                  LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
+                  LLVM_CONFIG_PATH: /usr/bin/llvm-config-18
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
               run: |
-                  export PATH="$LLVM_PATH/bin:$PATH"
-                  which cargo
+                  export PATH="/usr/lib/llvm-18/bin:$PATH"
                   cargo --version
-                  "$LLVM_PATH/bin/llvm-config" --version
+                  "$LLVM_CONFIG_PATH" --version
+                  cargo build --release --target ${{ matrix.target }}
+
+            # ---------- Build macOS ----------
+            - name: Build (macOS)
+              if: ${{ startsWith(matrix.os, 'macos') }}
+              shell: bash
+              env:
+                  LLVM_SYS_181_PREFIX: /opt/homebrew/opt/llvm@18
+                  LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm@18/bin/llvm-config
+              run: |
+                  export PATH="/opt/homebrew/opt/llvm@18/bin:$PATH"
+                  cargo --version
+                  "$LLVM_CONFIG_PATH" --version
                   cargo build --release --target ${{ matrix.target }}
 
             - name: Upload artifact

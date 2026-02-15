@@ -1299,10 +1299,6 @@ impl RuntimeState {
                 Some(f) => f,
                 None => continue,
             };
-            eprintln!(
-                "[fiber] spawning fiber for script={} actor={}",
-                script_id, actor_id
-            );
             fibers.push(Fiber::spawn(state_ptr, function, script_id, actor_id));
         }
 
@@ -1349,22 +1345,11 @@ impl RuntimeState {
                 self.active_fiber_control = Some(Arc::clone(&fiber.control));
                 self.paced_loop_guards_in_resume = 0;
 
-                if tick < 3 {
-                    eprintln!(
-                        "[fiber] tick={} resuming fiber[{}] script={} actor={}",
-                        tick, fi, fiber.script_id, fiber.current_actor_id
-                    );
-                }
-
                 // Resume the fiber thread.
                 fiber.control.resume();
 
                 // Wait until it yields or finishes.
                 let result = fiber.control.wait_for_yield_or_done();
-
-                if tick < 3 {
-                    eprintln!("[fiber] tick={} fiber[{}] result={:?}", tick, fi, result);
-                }
 
                 // Save actor state back – persist into whichever actor is
                 // currently loaded (may differ from the original if the

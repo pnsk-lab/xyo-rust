@@ -387,7 +387,7 @@ fn parse_cli() -> Result<CliOptions> {
     let mut vsync_fps: usize = DEFAULT_VSYNC_FPS;
     let mut target_fps: Option<f64> = None;
     let mut turbo = false;
-    let mut native_async_enabled = false;
+    let mut native_async_enabled = true;
     let mut debug_enabled = env_flag_enabled(ENV_SCRATCH_DEBUG);
     let mut break_on_messages = env_message_list(ENV_SCRATCH_BREAK_ON_MESSAGE);
     let rest = args.collect::<Vec<_>>();
