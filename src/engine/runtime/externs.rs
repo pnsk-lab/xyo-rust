@@ -585,6 +585,9 @@ pub extern "C" fn rt_pen_set_color_param(state: *mut RuntimeState, param_code: u
             return;
         };
         let numeric = state.value_to_number(value);
+        if !numeric.is_finite() {
+            return;
+        }
         match param_code {
             // color
             0 => {

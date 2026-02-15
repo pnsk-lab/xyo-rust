@@ -190,7 +190,6 @@ const DEFAULT_LIVE_CANVAS_SYNC_INTERVAL: Duration = Duration::from_millis(16);
 const FRAME_SLEEP_COARSE_MARGIN: Duration = Duration::from_micros(800);
 // scratch-vm Sequencer uses WORK_TIME = currentStepTime * 0.75.
 const SCRATCH_VM_WORK_TIME_RATIO: f64 = 0.75;
-const TURBO_WORK_TIME_SLICE: Duration = Duration::from_millis(5);
 
 #[derive(Debug, Clone)]
 pub struct InputState {
@@ -1204,6 +1203,9 @@ impl RuntimeState {
     }
 
     fn move_sprite_to(&mut self, new_x: f64, new_y: f64) {
+        if !new_x.is_finite() || !new_y.is_finite() {
+            return;
+        }
         let from_x = self.sprite_x;
         let from_y = self.sprite_y;
         if self.pen_down {
@@ -1243,13 +1245,13 @@ impl RuntimeState {
     fn wait_for_next_frame(&mut self) {
         // ---- fiber mode ----
         if let Some(ref control) = self.active_fiber_control {
-            let control = Arc::clone(control);
-            control.yield_to_scheduler();
-            if self.frame_duration.is_none() {
-                // In turbo mode, reset the cooperative work-slice timer when
-                // yielding so long-running loops keep fair interleaving.
-                self.current_tick_started_at = Some(Instant::now());
+            if self.frame_duration.is_some() {
+                let control = Arc::clone(control);
+                control.yield_to_scheduler();
             }
+            // Without frame pacing (turbo / no-gui): don't yield – let loops
+            // consume step budget at full speed so that interactive wait-
+            // loops terminate via budget exhaustion.
             return;
         }
 
@@ -1282,13 +1284,13 @@ impl RuntimeState {
     }
 
     fn should_yield_for_work_time(&mut self) -> bool {
+        let Some(frame_duration) = self.frame_duration else {
+            return false;
+        };
         let now = Instant::now();
         let tick_started_at = *self.current_tick_started_at.get_or_insert(now);
-        let work_time = if let Some(frame_duration) = self.frame_duration {
-            Duration::from_secs_f64(frame_duration.as_secs_f64() * SCRATCH_VM_WORK_TIME_RATIO)
-        } else {
-            TURBO_WORK_TIME_SLICE
-        };
+        let work_time =
+            Duration::from_secs_f64(frame_duration.as_secs_f64() * SCRATCH_VM_WORK_TIME_RATIO);
         now.duration_since(tick_started_at) >= work_time
     }
 
@@ -1506,6 +1508,9 @@ impl RuntimeState {
     }
 
     fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+        if !x0.is_finite() || !y0.is_finite() || !x1.is_finite() || !y1.is_finite() {
+            return;
+        }
         let dx = x1 - x0;
         let dy = y1 - y0;
         let steps = dx.abs().max(dy.abs()).ceil() as i32;
@@ -1522,6 +1527,9 @@ impl RuntimeState {
     }
 
     fn draw_disc(&mut self, x: f64, y: f64) {
+        if !x.is_finite() || !y.is_finite() {
+            return;
+        }
         let cx = scratch_to_pixel_x(x, self.canvas_width);
         let cy = scratch_to_pixel_y(y, self.canvas_height);
         let canvas_scale = (self.canvas_width as f64) / (STAGE_WIDTH as f64);

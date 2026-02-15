@@ -16,7 +16,7 @@ jobs:
                       os: windows-latest
                       target: x86_64-pc-windows-msvc
 
-                    # まず安定化優先。必要なら最後に再有効化
+                    # 安定化後に戻す（必要なら最後に有効化）
                     # - name: windows-arm64
                     #   os: windows-latest
                     #   target: aarch64-pc-windows-msvc
@@ -42,7 +42,7 @@ jobs:
               with:
                   targets: ${{ matrix.target }}
 
-            # ---------------- Linux: LLVM 18 ----------------
+            # ---------------- Linux: LLVM 18 + cross deps ----------------
             - name: Install LLVM 18 (Linux)
               if: ${{ startsWith(matrix.os, 'ubuntu') }}
               shell: bash
@@ -56,7 +56,11 @@ jobs:
                   /usr/bin/llvm-config-18 --version
 
                   if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-                    sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+                    sudo apt-get install -y \
+                      gcc-aarch64-linux-gnu \
+                      g++-aarch64-linux-gnu \
+                      binutils-aarch64-linux-gnu \
+                      libc6-dev-arm64-cross
                   fi
 
             # ---------------- macOS: LLVM 18 ----------------
@@ -108,17 +112,22 @@ jobs:
                   LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
                   LLVM_CONFIG_PATH: /usr/bin/llvm-config-18
                   LLVM_LINK_LLVM_DYLIB: "1"
+                  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
               run: |
                   set -euxo pipefail
                   export PATH="/usr/lib/llvm-18/bin:$PATH"
 
-                  # runner 汚染対策
+                  # runner 汚染除去
                   unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CC CXX AR RUSTFLAGS CARGO_ENCODED_RUSTFLAGS || true
 
                   cargo --version
                   "$LLVM_CONFIG_PATH" --version
+                  if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+                    aarch64-linux-gnu-gcc -v
+                  fi
+
                   cargo clean -p llvm-sys || true
                   cargo build --release --target ${{ matrix.target }} -vv
 
@@ -134,11 +143,12 @@ jobs:
                   set -euxo pipefail
                   export PATH="/opt/homebrew/opt/llvm@18/bin:$PATH"
 
-                  # runner 汚染対策
+                  # runner 汚染除去
                   unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CC CXX AR RUSTFLAGS CARGO_ENCODED_RUSTFLAGS || true
 
                   cargo --version
                   "$LLVM_CONFIG_PATH" --version
+
                   cargo clean -p llvm-sys || true
                   cargo build --release --target ${{ matrix.target }} -vv
 
@@ -155,7 +165,7 @@ jobs:
                   $llvmBin = Split-Path $env:LLVM_CONFIG_PATH -Parent
                   $env:Path = "$llvmBin;$env:Path"
 
-                  # GHC/MinGW 汚染対策
+                  # GHC/MinGW 由来の汚染除去
                   foreach ($k in @(
                     "CFLAGS","CXXFLAGS","CPPFLAGS","LDFLAGS",
                     "CC","CXX","AR",
@@ -167,7 +177,7 @@ jobs:
                     Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue
                   }
 
-                  # '-' を含む環境変数名は Set-Item で設定
+                  # '-' を含む env 名は Set-Item
                   Set-Item -Path Env:'CFLAGS_x86_64-pc-windows-msvc' -Value ''
                   Set-Item -Path Env:'CFLAGS_aarch64-pc-windows-msvc' -Value ''
                   Set-Item -Path Env:'CFLAGS_x86_64_pc_windows_msvc' -Value ''
