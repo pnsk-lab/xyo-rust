@@ -60,16 +60,16 @@ jobs:
             - name: Build
               shell: bash
               env:
-                  # llvm-sys が参照
                   LLVM_SYS_181_PREFIX: ${{ env.LLVM_PATH }}
-                  # 見つけやすさ向上（環境によって有効）
                   LLVM_CONFIG_PATH: ${{ env.LLVM_PATH }}/bin/llvm-config
-                  # 念のため PATH に追加
-                  PATH: ${{ env.LLVM_PATH }}/bin:${{ env.PATH }}
-                  # Linux aarch64 クロス時
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
-              run: cargo build --release --target ${{ matrix.target }}
+              run: |
+                  export PATH="$LLVM_PATH/bin:$PATH"
+                  which cargo
+                  cargo --version
+                  "$LLVM_PATH/bin/llvm-config" --version
+                  cargo build --release --target ${{ matrix.target }}
 
             - name: Upload artifact
               uses: actions/upload-artifact@v4
