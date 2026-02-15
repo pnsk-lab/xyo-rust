@@ -12,6 +12,14 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let i64_type = context.i64_type();
         let ptr_type = context.ptr_type(AddressSpace::default());
 
+        let count_executed_block = module.add_function(
+            "rt_count_executed_block",
+            void_type.fn_type(&[ptr_type.into()], false),
+            None,
+        );
+        execution_engine
+            .add_global_mapping(&count_executed_block, rt_count_executed_block as usize);
+
         let move_steps = module.add_function(
             "rt_motion_move_steps",
             void_type.fn_type(&[ptr_type.into(), f64_type.into()], false),
@@ -542,6 +550,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         execution_engine.add_global_mapping(&random, rt_random as usize);
 
         Self {
+            count_executed_block,
             move_steps,
             set_direction,
             change_x,

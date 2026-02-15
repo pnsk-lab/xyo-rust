@@ -6,6 +6,15 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[unsafe(no_mangle)]
+pub extern "C" fn rt_count_executed_block(state: *mut RuntimeState) {
+    unsafe {
+        if let Some(state) = state.as_mut() {
+            state.executed_block_count = state.executed_block_count.saturating_add(1);
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn rt_motion_move_steps(state: *mut RuntimeState, steps: f64) {
     unsafe {
         if let Some(state) = state.as_mut() {

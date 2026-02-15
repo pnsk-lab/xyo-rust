@@ -27,6 +27,7 @@ struct CliOptions {
     vsync_fps: usize,
     target_fps: Option<f64>,
     turbo: bool,
+    native_async_enabled: bool,
     debug_enabled: bool,
     break_on_messages: Vec<String>,
 }
@@ -229,6 +230,14 @@ fn run() -> Result<()> {
     if cli.debug_enabled {
         println!("Debug trace: enabled");
     }
+    println!(
+        "Native async scheduler: {}",
+        if cli.native_async_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
     if !cli.break_on_messages.is_empty() {
         println!(
             "Broadcast breakpoints: {}",
@@ -253,6 +262,7 @@ fn run() -> Result<()> {
         cli.gui_enabled,
         cli.window_scale,
         target_fps,
+        cli.native_async_enabled,
         cli.vsync_enabled,
         cli.vsync_fps,
     )?;
@@ -266,10 +276,20 @@ fn run() -> Result<()> {
             elapsed_seconds,
             executed_operations as f64 / elapsed_seconds
         );
+        println!(
+            "Block throughput: {} blocks in {:.3}s ({:.2} Block/s)",
+            runtime_state.executed_block_count,
+            elapsed_seconds,
+            runtime_state.executed_block_count as f64 / elapsed_seconds
+        );
     } else {
         println!(
             "Execution throughput: {} operations in <0.001s",
             executed_operations
+        );
+        println!(
+            "Block throughput: {} blocks in <0.001s",
+            runtime_state.executed_block_count
         );
     }
 
@@ -327,7 +347,7 @@ fn parse_cli() -> Result<CliOptions> {
         .next()
         .unwrap_or_else(|| "scratch-native-runtime".to_string());
     let usage = format!(
-        "usage: {bin_name} [project.sb3] [output.ppm] [--emit-native <output.o>] [--emit-executable <output-bin>] [--emit-only] [--gui|--no-gui] [--scale <1|2|4|8|16>] [--vsync|--no-vsync] [--vsync-fps <value>] [--fps <value>|--turbo] [--debug|--no-debug] [--break-on-message <message>]"
+        "usage: {bin_name} [project.sb3] [output.ppm] [--emit-native <output.o>] [--emit-executable <output-bin>] [--emit-only] [--gui|--no-gui] [--scale <1|2|4|8|16>] [--vsync|--no-vsync] [--vsync-fps <value>] [--fps <value>|--turbo] [--native-async|--no-native-async] [--debug|--no-debug] [--break-on-message <message>]"
     );
 
     let mut positional = Vec::new();
@@ -341,6 +361,7 @@ fn parse_cli() -> Result<CliOptions> {
     let mut vsync_fps: usize = DEFAULT_VSYNC_FPS;
     let mut target_fps: Option<f64> = None;
     let mut turbo = false;
+    let mut native_async_enabled = false;
     let mut debug_enabled = env_flag_enabled(ENV_SCRATCH_DEBUG);
     let mut break_on_messages = env_message_list(ENV_SCRATCH_BREAK_ON_MESSAGE);
     let rest = args.collect::<Vec<_>>();
@@ -410,6 +431,8 @@ fn parse_cli() -> Result<CliOptions> {
                 target_fps = None;
                 turbo = true;
             }
+            "--native-async" => native_async_enabled = true,
+            "--no-native-async" => native_async_enabled = false,
             "--fps" => {
                 index += 1;
                 let Some(raw) = rest.get(index) else {
@@ -470,6 +493,7 @@ fn parse_cli() -> Result<CliOptions> {
         vsync_fps,
         target_fps,
         turbo,
+        native_async_enabled,
         debug_enabled,
         break_on_messages,
     })
@@ -506,12 +530,13 @@ fn execute_with_optional_gui(
     gui_enabled: bool,
     window_scale: usize,
     target_fps: Option<f64>,
+    native_async_enabled: bool,
     vsync_enabled: bool,
     vsync_fps: usize,
 ) -> Result<runtime::RuntimeState> {
     if !gui_enabled {
         runtime_state.set_target_fps(target_fps);
-        jit::execute_program(program, &mut runtime_state)
+        jit::execute_program_with_mode(program, &mut runtime_state, native_async_enabled)
             .context("failed to execute native-compiled Scratch program")?;
         return Ok(runtime_state);
     }

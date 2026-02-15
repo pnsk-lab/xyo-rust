@@ -131,6 +131,15 @@ cargo run --release -- path/to/project.sb3 --fps 30
 
 `--fps` controls simulation/update frequency. Rendering/present is synchronized separately (`--vsync*`), so high simulation FPS can run without showing partially drawn frames.
 
+Switch native async scheduler mode (cooperative fibers on native threads):
+
+```bash
+cargo run --release -- path/to/project.sb3 --native-async
+cargo run --release -- path/to/project.sb3 --no-native-async
+```
+
+For `--no-gui`, the default is `--no-native-async` (serial execution).
+
 Use turbo mode explicitly:
 
 ```bash
@@ -175,5 +184,10 @@ cargo run --release -- path/to/project.sb3 path/to/output.ppm
 ```bash
 SCRATCH_STEP_BUDGET=500000 cargo run --release -- path/to/project.sb3
 ```
+
+Execution logs include:
+
+- `Execution throughput` (`Operation/s`) based on loop-step budget consumption.
+- `Block throughput` (`Block/s`) based on dynamically executed Scratch statement blocks.
 
 SVG costumes/backdrops are rasterized through ImageMagick `convert` when needed. If conversion fails, the runtime prints a warning and skips that asset.

@@ -4,20 +4,20 @@ use crate::engine::ir::{
 };
 use crate::engine::runtime::{
     RuntimeState, ScriptEntry, encode_string_id, rt_change_var, rt_control_create_clone_of,
-    rt_control_delete_this_clone, rt_control_stop, rt_control_wait, rt_data_add_to_list,
-    rt_data_delete_all_of_list, rt_data_delete_of_list, rt_data_item_num_of_list,
-    rt_data_item_of_list, rt_data_length_of_list, rt_data_list_contains_item,
-    rt_data_replace_item_of_list, rt_event_broadcast_and_wait_value, rt_event_broadcast_value,
-    rt_forever_should_continue, rt_forever_should_continue_warp, rt_get_var, rt_looks_costume_name,
-    rt_looks_costume_number, rt_looks_hide, rt_looks_say_number, rt_looks_say_text,
-    rt_looks_set_size, rt_looks_show, rt_looks_switch_costume_to, rt_loop_should_continue,
-    rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y, rt_motion_goto_xy,
-    rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x, rt_motion_set_y,
-    rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo, rt_operator_contains,
-    rt_operator_equals, rt_operator_greater_than, rt_operator_join, rt_operator_length,
-    rt_operator_less_than, rt_operator_letter_of, rt_operator_mathop, rt_operator_round,
-    rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param, rt_pen_set_size,
-    rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
+    rt_control_delete_this_clone, rt_control_stop, rt_control_wait, rt_count_executed_block,
+    rt_data_add_to_list, rt_data_delete_all_of_list, rt_data_delete_of_list,
+    rt_data_item_num_of_list, rt_data_item_of_list, rt_data_length_of_list,
+    rt_data_list_contains_item, rt_data_replace_item_of_list, rt_event_broadcast_and_wait_value,
+    rt_event_broadcast_value, rt_forever_should_continue, rt_forever_should_continue_warp,
+    rt_get_var, rt_looks_costume_name, rt_looks_costume_number, rt_looks_hide, rt_looks_say_number,
+    rt_looks_say_text, rt_looks_set_size, rt_looks_show, rt_looks_switch_costume_to,
+    rt_loop_should_continue, rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y,
+    rt_motion_goto_xy, rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x,
+    rt_motion_set_y, rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo,
+    rt_operator_contains, rt_operator_equals, rt_operator_greater_than, rt_operator_join,
+    rt_operator_length, rt_operator_less_than, rt_operator_letter_of, rt_operator_mathop,
+    rt_operator_round, rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param,
+    rt_pen_set_size, rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
     rt_sensing_ask_and_wait, rt_sensing_current, rt_sensing_days_since_2000,
     rt_sensing_key_pressed, rt_sensing_mouse_down, rt_sensing_mouse_x, rt_sensing_mouse_y,
     rt_sensing_of, rt_sensing_reset_timer, rt_sensing_timer, rt_sensing_touching_object,
@@ -149,7 +149,47 @@ pub fn compile_and_load_program(program: &Program) -> Result<CompiledProgram> {
 
 pub fn execute_program(program: &Program, runtime_state: &mut RuntimeState) -> Result<()> {
     let compiled = compile_and_load_program(program)?;
-    compiled.execute(runtime_state);
+    runtime_state.install_scheduler(
+        compiled.script_functions.clone(),
+        compiled.layout.script_names_by_id.clone(),
+        compiled.layout.broadcast_messages.clone(),
+        compiled.layout.broadcast_targets.clone(),
+        compiled.layout.key_press_options.clone(),
+        compiled.layout.key_press_targets.clone(),
+        compiled.layout.clone_targets.clone(),
+        compiled.layout.script_target_ids.clone(),
+        compiled.program_info.target_names.clone(),
+        compiled.layout.target_count,
+    );
+    runtime_state.enqueue_scripts(&compiled.layout.entry_script_ids);
+    runtime_state.execute_concurrent();
+    Ok(())
+}
+
+pub fn execute_program_with_mode(
+    program: &Program,
+    runtime_state: &mut RuntimeState,
+    native_async: bool,
+) -> Result<()> {
+    if native_async {
+        return execute_program(program, runtime_state);
+    }
+
+    let compiled = compile_and_load_program(program)?;
+    runtime_state.install_scheduler(
+        compiled.script_functions.clone(),
+        compiled.layout.script_names_by_id.clone(),
+        compiled.layout.broadcast_messages.clone(),
+        compiled.layout.broadcast_targets.clone(),
+        compiled.layout.key_press_options.clone(),
+        compiled.layout.key_press_targets.clone(),
+        compiled.layout.clone_targets.clone(),
+        compiled.layout.script_target_ids.clone(),
+        compiled.program_info.target_names.clone(),
+        compiled.layout.target_count,
+    );
+    runtime_state.enqueue_scripts(&compiled.layout.entry_script_ids);
+    runtime_state.execute_serial();
     Ok(())
 }
 
@@ -294,6 +334,7 @@ fn load_script_functions(native_module: &Library, symbols: &[String]) -> Result<
 }
 
 struct RuntimeFunctions<'ctx> {
+    count_executed_block: FunctionValue<'ctx>,
     move_steps: FunctionValue<'ctx>,
     set_direction: FunctionValue<'ctx>,
     change_x: FunctionValue<'ctx>,
@@ -565,6 +606,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         runtime_ptr: PointerValue<'ctx>,
         statement: &Stmt,
     ) -> Result<()> {
+        self.call_void(self.runtime.count_executed_block, &[runtime_ptr.into()])?;
         match statement {
             Stmt::MotionMoveSteps(steps) => {
                 let steps = self.compile_expr(runtime_ptr, steps)?;

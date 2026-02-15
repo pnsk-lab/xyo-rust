@@ -369,6 +369,7 @@ pub struct RuntimeState {
     pub tempo_bpm: f64,
     pub variables: Vec<f64>,
     pub lists: Vec<Vec<f64>>,
+    pub executed_block_count: u64,
     pub remaining_steps: u64,
     step_budget: u64,
     relax_procedure_loop_budget: bool,
@@ -476,6 +477,7 @@ impl RuntimeState {
             tempo_bpm: 60.0,
             variables: initial_variables,
             lists: initial_lists,
+            executed_block_count: 0,
             remaining_steps: step_budget,
             step_budget,
             relax_procedure_loop_budget: false,
@@ -1237,6 +1239,23 @@ impl RuntimeState {
     // ------------------------------------------------------------------
     // Concurrent (fiber-based) execution scheduler
     // ------------------------------------------------------------------
+
+    /// Execute the program sequentially in the current thread.
+    pub fn execute_serial(&mut self) {
+        while let Some((script_id, actor_id)) = self.dequeue_script() {
+            if self
+                .stop_requested
+                .as_ref()
+                .is_some_and(|stop| stop.load(Ordering::Relaxed))
+            {
+                break;
+            }
+            self.processing_queued_script = true;
+            self.run_script(script_id, actor_id);
+            self.processing_queued_script = false;
+        }
+        self.flush_live_canvas();
+    }
 
     /// Execute the program concurrently: each script runs as a cooperative
     /// fiber and all active fibers advance one yield-step per tick.
