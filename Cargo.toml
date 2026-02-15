@@ -1,0 +1,30 @@
+[package]
+name = "scratch-native-runtime"
+version = "0.1.0"
+edition = "2024"
+authors = ["Scratch Native Runtime Contributors"]
+description = "A native Scratch project runtime that compiles .sb3 files to native code via LLVM"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourorg/scratch-native-runtime"
+readme = "README.md"
+keywords = ["scratch", "llvm", "jit", "compiler", "runtime"]
+categories = ["compilers", "development-tools"]
+
+[lib]
+name = "scratch_native_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "scratch-native-runtime"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+libloading = "0.8"
+eframe = "0.31"
+image = "0.25"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3.14"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

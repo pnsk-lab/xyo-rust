@@ -1,0 +1,9 @@
+[build]
+rustflags = [
+	"-C",
+	"link-arg=-rdynamic",
+	"-C",
+	"link-arg=-Wl,--exclude-libs,ALL",
+	"-C",
+	"link-arg=-Wl,--export-dynamic-symbol=rt_*",
+]

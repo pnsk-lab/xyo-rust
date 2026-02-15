@@ -1,0 +1,6 @@
+/target
+
+# Generated output files
+*.ppm
+*.o
+examples/*
