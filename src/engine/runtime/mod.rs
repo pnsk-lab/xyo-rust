@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,6 +13,7 @@ pub use externs::*;
 
 // Re-export constants for public API
 pub use crate::constants::{STAGE_HEIGHT, STAGE_WIDTH};
+use crate::constants::ENV_SCRATCH_PEN_LOG;
 
 /// Function pointer type for JIT-compiled Scratch script entry points.
 pub type ScriptEntry = unsafe extern "C" fn(*mut RuntimeState);
@@ -430,6 +431,7 @@ pub struct RuntimeState {
     trace_broadcasts: bool,
     debug_mode: bool,
     break_on_messages: HashSet<String>,
+    pen_log_file: Option<File>,
 }
 
 impl RuntimeState {
@@ -476,6 +478,22 @@ impl RuntimeState {
             .map(|message| normalize_broadcast_message(&message))
             .filter(|message| !message.is_empty())
             .collect::<HashSet<_>>();
+        let pen_log_file = env::var(ENV_SCRATCH_PEN_LOG)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .and_then(|path| match OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)
+            {
+                Ok(file) => Some(file),
+                Err(error) => {
+                    eprintln!("warning: failed to open pen log file '{}': {error}", path);
+                    None
+                }
+            });
 
         Self {
             sprite_x: 0.0,
@@ -543,6 +561,7 @@ impl RuntimeState {
             trace_broadcasts,
             debug_mode,
             break_on_messages,
+            pen_log_file,
         }
     }
 
@@ -1104,6 +1123,33 @@ impl RuntimeState {
             format!("{target_name}#clone{actor_id}")
         } else {
             format!("{target_name}#{actor_id}")
+        }
+    }
+
+    fn log_pen_block_event(&mut self, block: &str, details: &str) {
+        let actor_label = self.actor_label(self.active_actor_id);
+        let x = self.sprite_x;
+        let y = self.sprite_y;
+        let direction = self.direction_deg;
+        let pen_down = self.pen_down;
+        let pen_size = self.pen_size;
+        let pen_alpha = self.pen_alpha;
+        let [r, g, b] = self.pen_color;
+
+        let Some(file) = self.pen_log_file.as_mut() else {
+            return;
+        };
+
+        if details.is_empty() {
+            let _ = writeln!(
+                file,
+                "block={block} actor={actor_label} x={x:.3} y={y:.3} dir={direction:.3} pen_down={pen_down} size={pen_size:.3} color=#{r:02x}{g:02x}{b:02x} alpha={pen_alpha:.3}"
+            );
+        } else {
+            let _ = writeln!(
+                file,
+                "block={block} actor={actor_label} x={x:.3} y={y:.3} dir={direction:.3} pen_down={pen_down} size={pen_size:.3} color=#{r:02x}{g:02x}{b:02x} alpha={pen_alpha:.3} {details}"
+            );
         }
     }
 

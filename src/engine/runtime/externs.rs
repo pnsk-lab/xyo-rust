@@ -493,6 +493,7 @@ pub extern "C" fn rt_pen_down(state: *mut RuntimeState) {
             state.pen_down = true;
             state.draw_disc(state.sprite_x, state.sprite_y);
             state.live_canvas_dirty = true;
+            state.log_pen_block_event("pen_down", "");
         }
     }
 }
@@ -502,6 +503,7 @@ pub extern "C" fn rt_pen_up(state: *mut RuntimeState) {
     unsafe {
         if let Some(state) = state.as_mut() {
             state.pen_down = false;
+            state.log_pen_block_event("pen_up", "");
         }
     }
 }
@@ -511,6 +513,7 @@ pub extern "C" fn rt_pen_clear(state: *mut RuntimeState) {
     unsafe {
         if let Some(state) = state.as_mut() {
             state.clear_canvas();
+            state.log_pen_block_event("pen_clear", "");
         }
     }
 }
@@ -524,6 +527,8 @@ pub extern "C" fn rt_pen_set_size(state: *mut RuntimeState, size: f64) {
                 return;
             }
             state.pen_size = numeric.max(1.0);
+            let details = format!("input={} numeric={numeric:.6}", state.debug_value(size));
+            state.log_pen_block_event("pen_set_size", &details);
         }
     }
 }
@@ -535,35 +540,36 @@ pub extern "C" fn rt_pen_set_color(state: *mut RuntimeState, color: f64) {
             return;
         };
 
+        let details = format!("input={}", state.debug_value(color));
         if let Some(index) = decode_string_id(color) {
             let raw = state.strings.get(index).cloned().unwrap_or_default();
             // '#rrggbb' or '0xrrggbb' → direct hex-to-RGB
             if let Some(rgb) = parse_hex_color(&raw) {
                 state.pen_color = rgb;
-                return;
-            }
-            // Otherwise interpret the string as a number and extract RGB
-            // from the decimal value, matching scratch-vm's
-            // Color.decimalToRgb(Cast.toNumber(value)).
-            let trimmed = raw.trim();
-            let number = if let Some(hex) = trimmed
-                .strip_prefix("0x")
-                .or_else(|| trimmed.strip_prefix("0X"))
-            {
-                u64::from_str_radix(hex, 16)
-                    .ok()
-                    .map(|v| v as f64)
-                    .unwrap_or(0.0)
             } else {
-                trimmed.parse::<f64>().unwrap_or(0.0)
-            };
-            state.pen_color = decimal_to_rgb(number);
-            return;
+                // Otherwise interpret the string as a number and extract RGB
+                // from the decimal value, matching scratch-vm's
+                // Color.decimalToRgb(Cast.toNumber(value)).
+                let trimmed = raw.trim();
+                let number = if let Some(hex) = trimmed
+                    .strip_prefix("0x")
+                    .or_else(|| trimmed.strip_prefix("0X"))
+                {
+                    u64::from_str_radix(hex, 16)
+                        .ok()
+                        .map(|v| v as f64)
+                        .unwrap_or(0.0)
+                } else {
+                    trimmed.parse::<f64>().unwrap_or(0.0)
+                };
+                state.pen_color = decimal_to_rgb(number);
+            }
+        } else {
+            // Numeric value → extract RGB components from the integer,
+            // matching scratch-vm's Color.decimalToRgb().
+            state.pen_color = decimal_to_rgb(state.value_to_number(color));
         }
-
-        // Numeric value → extract RGB components from the integer,
-        // matching scratch-vm's Color.decimalToRgb().
-        state.pen_color = decimal_to_rgb(state.value_to_number(color));
+        state.log_pen_block_event("pen_set_color", &details);
     }
 }
 
@@ -575,6 +581,7 @@ pub extern "C" fn rt_pen_stamp(state: *mut RuntimeState) {
         };
         state.stamp_active_sprite_to_pen_layer();
         state.live_canvas_dirty = true;
+        state.log_pen_block_event("pen_stamp", "");
     }
 }
 
@@ -611,6 +618,15 @@ pub extern "C" fn rt_pen_set_color_param(state: *mut RuntimeState, param_code: u
             }
             _ => {}
         }
+        let param_name = match param_code {
+            0 => "color",
+            1 => "saturation",
+            2 => "brightness",
+            3 => "transparency",
+            _ => "unknown",
+        };
+        let details = format!("param={param_name} value={numeric:.6}");
+        state.log_pen_block_event("pen_set_color_param", &details);
     }
 }
 

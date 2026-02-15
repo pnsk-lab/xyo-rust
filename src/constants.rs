@@ -26,3 +26,6 @@ pub const ENV_SCRATCH_STEP_BUDGET: &str = "SCRATCH_STEP_BUDGET";
 
 /// Environment variable name for message breakpoints.
 pub const ENV_SCRATCH_BREAK_ON_MESSAGE: &str = "SCRATCH_BREAK_ON_MESSAGE";
+
+/// Environment variable path for pen block execution logs.
+pub const ENV_SCRATCH_PEN_LOG: &str = "SCRATCH_PEN_LOG";

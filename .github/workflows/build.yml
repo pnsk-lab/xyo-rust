@@ -80,20 +80,12 @@ jobs:
               run: |
                   choco install llvm --version=18.1.8 --allow-downgrade -y --no-progress
 
-                  $candidates = @(
-                    "C:\Program Files\LLVM\bin\llvm-config.exe",
-                    "C:\Program Files (x86)\LLVM\bin\llvm-config.exe"
-                  )
-                  $llvmConfig = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-                  if (-not $llvmConfig) {
-                    $found = Get-ChildItem -Path "C:\Program Files","C:\Program Files (x86)" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue |
-                      Select-Object -First 1
-                    if ($found) { $llvmConfig = $found.FullName }
+                  $llvmConfig = "C:\Program Files\LLVM\bin\llvm-config.exe"
+                  if (-not (Test-Path $llvmConfig)) {
+                    $llvmConfig = "C:\Program Files (x86)\LLVM\bin\llvm-config.exe"
                   }
-
-                  if (-not $llvmConfig) {
-                    throw "llvm-config.exe not found after LLVM install"
+                  if (-not (Test-Path $llvmConfig)) {
+                    throw "llvm-config.exe not found"
                   }
 
                   $llvmPrefix = Split-Path (Split-Path $llvmConfig -Parent) -Parent
@@ -102,7 +94,6 @@ jobs:
                   "LLVM_SYS_181_PREFIX=$llvmPrefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
                   & $llvmConfig --version
-                  Write-Host "LLVM_SYS_181_PREFIX=$llvmPrefix"
 
             # ---------------- Build: Linux ----------------
             - name: Build (Linux)
@@ -165,11 +156,13 @@ jobs:
                   $llvmBin = Split-Path $env:LLVM_CONFIG_PATH -Parent
                   $env:Path = "$llvmBin;$env:Path"
 
-                  # GHC/MinGW 由来の汚染除去
+                  # ---- 汚染環境変数を徹底除去 ----
                   foreach ($k in @(
                     "CFLAGS","CXXFLAGS","CPPFLAGS","LDFLAGS",
                     "CC","CXX","AR",
                     "TARGET_CFLAGS","HOST_CFLAGS",
+                    "CFLAGS_x86_64_pc_windows_msvc","CFLAGS_x86_64-pc-windows-msvc",
+                    "CFLAGS_aarch64_pc_windows_msvc","CFLAGS_aarch64-pc-windows-msvc",
                     "CRATE_CC_NO_DEFAULTS",
                     "RUSTFLAGS","CARGO_ENCODED_RUSTFLAGS",
                     "BINDGEN_EXTRA_CLANG_ARGS"
@@ -177,14 +170,24 @@ jobs:
                     Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue
                   }
 
-                  # '-' を含む env 名は Set-Item
+                  # 念のため空で明示（'-' を含む名前は Set-Item）
                   Set-Item -Path Env:'CFLAGS_x86_64-pc-windows-msvc' -Value ''
-                  Set-Item -Path Env:'CFLAGS_aarch64-pc-windows-msvc' -Value ''
                   Set-Item -Path Env:'CFLAGS_x86_64_pc_windows_msvc' -Value ''
+                  Set-Item -Path Env:'CFLAGS_aarch64-pc-windows-msvc' -Value ''
                   Set-Item -Path Env:'CFLAGS_aarch64_pc_windows_msvc' -Value ''
+
+                  # llvm-sys が参照する値を明示
+                  $env:LLVM_SYS_181_PREFIX = $env:LLVM_SYS_181_PREFIX
+                  $env:LLVM_CONFIG_PATH = $env:LLVM_CONFIG_PATH
 
                   cargo --version
                   & $env:LLVM_CONFIG_PATH --version
+
+                  # ヘッダ存在確認
+                  $targetHeader = Join-Path $env:LLVM_SYS_181_PREFIX "include\llvm-c\Target.h"
+                  if (-not (Test-Path $targetHeader)) {
+                    throw "LLVM header not found: $targetHeader"
+                  }
 
                   cargo clean -p llvm-sys
                   cargo build --release --target ${{ matrix.target }} -vv
