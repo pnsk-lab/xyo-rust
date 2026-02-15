@@ -42,6 +42,12 @@ jobs:
               uses: KyleMayes/install-llvm-action@v2
               with:
                   version: 18.1.8
+                  cached: true
+
+            - name: Set LLVM environment
+              shell: bash
+              run: |
+                  echo "LLVM_SYS_181_PREFIX=${{ steps.install-llvm.outputs.llvm-path }}" >> $GITHUB_ENV
 
             - name: Install Linux cross toolchain
               if: ${{ startsWith(matrix.target, 'aarch64-unknown-linux-gnu') }}
@@ -51,8 +57,6 @@ jobs:
 
             - name: Build
               shell: bash
-              env:
-                  LLVM_SYS_181_PREFIX: ${{ steps.install-llvm.outputs.llvm-dir }}
               run: cargo build --release --target ${{ matrix.target }}
 
             - name: Upload artifact
