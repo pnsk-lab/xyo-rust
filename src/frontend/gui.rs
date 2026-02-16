@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 use eframe::egui;
 use std::collections::HashSet;
 use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,11 +18,14 @@ pub fn execute_program_with_gui(
     mut runtime_state: runtime::RuntimeState,
     stage_scale: usize,
     target_fps: Option<f64>,
+    pen_render_mode: runtime::PenRenderMode,
+    llvm_opt_level: jit::JitOptimizationLevel,
     vsync_enabled: bool,
     vsync_fps: usize,
 ) -> Result<runtime::RuntimeState> {
     // Compile and load the program in the main thread before GUI initialization
-    let compiled_program = jit::compile_and_load_program(&program)?;
+    let compiled_program =
+        jit::compile_and_load_program_with_optimization(&program, llvm_opt_level)?;
 
     runtime_state.set_canvas_scale(stage_scale);
     runtime_state.set_target_fps(target_fps);
@@ -35,14 +38,22 @@ pub fn execute_program_with_gui(
 
     let (canvas_width, canvas_height) = runtime_state.canvas_dimensions();
 
-    let live_canvas = Arc::new(Mutex::new(runtime_state.canvas_rgb_copy()));
-    runtime_state.attach_live_canvas(Arc::clone(&live_canvas));
+    let live_scene_canvas = Arc::new(Mutex::new(runtime_state.canvas_rgb_copy()));
+    runtime_state.attach_live_canvas(Arc::clone(&live_scene_canvas));
+    let live_pen_layer = Arc::new(Mutex::new(runtime_state.pen_rgba_copy()));
+    runtime_state.attach_live_pen_layer(Arc::clone(&live_pen_layer));
+    let live_pen_batch = Arc::new(Mutex::new(runtime_state.pen_batch_copy()));
+    runtime_state.attach_live_pen_batch(Arc::clone(&live_pen_batch));
+    let live_canvas_generation = Arc::new(AtomicU64::new(0));
+    runtime_state.attach_live_canvas_generation(Arc::clone(&live_canvas_generation));
     let input_state = Arc::new(Mutex::new(runtime::InputState::default()));
     runtime_state.attach_input_state(Arc::clone(&input_state));
     let ask_prompt_state = Arc::new(runtime::AskPromptState::default());
     runtime_state.attach_ask_prompt_state(Arc::clone(&ask_prompt_state));
     let stop_requested = Arc::new(AtomicBool::new(false));
     runtime_state.attach_stop_flag(Arc::clone(&stop_requested));
+    let dump_vars_requested = Arc::new(AtomicBool::new(false));
+    runtime_state.attach_dump_vars_flag(Arc::clone(&dump_vars_requested));
     let worker_done = Arc::new(AtomicBool::new(false));
     let worker_handle_cell = Arc::new(Mutex::new(None));
 
@@ -54,16 +65,21 @@ pub fn execute_program_with_gui(
         .unwrap_or(0);
 
     let app = EguiRuntimeApp::new(
-        Arc::clone(&live_canvas),
+        Arc::clone(&live_scene_canvas),
+        Arc::clone(&live_pen_layer),
+        Arc::clone(&live_pen_batch),
+        Arc::clone(&live_canvas_generation),
         Arc::clone(&input_state),
         Arc::clone(&ask_prompt_state),
         Arc::clone(&stop_requested),
+        Arc::clone(&dump_vars_requested),
         Arc::clone(&worker_done),
         canvas_width,
         canvas_height,
         target_fps,
         vsync_enabled,
         vsync_fps,
+        pen_render_mode,
         final_frame_hold_ms,
         Some((compiled_program, runtime_state)),
         Arc::clone(&worker_handle_cell),
@@ -74,6 +90,7 @@ pub fn execute_program_with_gui(
             .with_inner_size([window_width, window_height])
             .with_min_inner_size([window_width, window_height])
             .with_resizable(false),
+        renderer: eframe::Renderer::Glow,
         vsync: vsync_enabled,
         ..Default::default()
     };
@@ -81,7 +98,15 @@ pub fn execute_program_with_gui(
     let run_result = eframe::run_native(
         "scratch-native-runtime",
         native_options,
-        Box::new(move |_cc| Ok(Box::new(app))),
+        Box::new(move |cc| {
+            if cc.gl.is_none() {
+                return Err(anyhow!(
+                    "OpenGL context is unavailable (expected eframe::Renderer::Glow)"
+                )
+                .into());
+            }
+            Ok(Box::new(app))
+        }),
     );
     if let Err(error) = run_result {
         eprintln!("warning: failed to open egui window: {error}");
@@ -104,18 +129,28 @@ pub fn execute_program_with_gui(
 }
 
 struct EguiRuntimeApp {
-    live_canvas: Arc<Mutex<Vec<u8>>>,
+    live_scene_canvas: Arc<Mutex<Vec<u8>>>,
+    live_pen_layer: Arc<Mutex<Vec<u8>>>,
+    live_pen_batch: Arc<Mutex<Vec<runtime::PenBatchCommand>>>,
+    live_canvas_generation: Arc<AtomicU64>,
+    last_displayed_generation: u64,
     input_state: Arc<Mutex<runtime::InputState>>,
     ask_prompt_state: Arc<runtime::AskPromptState>,
     stop_requested: Arc<AtomicBool>,
+    dump_vars_requested: Arc<AtomicBool>,
     worker_done: Arc<AtomicBool>,
     canvas_width: usize,
     canvas_height: usize,
     simulation_fps: Option<f64>,
     vsync_enabled: bool,
     vsync_fps: usize,
-    frame_snapshot: Vec<u8>,
-    texture: Option<egui::TextureHandle>,
+    scene_frame_snapshot: Vec<u8>,
+    pen_frame_snapshot: Vec<u8>,
+    scene_texture: Option<egui::TextureHandle>,
+    pen_texture: Option<egui::TextureHandle>,
+    pen_render_mode: runtime::PenRenderMode,
+    pen_batch_cursor: usize,
+    gpu_pen_draw_commands: Vec<runtime::PenBatchCommand>,
     stage_rect: Option<egui::Rect>,
     presented_frames: u64,
     fps_window_start: Instant,
@@ -132,33 +167,48 @@ struct EguiRuntimeApp {
 
 impl EguiRuntimeApp {
     fn new(
-        live_canvas: Arc<Mutex<Vec<u8>>>,
+        live_scene_canvas: Arc<Mutex<Vec<u8>>>,
+        live_pen_layer: Arc<Mutex<Vec<u8>>>,
+        live_pen_batch: Arc<Mutex<Vec<runtime::PenBatchCommand>>>,
+        live_canvas_generation: Arc<AtomicU64>,
         input_state: Arc<Mutex<runtime::InputState>>,
         ask_prompt_state: Arc<runtime::AskPromptState>,
         stop_requested: Arc<AtomicBool>,
+        dump_vars_requested: Arc<AtomicBool>,
         worker_done: Arc<AtomicBool>,
         canvas_width: usize,
         canvas_height: usize,
         simulation_fps: Option<f64>,
         vsync_enabled: bool,
         vsync_fps: usize,
+        pen_render_mode: runtime::PenRenderMode,
         final_frame_hold_ms: u64,
         start_payload: Option<(jit::CompiledProgram, runtime::RuntimeState)>,
         worker_handle_cell: Arc<Mutex<Option<thread::JoinHandle<Result<runtime::RuntimeState>>>>>,
     ) -> Self {
         Self {
-            live_canvas,
+            live_scene_canvas,
+            live_pen_layer,
+            live_pen_batch,
+            live_canvas_generation,
+            last_displayed_generation: 0,
             input_state,
             ask_prompt_state,
             stop_requested,
+            dump_vars_requested,
             worker_done,
             canvas_width,
             canvas_height,
             simulation_fps,
             vsync_enabled,
             vsync_fps: vsync_fps.max(1),
-            frame_snapshot: vec![255; canvas_width * canvas_height * 3],
-            texture: None,
+            scene_frame_snapshot: vec![255; canvas_width * canvas_height * 3],
+            pen_frame_snapshot: vec![0; canvas_width * canvas_height * 4],
+            scene_texture: None,
+            pen_texture: None,
+            pen_render_mode,
+            pen_batch_cursor: 0,
+            gpu_pen_draw_commands: Vec::new(),
             stage_rect: None,
             presented_frames: 0,
             fps_window_start: Instant::now(),
@@ -252,27 +302,126 @@ impl EguiRuntimeApp {
     }
 
     fn update_texture(&mut self, ctx: &egui::Context) -> bool {
-        let Ok(frame) = self.live_canvas.lock() else {
+        let current_generation = self.live_canvas_generation.load(Ordering::Acquire);
+        if current_generation == self.last_displayed_generation
+            && self.scene_texture.is_some()
+            && self.pen_texture.is_some()
+        {
+            return false;
+        }
+
+        let Ok(scene_frame) = self.live_scene_canvas.lock() else {
             return false;
         };
-        if self.frame_snapshot.len() != frame.len() {
-            self.frame_snapshot.resize(frame.len(), 255);
+        if self.scene_frame_snapshot.len() != scene_frame.len() {
+            self.scene_frame_snapshot.resize(scene_frame.len(), 255);
         }
-        self.frame_snapshot.copy_from_slice(frame.as_slice());
-        let image = egui::ColorImage::from_rgb(
+        self.scene_frame_snapshot
+            .copy_from_slice(scene_frame.as_slice());
+        drop(scene_frame);
+
+        let Ok(pen_frame) = self.live_pen_layer.lock() else {
+            return false;
+        };
+        if self.pen_frame_snapshot.len() != pen_frame.len() {
+            self.pen_frame_snapshot.resize(pen_frame.len(), 0);
+        }
+        self.pen_frame_snapshot
+            .copy_from_slice(pen_frame.as_slice());
+        drop(pen_frame);
+
+        self.sync_pen_batch_from_runtime();
+
+        self.last_displayed_generation = current_generation;
+
+        let scene_image = egui::ColorImage::from_rgb(
             [self.canvas_width, self.canvas_height],
-            &self.frame_snapshot,
+            &self.scene_frame_snapshot,
         );
-        if let Some(texture) = self.texture.as_mut() {
-            texture.set(image, egui::TextureOptions::NEAREST);
+        let pen_image = egui::ColorImage::from_rgba_unmultiplied(
+            [self.canvas_width, self.canvas_height],
+            &self.pen_frame_snapshot,
+        );
+
+        if let Some(texture) = self.scene_texture.as_mut() {
+            texture.set(scene_image, egui::TextureOptions::NEAREST);
         } else {
-            self.texture = Some(ctx.load_texture(
-                "scratch-stage-canvas",
-                image,
+            self.scene_texture = Some(ctx.load_texture(
+                "scratch-stage-scene-canvas",
+                scene_image,
+                egui::TextureOptions::NEAREST,
+            ));
+        }
+
+        if let Some(texture) = self.pen_texture.as_mut() {
+            texture.set(pen_image, egui::TextureOptions::NEAREST);
+        } else {
+            self.pen_texture = Some(ctx.load_texture(
+                "scratch-stage-pen-layer",
+                pen_image,
                 egui::TextureOptions::NEAREST,
             ));
         }
         true
+    }
+
+    fn sync_pen_batch_from_runtime(&mut self) {
+        if self.pen_render_mode != runtime::PenRenderMode::GpuBatch {
+            return;
+        }
+        let Ok(batch) = self.live_pen_batch.lock() else {
+            return;
+        };
+        if self.pen_batch_cursor > batch.len() {
+            self.pen_batch_cursor = 0;
+            self.gpu_pen_draw_commands.clear();
+        }
+        if self.pen_batch_cursor >= batch.len() {
+            return;
+        }
+        for command in &batch[self.pen_batch_cursor..] {
+            match command {
+                runtime::PenBatchCommand::Clear => {
+                    self.gpu_pen_draw_commands.clear();
+                }
+                other => {
+                    self.gpu_pen_draw_commands.push(*other);
+                }
+            }
+        }
+        self.pen_batch_cursor = batch.len();
+    }
+
+    fn paint_gpu_pen_batch(&self, ui: &mut egui::Ui, rect: egui::Rect) {
+        if self.pen_render_mode != runtime::PenRenderMode::GpuBatch {
+            return;
+        }
+        let painter = ui.painter();
+        for command in &self.gpu_pen_draw_commands {
+            match *command {
+                runtime::PenBatchCommand::Clear => {}
+                runtime::PenBatchCommand::Line {
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    style,
+                } => {
+                    let start = scratch_to_screen_pos(rect, x0 as f64, y0 as f64);
+                    let end = scratch_to_screen_pos(rect, x1 as f64, y1 as f64);
+                    let stroke = egui::Stroke::new(
+                        pen_width_screen_px(rect, style.size as f64),
+                        pen_style_to_color(style),
+                    );
+                    painter.line_segment([start, end], stroke);
+                }
+                runtime::PenBatchCommand::Disc { x, y, style } => {
+                    let center = scratch_to_screen_pos(rect, x as f64, y as f64);
+                    let radius = (pen_width_screen_px(rect, style.size as f64) * 0.5).max(0.5);
+                    painter.circle_filled(center, radius, pen_style_to_color(style));
+                }
+            }
+        }
     }
 
     fn update_title(&mut self, ctx: &egui::Context, force: bool) {
@@ -361,6 +510,10 @@ impl eframe::App for EguiRuntimeApp {
             self.close_after = Some(Instant::now());
         }
 
+        if ctx.input(|input| input.key_pressed(egui::Key::F9)) {
+            self.dump_vars_requested.store(true, Ordering::Relaxed);
+        }
+
         if let Ok(mut input_state) = self.input_state.lock() {
             *input_state = self.poll_input(ctx);
         }
@@ -378,7 +531,7 @@ impl eframe::App for EguiRuntimeApp {
                 ui.set_min_size(desired_size);
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     let (rect, _) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
-                    if let Some(texture) = &self.texture {
+                    if let Some(texture) = &self.scene_texture {
                         ui.painter().image(
                             texture.id(),
                             rect,
@@ -386,6 +539,15 @@ impl eframe::App for EguiRuntimeApp {
                             egui::Color32::WHITE,
                         );
                     }
+                    if let Some(texture) = &self.pen_texture {
+                        ui.painter().image(
+                            texture.id(),
+                            rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                    self.paint_gpu_pen_batch(ui, rect);
                     self.stage_rect = Some(rect);
                 });
             });
@@ -418,6 +580,25 @@ impl Drop for EguiRuntimeApp {
             self.stop_requested.store(true, Ordering::Relaxed);
         }
     }
+}
+
+fn scratch_to_screen_pos(rect: egui::Rect, scratch_x: f64, scratch_y: f64) -> egui::Pos2 {
+    let nx = ((scratch_x + (STAGE_WIDTH as f64 / 2.0)) / STAGE_WIDTH as f64).clamp(0.0, 1.0);
+    let ny = (((STAGE_HEIGHT as f64 / 2.0) - scratch_y) / STAGE_HEIGHT as f64).clamp(0.0, 1.0);
+    egui::pos2(
+        rect.min.x + rect.width() * nx as f32,
+        rect.min.y + rect.height() * ny as f32,
+    )
+}
+
+fn pen_width_screen_px(rect: egui::Rect, pen_size: f64) -> f32 {
+    let stage_scale = rect.width() / STAGE_WIDTH as f32;
+    ((pen_size.max(1.0) as f32) * stage_scale.max(1.0)).max(1.0)
+}
+
+fn pen_style_to_color(style: runtime::PenStrokeStyle) -> egui::Color32 {
+    let alpha = (style.alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+    egui::Color32::from_rgba_unmultiplied(style.color[0], style.color[1], style.color[2], alpha)
 }
 
 fn key_to_scratch_name(key: &egui::Key) -> Option<String> {

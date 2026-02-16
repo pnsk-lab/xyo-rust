@@ -11,6 +11,7 @@ use project::sb3;
 use utils::{embedded_project, escape_listener, image};
 
 use anyhow::{Context, Result, bail};
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,6 +31,8 @@ struct CliOptions {
     target_fps: Option<f64>,
     turbo: bool,
     native_async_enabled: bool,
+    pen_render_mode: runtime::PenRenderMode,
+    llvm_opt_level: jit::JitOptimizationLevel,
     debug_enabled: bool,
     break_on_messages: Vec<String>,
 }
@@ -39,6 +42,34 @@ fn main() {
         eprintln!("error: {error:#}");
         std::process::exit(1);
     }
+}
+
+fn intern_runtime_string(
+    strings: &mut Vec<String>,
+    string_index: &mut HashMap<String, usize>,
+    text: String,
+) -> usize {
+    if let Some(index) = string_index.get(&text).copied() {
+        return index;
+    }
+    let index = strings.len();
+    strings.push(text.clone());
+    string_index.insert(text, index);
+    index
+}
+
+fn scalar_initial_to_runtime_value(
+    value: &ir::ScalarValue,
+    strings: &mut Vec<String>,
+    string_index: &mut HashMap<String, usize>,
+) -> f64 {
+    let string_id = match value {
+        ir::ScalarValue::String(index) => *index,
+        ir::ScalarValue::Number(number) => {
+            intern_runtime_string(strings, string_index, number.to_string())
+        }
+    };
+    runtime::encode_string_id(string_id)
 }
 
 fn run() -> Result<()> {
@@ -158,22 +189,35 @@ fn run() -> Result<()> {
     }
 
     if let Some(native_output_path) = &cli.emit_native_object_path {
-        jit::emit_native_object(&program, native_output_path).with_context(|| {
-            format!(
-                "failed to emit native object file: {}",
-                native_output_path.display()
-            )
-        })?;
+        jit::emit_native_object_with_optimization(&program, native_output_path, cli.llvm_opt_level)
+            .with_context(|| {
+                format!(
+                    "failed to emit native object file: {}",
+                    native_output_path.display()
+                )
+            })?;
         println!("Emitted native object: {}", native_output_path.display());
         if cli.emit_only {
             return Ok(());
         }
     }
 
+    let mut initial_strings = program.strings.clone();
+    let mut initial_string_index = initial_strings
+        .iter()
+        .enumerate()
+        .map(|(index, text)| (text.clone(), index))
+        .collect::<HashMap<_, _>>();
     let initial_variables = program
         .variables
         .iter()
-        .map(|variable| variable.initial_value)
+        .map(|variable| {
+            scalar_initial_to_runtime_value(
+                &variable.initial_value,
+                &mut initial_strings,
+                &mut initial_string_index,
+            )
+        })
         .collect::<Vec<_>>();
     let variable_names = program
         .variables
@@ -191,9 +235,12 @@ fn run() -> Result<()> {
         .map(|list| {
             list.initial_values
                 .iter()
-                .map(|value| match value {
-                    ir::ScalarValue::Number(number) => *number,
-                    ir::ScalarValue::String(index) => runtime::encode_string_id(*index),
+                .map(|value| {
+                    scalar_initial_to_runtime_value(
+                        value,
+                        &mut initial_strings,
+                        &mut initial_string_index,
+                    )
                 })
                 .collect::<Vec<_>>()
         })
@@ -214,9 +261,20 @@ fn run() -> Result<()> {
         variable_names,
         variable_target_indices,
         initial_lists,
-        program.strings.clone(),
+        initial_strings,
         step_budget,
     );
+    let pen_render_mode = if !cli.gui_enabled
+        && matches!(cli.pen_render_mode, runtime::PenRenderMode::GpuBatch)
+    {
+        eprintln!(
+            "warning: gpu-batch pen rendering requires --gui; falling back to cpu mode"
+        );
+        runtime::PenRenderMode::CpuRealtime
+    } else {
+        cli.pen_render_mode
+    };
+    runtime_state.set_pen_render_mode(pen_render_mode);
     runtime_state.attach_stop_flag(Arc::clone(&stop_requested));
     runtime_state.set_debug_mode(cli.debug_enabled);
     runtime_state.set_break_on_messages(cli.break_on_messages.clone());
@@ -261,6 +319,8 @@ fn run() -> Result<()> {
             "disabled"
         }
     );
+    println!("LLVM JIT optimization: {}", cli.llvm_opt_level.as_str());
+    println!("Pen rendering: {}", pen_render_mode.as_str());
     if !cli.break_on_messages.is_empty() {
         println!(
             "Broadcast breakpoints: {}",
@@ -286,11 +346,13 @@ fn run() -> Result<()> {
         cli.window_scale,
         target_fps,
         cli.native_async_enabled,
+        pen_render_mode,
+        cli.llvm_opt_level,
         cli.vsync_enabled,
         cli.vsync_fps,
     )?;
     let execution_elapsed = execution_started_at.elapsed();
-    let executed_operations = step_budget.saturating_sub(runtime_state.remaining_steps);
+    let executed_operations = runtime_state.executed_block_count;
     let elapsed_seconds = execution_elapsed.as_secs_f64();
     if elapsed_seconds > 0.0 {
         println!(
@@ -373,7 +435,7 @@ fn parse_cli() -> Result<CliOptions> {
         .next()
         .unwrap_or_else(|| "scratch-native-runtime".to_string());
     let usage = format!(
-        "usage: {bin_name} [project.sb3] [output.ppm] [--emit-native <output.o>] [--emit-executable <output-bin>] [--emit-only] [--gui|--no-gui] [--scale <1|2|4|8|16>] [--vsync|--no-vsync] [--vsync-fps <value>] [--fps <value>|--turbo] [--native-async|--no-native-async] [--debug|--no-debug] [--break-on-message <message>]"
+        "usage: {bin_name} [project.sb3] [output.ppm] [--emit-native <output.o>] [--emit-executable <output-bin>] [--emit-only] [--gui|--no-gui] [--scale <1|2|4|8|16>] [--vsync|--no-vsync] [--vsync-fps <value>] [--fps <value>|--turbo] [--native-async|--no-native-async] [--pen-render <cpu|gpu-batch>] [--llvm-opt <O0|O1|O2|O3>] [--debug|--no-debug] [--break-on-message <message>]"
     );
 
     let mut positional = Vec::new();
@@ -388,6 +450,20 @@ fn parse_cli() -> Result<CliOptions> {
     let mut target_fps: Option<f64> = None;
     let mut turbo = false;
     let mut native_async_enabled = true;
+    let mut pen_render_mode = runtime::PenRenderMode::CpuRealtime;
+    let mut llvm_opt_level = env::var(ENV_SCRATCH_LLVM_OPT_LEVEL)
+        .ok()
+        .map(|raw| {
+            jit::JitOptimizationLevel::parse(&raw).with_context(|| {
+                format!(
+                    "invalid {} value: {}",
+                    ENV_SCRATCH_LLVM_OPT_LEVEL,
+                    raw.trim()
+                )
+            })
+        })
+        .transpose()?
+        .unwrap_or_default();
     let mut debug_enabled = env_flag_enabled(ENV_SCRATCH_DEBUG);
     let mut break_on_messages = env_message_list(ENV_SCRATCH_BREAK_ON_MESSAGE);
     let rest = args.collect::<Vec<_>>();
@@ -459,6 +535,24 @@ fn parse_cli() -> Result<CliOptions> {
             }
             "--native-async" => native_async_enabled = true,
             "--no-native-async" => native_async_enabled = false,
+            "--pen-render" => {
+                index += 1;
+                let Some(raw) = rest.get(index) else {
+                    bail!("--pen-render requires one of: cpu, gpu-batch");
+                };
+                pen_render_mode = match raw.to_ascii_lowercase().as_str() {
+                    "cpu" => runtime::PenRenderMode::CpuRealtime,
+                    "gpu-batch" | "gpu_batch" | "gpu" => runtime::PenRenderMode::GpuBatch,
+                    _ => bail!("--pen-render must be one of: cpu, gpu-batch"),
+                };
+            }
+            "--llvm-opt" => {
+                index += 1;
+                let Some(raw) = rest.get(index) else {
+                    bail!("--llvm-opt requires one of: O0, O1, O2, O3");
+                };
+                llvm_opt_level = jit::JitOptimizationLevel::parse(raw)?;
+            }
             "--fps" => {
                 index += 1;
                 let Some(raw) = rest.get(index) else {
@@ -520,6 +614,8 @@ fn parse_cli() -> Result<CliOptions> {
         target_fps,
         turbo,
         native_async_enabled,
+        pen_render_mode,
+        llvm_opt_level,
         debug_enabled,
         break_on_messages,
     })
@@ -557,13 +653,20 @@ fn execute_with_optional_gui(
     window_scale: usize,
     target_fps: Option<f64>,
     native_async_enabled: bool,
+    pen_render_mode: runtime::PenRenderMode,
+    llvm_opt_level: jit::JitOptimizationLevel,
     vsync_enabled: bool,
     vsync_fps: usize,
 ) -> Result<runtime::RuntimeState> {
     if !gui_enabled {
         runtime_state.set_target_fps(target_fps);
-        jit::execute_program_with_mode(program, &mut runtime_state, native_async_enabled)
-            .context("failed to execute native-compiled Scratch program")?;
+        jit::execute_program_with_mode_and_optimization(
+            program,
+            &mut runtime_state,
+            native_async_enabled,
+            llvm_opt_level,
+        )
+        .context("failed to execute native-compiled Scratch program")?;
         return Ok(runtime_state);
     }
 
@@ -572,6 +675,8 @@ fn execute_with_optional_gui(
         runtime_state,
         window_scale,
         target_fps,
+        pen_render_mode,
+        llvm_opt_level,
         vsync_enabled,
         vsync_fps,
     )

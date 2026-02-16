@@ -29,3 +29,6 @@ pub const ENV_SCRATCH_BREAK_ON_MESSAGE: &str = "SCRATCH_BREAK_ON_MESSAGE";
 
 /// Environment variable path for pen block execution logs.
 pub const ENV_SCRATCH_PEN_LOG: &str = "SCRATCH_PEN_LOG";
+
+/// Environment variable name for LLVM JIT optimization level.
+pub const ENV_SCRATCH_LLVM_OPT_LEVEL: &str = "SCRATCH_LLVM_OPT_LEVEL";

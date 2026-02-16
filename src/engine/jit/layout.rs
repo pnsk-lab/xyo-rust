@@ -7,6 +7,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         self.predeclare_scripts(&program.scripts);
         self.build_script_target_layout(program);
         self.predeclare_procedures(&program.procedures);
+        self.build_procedure_warp_flags(&program.procedures);
         self.build_message_layout(program);
         self.build_key_press_layout(program);
         self.build_clone_layout(program);
@@ -95,6 +96,12 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 None,
             );
             self.procedure_functions.insert(index, function);
+        }
+    }
+
+    fn build_procedure_warp_flags(&mut self, procedures: &[Procedure]) {
+        for (index, procedure) in procedures.iter().enumerate() {
+            self.procedure_warp_flags.insert(index, procedure.warp);
         }
     }
 

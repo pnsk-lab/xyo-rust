@@ -1,358 +1,11 @@
-//! Intermediate Representation (IR) for Scratch programs.
-//!
-//! This module lowers Scratch blocks from the `project::sb3` representation
-//! into a simplified typed IR that is easier to compile to native code.
-//!
-//! # Overview
-//!
-//! The lowering process:
-//! 1. Parses and validates block structures
-//! 2. Resolves variable/list references
-//! 3. Inlines simple expressions
-//! 4. Flattens nested block trees into statement sequences
-//!
-//! # Main Types
-//!
-//! - [`Program`] - The complete IR program containing all scripts and data
-//! - [`Script`] - A single hat block and its body (event trigger + statements)
-//! - [`Stmt`] - A statement (block that performs an action)
-//! - [`Expr`] - An expression (block that returns a value)
+//! IR builder - lowers Scratch projects to IR
 
+use super::*;
 use crate::project::sb3::{Block, Project, Target};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-/// A complete Scratch program in IR form.
-#[derive(Debug, Clone)]
-pub struct Program {
-    /// All scripts (hat blocks with bodies).
-    pub scripts: Vec<Script>,
-    /// Custom procedure definitions.
-    pub procedures: Vec<Procedure>,
-    /// Global and per-target variable definitions.
-    pub variables: Vec<VariableDef>,
-    /// Global and per-target list definitions.
-    pub lists: Vec<ListDef>,
-    /// Names of all targets (stage + sprites).
-    pub target_names: Vec<String>,
-    /// String interning table for string literals.
-    pub strings: Vec<String>,
-    /// Warnings generated during lowering (unsupported blocks, etc.).
-    pub warnings: Vec<String>,
-}
-
-/// A variable definition with its initial value.
-#[derive(Debug, Clone)]
-pub struct VariableDef {
-    /// Unique variable ID from the project.
-    pub id: String,
-    /// Display name of the variable.
-    pub name: String,
-    /// Owning target index in `Program::target_names`.
-    pub target_index: usize,
-    /// Initial numeric value (strings are converted to 0.0).
-    pub initial_value: f64,
-}
-
-/// A list definition with its initial values.
-#[derive(Debug, Clone)]
-pub struct ListDef {
-    /// Unique list ID from the project.
-    pub id: String,
-    /// Display name of the list.
-    pub name: String,
-    /// Initial list contents.
-    pub initial_values: Vec<ScalarValue>,
-}
-
-/// A scalar value that can be a number or a string (indexed).
-#[derive(Debug, Clone)]
-pub enum ScalarValue {
-    Number(f64),
-    String(usize),
-}
-
-/// A single script (hat block + body).
-#[derive(Debug, Clone)]
-pub struct Script {
-    /// Human-readable script name for debugging.
-    pub name: String,
-    /// Name of the target this script belongs to.
-    pub target_name: String,
-    /// The event that triggers this script.
-    pub trigger: ScriptTrigger,
-    /// The script body (sequence of statements).
-    pub body: Vec<Stmt>,
-}
-
-/// The event that triggers a script.
-#[derive(Debug, Clone)]
-pub enum ScriptTrigger {
-    /// Triggered by clicking the green flag.
-    GreenFlag,
-    /// Triggered by receiving a broadcast message.
-    Broadcast(String),
-    /// Triggered by a key press.
-    KeyPressed(String),
-    /// Triggered when this sprite is cloned.
-    CloneStart,
-}
-
-#[derive(Debug, Clone)]
-pub enum CloneTarget {
-    Myself,
-    Target(usize),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum PenColorParam {
-    Color,
-    Saturation,
-    Brightness,
-    Transparency,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ControlStopMode {
-    ThisScript,
-    All,
-    OtherScriptsInTarget,
-}
-
-#[derive(Debug, Clone)]
-pub struct Procedure {
-    pub name: String,
-    pub target_name: String,
-    pub proccode: String,
-    pub arg_names: Vec<String>,
-    pub warp: bool,
-    pub body: Vec<Stmt>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Stmt {
-    MotionMoveSteps(Expr),
-    MotionSetDirection(Expr),
-    MotionChangeX(Expr),
-    MotionChangeY(Expr),
-    MotionSetX(Expr),
-    MotionSetY(Expr),
-    MotionGoToXY {
-        x: Expr,
-        y: Expr,
-    },
-    DataSetVariable {
-        variable_index: usize,
-        value: Expr,
-    },
-    DataChangeVariable {
-        variable_index: usize,
-        delta: Expr,
-    },
-    DataReplaceListItem {
-        list_index: usize,
-        index: Expr,
-        item: Expr,
-    },
-    DataAddToList {
-        list_index: usize,
-        item: Expr,
-    },
-    DataDeleteListItem {
-        list_index: usize,
-        index: Expr,
-    },
-    DataDeleteAllOfList {
-        list_index: usize,
-    },
-    LooksSwitchCostumeTo(Expr),
-    LooksSwitchBackdropTo(Expr),
-    LooksSetEffectTo {
-        effect: Expr,
-        value: Expr,
-    },
-    LooksSetSize(Expr),
-    LooksShow,
-    LooksSay(SayExpr),
-    SoundPlay,
-    ControlRepeat {
-        times: Expr,
-        body: Vec<Stmt>,
-    },
-    ControlWait {
-        duration: Expr,
-    },
-    ControlWaitUntil {
-        condition: Expr,
-    },
-    ControlForEach {
-        variable_index: usize,
-        count: Expr,
-        body: Vec<Stmt>,
-    },
-    ControlForever {
-        body: Vec<Stmt>,
-    },
-    ControlRepeatUntil {
-        condition: Expr,
-        body: Vec<Stmt>,
-    },
-    ControlWhile {
-        condition: Expr,
-        body: Vec<Stmt>,
-    },
-    ControlIf {
-        condition: Expr,
-        then_body: Vec<Stmt>,
-        else_body: Vec<Stmt>,
-    },
-    MotionSetRotationStyle,
-    DataShowVariable,
-    ControlStop {
-        mode: ControlStopMode,
-    },
-    ControlCreateCloneOf {
-        target: CloneTarget,
-    },
-    ControlDeleteThisClone,
-    SensingAskAndWait {
-        question: Expr,
-    },
-    MusicSetTempo {
-        tempo: Expr,
-    },
-    SensingResetTimer,
-    LooksHide,
-    SensingSetDragMode,
-    TextToSpeechSpeakAndWait(Expr),
-    PenDown,
-    PenUp,
-    PenClear,
-    PenSetSize(Expr),
-    PenSetColor(Expr),
-    PenStamp,
-    PenSetColorParam {
-        param: PenColorParam,
-        value: Expr,
-    },
-    EventBroadcast {
-        message: Expr,
-        wait: bool,
-    },
-    ProcedureCall {
-        procedure_index: usize,
-        args: Vec<Expr>,
-    },
-    ProcedureReturn {
-        value: Expr,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum SayExpr {
-    Text(String),
-    Numeric(Expr),
-}
-
-#[derive(Debug, Clone)]
-pub enum MathOp {
-    Abs,
-    Floor,
-    Ceil,
-    Sqrt,
-    Sin,
-    Cos,
-    Tan,
-    Asin,
-    Acos,
-    Atan,
-    Ln,
-    Log,
-    Exp,
-    Exp10,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum SensingCurrentMenu {
-    Year,
-    Month,
-    Date,
-    DayOfWeek,
-    Hour,
-    Minute,
-    Second,
-}
-
-#[derive(Debug, Clone)]
-pub enum Expr {
-    Number(f64),
-    StringLiteral(usize),
-    MotionXPosition,
-    MotionYPosition,
-    SensingMouseX,
-    SensingMouseY,
-    SensingMouseDown,
-    LooksCostumeNumber,
-    LooksCostumeName,
-    SensingOf {
-        object: Box<Expr>,
-        property: usize,
-    },
-    SensingCurrent(SensingCurrentMenu),
-    Variable(usize),
-    ProcedureArg(usize),
-    ProcedureCall {
-        procedure_index: usize,
-        args: Vec<Expr>,
-    },
-    Add(Box<Expr>, Box<Expr>),
-    Subtract(Box<Expr>, Box<Expr>),
-    Multiply(Box<Expr>, Box<Expr>),
-    Divide(Box<Expr>, Box<Expr>),
-    Mod(Box<Expr>, Box<Expr>),
-    GreaterThan(Box<Expr>, Box<Expr>),
-    LessThan(Box<Expr>, Box<Expr>),
-    Equals(Box<Expr>, Box<Expr>),
-    Random(Box<Expr>, Box<Expr>),
-    And(Box<Expr>, Box<Expr>),
-    Or(Box<Expr>, Box<Expr>),
-    Not(Box<Expr>),
-    StringLength(Box<Expr>),
-    StringJoin(Box<Expr>, Box<Expr>),
-    StringContains(Box<Expr>, Box<Expr>),
-    Round(Box<Expr>),
-    LetterOf {
-        letter: Box<Expr>,
-        string: Box<Expr>,
-    },
-    ListItem {
-        list_index: usize,
-        index: Box<Expr>,
-    },
-    ListItemNum {
-        list_index: usize,
-        item: Box<Expr>,
-    },
-    ListLength {
-        list_index: usize,
-    },
-    ListContainsItem {
-        list_index: usize,
-        item: Box<Expr>,
-    },
-    KeyPressed(Box<Expr>),
-    SensingAnswer,
-    SensingTimer,
-    SensingDaysSince2000,
-    SensingTouchingObject(Box<Expr>),
-    SensingTouchingColor(Box<Expr>),
-    MathOp {
-        op: MathOp,
-        value: Box<Expr>,
-    },
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ProcedureDefSite {
     procedure_index: usize,
     target_index: usize,
@@ -462,7 +115,7 @@ impl<'a> ProgramBuilder<'a> {
                 if self.variable_index.contains_key(var_id) {
                     continue;
                 }
-                let (name, initial_value) = parse_variable(raw);
+                let (name, initial_value) = self.parse_variable(raw);
                 let index = self.variables.len();
                 self.variables.push(VariableDef {
                     id: var_id.clone(),
@@ -1589,20 +1242,43 @@ impl<'a> ProgramBuilder<'a> {
             .map(|items| {
                 items
                     .iter()
-                    .map(|item| match item {
-                        Value::String(text) => {
-                            if text.trim().parse::<f64>().is_ok() {
-                                ScalarValue::Number(cast_to_number(item))
-                            } else {
-                                ScalarValue::String(self.intern_string(text))
-                            }
-                        }
-                        _ => ScalarValue::Number(cast_to_number(item)),
-                    })
+                    .map(|item| self.parse_initial_scalar(item))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
         (name, initial_values)
+    }
+
+    fn parse_variable(&mut self, raw: &Value) -> (String, ScalarValue) {
+        let Some(array) = raw.as_array() else {
+            return (
+                "variable".to_string(),
+                self.default_variable_initial_value(),
+            );
+        };
+        let name = array
+            .first()
+            .and_then(Value::as_str)
+            .unwrap_or("variable")
+            .to_string();
+        let initial_value = if let Some(value) = array.get(1) {
+            self.parse_initial_scalar(value)
+        } else {
+            self.default_variable_initial_value()
+        };
+        (name, initial_value)
+    }
+
+    fn parse_initial_scalar(&mut self, value: &Value) -> ScalarValue {
+        let text = match value {
+            Value::String(text) => text.clone(),
+            _ => cast_to_number(value).to_string(),
+        };
+        ScalarValue::String(self.intern_string(&text))
+    }
+
+    fn default_variable_initial_value(&mut self) -> ScalarValue {
+        ScalarValue::String(self.intern_string("0"))
     }
 
     fn intern_string(&mut self, text: &str) -> usize {
@@ -1773,19 +1449,6 @@ fn sanitize_symbol(input: &str) -> String {
     }
 }
 
-fn parse_variable(raw: &Value) -> (String, f64) {
-    if let Some(array) = raw.as_array() {
-        let name = array
-            .first()
-            .and_then(Value::as_str)
-            .unwrap_or("variable")
-            .to_string();
-        let initial = array.get(1).map(cast_to_number).unwrap_or(0.0);
-        return (name, initial);
-    }
-    ("variable".to_string(), 0.0)
-}
-
 fn field_as_string(block: &Block, field_name: &str) -> String {
     block
         .fields
@@ -1873,5 +1536,131 @@ fn cast_to_number(value: &Value) -> f64 {
             }
         }
         Value::Null => 0.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn variable_initial_non_numeric_string_is_preserved() {
+        let project: Project = serde_json::from_value(json!({
+            "targets": [
+                {
+                    "name": "Stage",
+                    "variables": {
+                        "var1": ["greeting", "hello world"]
+                    }
+                }
+            ]
+        }))
+        .expect("valid minimal project");
+
+        let program = lower_project(&project);
+        assert_eq!(program.variables.len(), 1);
+
+        match program.variables[0].initial_value {
+            ScalarValue::String(index) => {
+                assert_eq!(
+                    program.strings.get(index).map(String::as_str),
+                    Some("hello world")
+                )
+            }
+            ScalarValue::Number(number) => {
+                panic!("expected string-backed variable initial value, got number {number}")
+            }
+        }
+    }
+
+    #[test]
+    fn variable_initial_numeric_string_is_preserved_as_string() {
+        let project: Project = serde_json::from_value(json!({
+            "targets": [
+                {
+                    "name": "Stage",
+                    "variables": {
+                        "var1": ["count", "123.5"]
+                    }
+                }
+            ]
+        }))
+        .expect("valid minimal project");
+
+        let program = lower_project(&project);
+        assert_eq!(program.variables.len(), 1);
+        match program.variables[0].initial_value {
+            ScalarValue::String(index) => {
+                assert_eq!(
+                    program.strings.get(index).map(String::as_str),
+                    Some("123.5")
+                )
+            }
+            ScalarValue::Number(number) => {
+                panic!("expected string-backed numeric initial value, got number {number}")
+            }
+        }
+    }
+
+    #[test]
+    fn variable_initial_numeric_value_is_string_backed() {
+        let project: Project = serde_json::from_value(json!({
+            "targets": [
+                {
+                    "name": "Stage",
+                    "variables": {
+                        "var1": ["count", 456]
+                    }
+                }
+            ]
+        }))
+        .expect("valid minimal project");
+
+        let program = lower_project(&project);
+        assert_eq!(program.variables.len(), 1);
+        match program.variables[0].initial_value {
+            ScalarValue::String(index) => {
+                assert_eq!(program.strings.get(index).map(String::as_str), Some("456"))
+            }
+            ScalarValue::Number(number) => {
+                panic!("expected string-backed numeric initial value, got number {number}")
+            }
+        }
+    }
+
+    #[test]
+    fn list_initial_values_are_string_backed() {
+        let project: Project = serde_json::from_value(json!({
+            "targets": [
+                {
+                    "name": "Stage",
+                    "lists": {
+                        "list1": ["items", [1, "2", "003"]]
+                    }
+                }
+            ]
+        }))
+        .expect("valid minimal project");
+
+        let program = lower_project(&project);
+        assert_eq!(program.lists.len(), 1);
+        let list = &program.lists[0];
+        assert_eq!(list.initial_values.len(), 3);
+
+        let expected = ["1", "2", "003"];
+        for (idx, value) in list.initial_values.iter().enumerate() {
+            match value {
+                ScalarValue::String(index) => {
+                    assert_eq!(
+                        program.strings.get(*index).map(String::as_str),
+                        Some(expected[idx])
+                    );
+                }
+                ScalarValue::Number(number) => {
+                    panic!("expected string-backed list item at {idx}, got number {number}")
+                }
+            }
+        }
     }
 }

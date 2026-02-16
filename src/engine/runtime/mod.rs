@@ -3,7 +3,7 @@ use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -12,8 +12,8 @@ mod externs;
 pub use externs::*;
 
 // Re-export constants for public API
-pub use crate::constants::{STAGE_HEIGHT, STAGE_WIDTH};
 use crate::constants::ENV_SCRATCH_PEN_LOG;
+pub use crate::constants::{STAGE_HEIGHT, STAGE_WIDTH};
 
 /// Function pointer type for JIT-compiled Scratch script entry points.
 pub type ScriptEntry = unsafe extern "C" fn(*mut RuntimeState);
@@ -127,6 +127,8 @@ pub struct Fiber {
     /// a `run_script` call for a different actor (e.g. during
     /// broadcast-and-wait handler execution).
     current_actor_id: u64,
+    /// Depth of active warp procedure calls for this fiber.
+    warp_depth: u32,
     wait_group_id: Option<u64>,
     control: Arc<FiberControl>,
     handle: Option<thread::JoinHandle<()>>,
@@ -167,6 +169,7 @@ impl Fiber {
             script_id,
             actor_id,
             current_actor_id: actor_id,
+            warp_depth: 0,
             wait_group_id,
             control,
             handle: Some(handle),
@@ -184,13 +187,15 @@ impl Fiber {
     }
 }
 const EMPTY_STRING_ID: usize = 0;
-const STRING_TAG_MASK: u64 = 0x7fff_0000_0000_0000;
-const STRING_TAG_BITS: u64 = 0x7ff9_0000_0000_0000;
+pub const STRING_TAG_MASK: u64 = 0x7fff_0000_0000_0000;
+pub const STRING_TAG_BITS: u64 = 0x7ff9_0000_0000_0000;
 const STRING_PAYLOAD_MASK: u64 = 0x0000_ffff_ffff_ffff;
 const DEFAULT_LIVE_CANVAS_SYNC_INTERVAL: Duration = Duration::from_millis(16);
 const FRAME_SLEEP_COARSE_MARGIN: Duration = Duration::from_micros(800);
 // scratch-vm Sequencer uses WORK_TIME = currentStepTime * 0.75.
 const SCRATCH_VM_WORK_TIME_RATIO: f64 = 0.75;
+// scratch-vm Sequencer uses WARP_TIME = 500ms.
+const SCRATCH_VM_WARP_TIME: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone)]
 pub struct InputState {
@@ -320,11 +325,13 @@ impl Default for TargetInitialVisualState {
     }
 }
 
+#[inline(always)]
 pub fn encode_string_id(index: usize) -> f64 {
     let payload = (index as u64).saturating_add(1) & STRING_PAYLOAD_MASK;
     f64::from_bits(STRING_TAG_BITS | payload)
 }
 
+#[inline(always)]
 pub fn decode_string_id(value: f64) -> Option<usize> {
     let bits = value.to_bits();
     if (bits & STRING_TAG_MASK) != STRING_TAG_BITS {
@@ -336,6 +343,53 @@ pub fn decode_string_id(value: f64) -> Option<usize> {
     } else {
         Some((payload - 1) as usize)
     }
+}
+
+/// Fast check whether an f64 value carries a NaN-boxed string tag.
+/// This is the hot-path guard for arithmetic: if false, the value is a
+/// plain IEEE-754 number and can be used directly.
+#[inline(always)]
+pub fn is_string_tagged(value: f64) -> bool {
+    (value.to_bits() & STRING_TAG_MASK) == STRING_TAG_BITS
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PenRenderMode {
+    CpuRealtime,
+    GpuBatch,
+}
+
+impl PenRenderMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PenRenderMode::CpuRealtime => "cpu",
+            PenRenderMode::GpuBatch => "gpu-batch",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PenStrokeStyle {
+    pub color: [u8; 3],
+    pub alpha: f32,
+    pub size: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PenBatchCommand {
+    Clear,
+    Line {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        style: PenStrokeStyle,
+    },
+    Disc {
+        x: f32,
+        y: f32,
+        style: PenStrokeStyle,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -383,6 +437,7 @@ pub struct RuntimeState {
     pub remaining_steps: u64,
     step_budget: u64,
     relax_procedure_loop_budget: bool,
+    pub warp_depth: u32,
     answer_value: f64,
     timer_start: Instant,
     strings: Vec<String>,
@@ -390,16 +445,23 @@ pub struct RuntimeState {
     canvas_width: usize,
     canvas_height: usize,
     pen_rgba: Vec<u8>,
+    pen_render_mode: PenRenderMode,
+    pending_pen_batch: Vec<PenBatchCommand>,
     canvas_rgb: Vec<u8>,
     target_render_data: Vec<TargetRenderData>,
     target_initial_visuals: Vec<TargetInitialVisualState>,
     live_canvas: Option<Arc<Mutex<Vec<u8>>>>,
+    live_pen_layer: Option<Arc<Mutex<Vec<u8>>>>,
+    live_pen_batch: Option<Arc<Mutex<Vec<PenBatchCommand>>>>,
+    pen_batch_sent_count: usize,
     live_canvas_dirty: bool,
     live_canvas_last_sync: Instant,
     live_canvas_sync_interval: Duration,
+    live_canvas_generation: Option<Arc<AtomicU64>>,
     input_state: Option<Arc<Mutex<InputState>>>,
     ask_prompt_state: Option<Arc<AskPromptState>>,
     stop_requested: Option<Arc<AtomicBool>>,
+    dump_vars_requested: Option<Arc<AtomicBool>>,
     frame_duration: Option<Duration>,
     next_frame_deadline: Option<Instant>,
     current_tick_started_at: Option<Instant>,
@@ -431,10 +493,107 @@ pub struct RuntimeState {
     trace_broadcasts: bool,
     debug_mode: bool,
     break_on_messages: HashSet<String>,
-    pen_log_file: Option<File>,
 }
 
 impl RuntimeState {
+    #[inline(always)]
+    fn div_round_u32(value: u32, divisor: u32) -> u32 {
+        (value + (divisor / 2)) / divisor
+    }
+
+    #[inline(always)]
+    fn blend_unpremultiplied_rgba_pixel(
+        pixels: &mut [u8],
+        offset: usize,
+        src_r: u8,
+        src_g: u8,
+        src_b: u8,
+        src_alpha: u8,
+    ) {
+        let src_alpha_u32 = src_alpha as u32;
+        if src_alpha_u32 == 0 {
+            return;
+        }
+        if src_alpha_u32 >= 255 {
+            pixels[offset] = src_r;
+            pixels[offset + 1] = src_g;
+            pixels[offset + 2] = src_b;
+            pixels[offset + 3] = 255;
+            return;
+        }
+
+        let dst_alpha = pixels[offset + 3] as u32;
+        let inv_src_alpha = 255u32 - src_alpha_u32;
+
+        let out_alpha = src_alpha_u32 + Self::div_round_u32(dst_alpha * inv_src_alpha, 255);
+        if out_alpha == 0 {
+            return;
+        }
+
+        let out_r_premul = (src_r as u32) * src_alpha_u32
+            + Self::div_round_u32((pixels[offset] as u32) * dst_alpha * inv_src_alpha, 255);
+        let out_g_premul = (src_g as u32) * src_alpha_u32
+            + Self::div_round_u32((pixels[offset + 1] as u32) * dst_alpha * inv_src_alpha, 255);
+        let out_b_premul = (src_b as u32) * src_alpha_u32
+            + Self::div_round_u32((pixels[offset + 2] as u32) * dst_alpha * inv_src_alpha, 255);
+
+        pixels[offset] = Self::div_round_u32(out_r_premul * 255, out_alpha).min(255) as u8;
+        pixels[offset + 1] = Self::div_round_u32(out_g_premul * 255, out_alpha).min(255) as u8;
+        pixels[offset + 2] = Self::div_round_u32(out_b_premul * 255, out_alpha).min(255) as u8;
+        pixels[offset + 3] = out_alpha.min(255) as u8;
+    }
+
+    #[inline(always)]
+    fn pen_brush_shape_for_size(&self, pen_size: f64) -> (i32, f64) {
+        let canvas_scale = (self.canvas_width as f64) / (STAGE_WIDTH as f64);
+        let scaled_pen_size = pen_size.max(1.0) * canvas_scale.max(1.0);
+        let radius = ((scaled_pen_size - 1.0) / 2.0).max(0.0);
+        let extent = radius.ceil() as i32;
+        (extent, radius * radius)
+    }
+
+    #[inline(always)]
+    fn current_pen_style(&self) -> PenStrokeStyle {
+        PenStrokeStyle {
+            color: self.pen_color,
+            alpha: self.pen_alpha.clamp(0.0, 1.0) as f32,
+            size: self.pen_size.max(1.0) as f32,
+        }
+    }
+
+    fn push_pen_batch_command(&mut self, command: PenBatchCommand) {
+        self.pending_pen_batch.push(command);
+        self.live_canvas_dirty = true;
+    }
+
+    fn rasterize_pen_batch_for_cpu_output(&mut self) {
+        if self.pen_render_mode != PenRenderMode::GpuBatch {
+            return;
+        }
+        self.pen_rgba.fill(0);
+        let mut commands = Vec::new();
+        commands.extend_from_slice(&self.pending_pen_batch);
+        for command in commands {
+            self.apply_pen_batch_command_cpu(command);
+        }
+    }
+
+    fn apply_pen_batch_command_cpu(&mut self, command: PenBatchCommand) {
+        match command {
+            PenBatchCommand::Clear => self.pen_rgba.fill(0),
+            PenBatchCommand::Line {
+                x0,
+                y0,
+                x1,
+                y1,
+                style,
+            } => self.draw_line_with_style_cpu(x0 as f64, y0 as f64, x1 as f64, y1 as f64, style),
+            PenBatchCommand::Disc { x, y, style } => {
+                self.draw_disc_with_style_cpu(x as f64, y as f64, style)
+            }
+        }
+    }
+
     fn sleep_until(deadline: Instant) {
         loop {
             let now = Instant::now();
@@ -482,16 +641,18 @@ impl RuntimeState {
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .and_then(|path| match OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&path)
-            {
-                Ok(file) => Some(file),
-                Err(error) => {
-                    eprintln!("warning: failed to open pen log file '{}': {error}", path);
-                    None
+            .and_then(|path| {
+                match OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&path)
+                {
+                    Ok(file) => Some(file),
+                    Err(error) => {
+                        eprintln!("warning: failed to open pen log file '{}': {error}", path);
+                        None
+                    }
                 }
             });
 
@@ -515,6 +676,7 @@ impl RuntimeState {
             remaining_steps: step_budget,
             step_budget,
             relax_procedure_loop_budget: false,
+            warp_depth: 0,
             answer_value: encode_string_id(EMPTY_STRING_ID),
             timer_start: Instant::now(),
             strings,
@@ -522,16 +684,23 @@ impl RuntimeState {
             canvas_width: STAGE_WIDTH,
             canvas_height: STAGE_HEIGHT,
             pen_rgba: vec![0; STAGE_WIDTH * STAGE_HEIGHT * 4],
+            pen_render_mode: PenRenderMode::CpuRealtime,
+            pending_pen_batch: Vec::new(),
             canvas_rgb: vec![255; STAGE_WIDTH * STAGE_HEIGHT * 3],
             target_render_data: Vec::new(),
             target_initial_visuals: Vec::new(),
             live_canvas: None,
+            live_pen_layer: None,
+            live_pen_batch: None,
+            pen_batch_sent_count: 0,
             live_canvas_dirty: false,
             live_canvas_last_sync: Instant::now(),
             live_canvas_sync_interval: DEFAULT_LIVE_CANVAS_SYNC_INTERVAL,
+            live_canvas_generation: None,
             input_state: None,
             ask_prompt_state: None,
             stop_requested: None,
+            dump_vars_requested: None,
             frame_duration: None,
             next_frame_deadline: None,
             current_tick_started_at: None,
@@ -561,7 +730,6 @@ impl RuntimeState {
             trace_broadcasts,
             debug_mode,
             break_on_messages,
-            pen_log_file,
         }
     }
 
@@ -682,9 +850,12 @@ impl RuntimeState {
 
         let previous_actor = self.active_actor_id;
         let previous_snapshot = self.capture_runtime_snapshot_for_active_actor();
+        let previous_warp_depth = self.warp_depth;
 
         self.active_actor_id = actor_id;
         self.load_actor_from_snapshot(actor_snapshot);
+        // Script invocations have independent warp state.
+        self.warp_depth = 0;
 
         let state_ptr = self as *mut RuntimeState;
         unsafe {
@@ -692,6 +863,7 @@ impl RuntimeState {
         }
 
         self.persist_runtime_into_actor(actor_id);
+        self.warp_depth = previous_warp_depth;
 
         if let Some(snapshot) = previous_snapshot {
             self.active_actor_id = previous_actor;
@@ -964,6 +1136,7 @@ impl RuntimeState {
     }
 
     pub fn write_canvas_ppm<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        self.rasterize_pen_batch_for_cpu_output();
         self.compose_canvas_rgb();
         let mut file = File::create(path)?;
         write!(
@@ -983,6 +1156,11 @@ impl RuntimeState {
         self.live_canvas_dirty = true;
     }
 
+    pub fn set_pen_render_mode(&mut self, mode: PenRenderMode) {
+        self.pen_render_mode = mode;
+        self.live_canvas_dirty = true;
+    }
+
     pub fn canvas_dimensions(&self) -> (usize, usize) {
         (self.canvas_width, self.canvas_height)
     }
@@ -991,10 +1169,34 @@ impl RuntimeState {
         self.canvas_rgb.clone()
     }
 
+    pub fn pen_rgba_copy(&self) -> Vec<u8> {
+        self.pen_rgba.clone()
+    }
+
+    pub fn pen_batch_copy(&self) -> Vec<PenBatchCommand> {
+        self.pending_pen_batch.clone()
+    }
+
     pub fn attach_live_canvas(&mut self, live_canvas: Arc<Mutex<Vec<u8>>>) {
         self.live_canvas = Some(live_canvas);
         self.live_canvas_dirty = true;
         self.sync_live_canvas_if_due(true);
+    }
+
+    pub fn attach_live_pen_layer(&mut self, live_pen_layer: Arc<Mutex<Vec<u8>>>) {
+        self.live_pen_layer = Some(live_pen_layer);
+        self.live_canvas_dirty = true;
+        self.sync_live_canvas_if_due(true);
+    }
+
+    pub fn attach_live_pen_batch(&mut self, live_pen_batch: Arc<Mutex<Vec<PenBatchCommand>>>) {
+        self.live_pen_batch = Some(live_pen_batch);
+        self.live_canvas_dirty = true;
+        self.sync_live_canvas_if_due(true);
+    }
+
+    pub fn attach_live_canvas_generation(&mut self, generation: Arc<AtomicU64>) {
+        self.live_canvas_generation = Some(generation);
     }
 
     pub fn attach_stop_flag(&mut self, stop_requested: Arc<AtomicBool>) {
@@ -1007,6 +1209,21 @@ impl RuntimeState {
 
     pub fn attach_ask_prompt_state(&mut self, ask_prompt_state: Arc<AskPromptState>) {
         self.ask_prompt_state = Some(ask_prompt_state);
+    }
+
+    pub fn attach_dump_vars_flag(&mut self, dump_vars_requested: Arc<AtomicBool>) {
+        self.dump_vars_requested = Some(dump_vars_requested);
+    }
+
+    pub fn dump_variables(&self) {
+        eprintln!("\n=== Variable Dump ===");
+        for (i, name) in self.variable_names.iter().enumerate() {
+            if i < self.variables.len() {
+                let value = self.variables[i];
+                eprintln!("  {} = {}", name, self.debug_value(value));
+            }
+        }
+        eprintln!("=====================\n");
     }
 
     pub fn set_debug_mode(&mut self, enabled: bool) {
@@ -1126,33 +1343,7 @@ impl RuntimeState {
         }
     }
 
-    fn log_pen_block_event(&mut self, block: &str, details: &str) {
-        let actor_label = self.actor_label(self.active_actor_id);
-        let x = self.sprite_x;
-        let y = self.sprite_y;
-        let direction = self.direction_deg;
-        let pen_down = self.pen_down;
-        let pen_size = self.pen_size;
-        let pen_alpha = self.pen_alpha;
-        let [r, g, b] = self.pen_color;
-
-        let Some(file) = self.pen_log_file.as_mut() else {
-            return;
-        };
-
-        if details.is_empty() {
-            let _ = writeln!(
-                file,
-                "block={block} actor={actor_label} x={x:.3} y={y:.3} dir={direction:.3} pen_down={pen_down} size={pen_size:.3} color=#{r:02x}{g:02x}{b:02x} alpha={pen_alpha:.3}"
-            );
-        } else {
-            let _ = writeln!(
-                file,
-                "block={block} actor={actor_label} x={x:.3} y={y:.3} dir={direction:.3} pen_down={pen_down} size={pen_size:.3} color=#{r:02x}{g:02x}{b:02x} alpha={pen_alpha:.3} {details}"
-            );
-        }
-    }
-
+    #[inline(always)]
     fn intern_string(&mut self, text: &str) -> usize {
         if let Some(index) = self.string_index.get(text).copied() {
             return index;
@@ -1163,79 +1354,154 @@ impl RuntimeState {
         index
     }
 
+    #[inline(always)]
     fn value_as_string(&self, value: f64) -> String {
-        if let Some(index) = decode_string_id(value) {
-            return self.strings.get(index).cloned().unwrap_or_default();
+        if !is_string_tagged(value) {
+            if !value.is_finite() {
+                return String::new();
+            }
+            return value.to_string();
         }
-        if !value.is_finite() {
+        let payload = value.to_bits() & STRING_PAYLOAD_MASK;
+        if payload == 0 {
             return String::new();
         }
-        value.to_string()
+        let index = (payload - 1) as usize;
+        self.strings.get(index).cloned().unwrap_or_default()
     }
 
+    #[inline(always)]
     fn value_to_number(&self, value: f64) -> f64 {
-        if let Some(index) = decode_string_id(value) {
-            return self
-                .strings
-                .get(index)
-                .map(|text| text.trim().parse::<f64>().unwrap_or(0.0))
-                .unwrap_or(0.0);
+        // Fast path: if the value is not a NaN-boxed string, return directly.
+        // This avoids the full decode_string_id bit-manipulation for the
+        // overwhelmingly common case of a plain IEEE-754 number.
+        if !is_string_tagged(value) {
+            return value;
         }
-        value
+        self.value_to_number_slow(value)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn value_to_number_slow(&self, value: f64) -> f64 {
+        let payload = value.to_bits() & STRING_PAYLOAD_MASK;
+        if payload == 0 {
+            return 0.0;
+        }
+        let index = (payload - 1) as usize;
+        self.strings
+            .get(index)
+            .map(|text| text.trim().parse::<f64>().unwrap_or(0.0))
+            .unwrap_or(0.0)
     }
 
     fn parse_scratch_number_for_compare(&self, text: &str) -> Option<f64> {
-        let parsed = if text.trim().is_empty() {
-            Some(0.0)
-        } else {
-            text.trim().parse::<f64>().ok()
-        };
+        // Scratch comparison number parsing, matching the official VM's
+        // `Cast.compare` + `isNotActuallyZero` behaviour:
+        //
+        // 1. Try to parse the string as a number.
+        // 2. If the result is 0.0, apply `isNotActuallyZero`: if the original
+        //    text does NOT contain '0' (0x30) or '\t' (0x09), treat the value
+        //    as non-numeric (→ fall back to string comparison).
+        //
+        // Empty / whitespace-only strings are handled here too:
+        //   - ""  → Rust parse fails; contains neither '0' nor '\t' → None
+        //   - "\t"→ Rust parse fails; but contains '\t' → Some(0.0)
 
-        match parsed {
-            Some(0.0) if string_is_not_actually_zero(text) => None,
-            Some(number) if number.is_nan() => None,
-            value => value,
-        }
-    }
+        let trimmed = text.trim();
 
-    fn value_to_number_for_compare(&self, value: f64) -> Option<f64> {
-        if let Some(index) = decode_string_id(value) {
-            return self
-                .strings
-                .get(index)
-                .and_then(|text| self.parse_scratch_number_for_compare(text));
-        }
-        if value.is_nan() { None } else { Some(value) }
-    }
-
-    fn compare_values(&self, left: f64, right: f64) -> i8 {
-        let left_numeric = self.value_to_number_for_compare(left);
-        let right_numeric = self.value_to_number_for_compare(right);
-
-        if let (Some(left_number), Some(right_number)) = (left_numeric, right_numeric) {
-            if (left_number == f64::INFINITY && right_number == f64::INFINITY)
-                || (left_number == f64::NEG_INFINITY && right_number == f64::NEG_INFINITY)
-            {
-                return 0;
-            }
-            return if left_number < right_number {
-                -1
-            } else if left_number > right_number {
-                1
+        if trimmed.is_empty() {
+            // JavaScript: Number("") === 0 and Number("\t") === 0.
+            // Check whether the *original* text is "actually zero".
+            return if text.bytes().any(|b| b == b'0' || b == b'\t') {
+                Some(0.0)
             } else {
-                0
+                None
             };
         }
 
-        let left_text = self.value_as_string(left).to_lowercase();
-        let right_text = self.value_as_string(right).to_lowercase();
+        match trimmed.parse::<f64>() {
+            Ok(num) if num == 0.0 => {
+                // Parsed to zero – apply isNotActuallyZero on original text.
+                if text.bytes().any(|b| b == b'0' || b == b'\t') {
+                    Some(0.0)
+                } else {
+                    None
+                }
+            }
+            Ok(num) if num.is_finite() => Some(num),
+            _ => None,
+        }
+    }
 
-        if left_text < right_text {
-            -1
-        } else if left_text > right_text {
-            1
-        } else {
-            0
+    #[inline(always)]
+    fn value_to_number_for_compare(&self, value: f64) -> Option<f64> {
+        if !is_string_tagged(value) {
+            return if value.is_nan() { None } else { Some(value) };
+        }
+        let payload = value.to_bits() & STRING_PAYLOAD_MASK;
+        if payload == 0 {
+            return None;
+        }
+        let index = (payload - 1) as usize;
+        self.strings
+            .get(index)
+            .and_then(|text| self.parse_scratch_number_for_compare(text))
+    }
+
+    #[inline(always)]
+    fn compare_values(&self, left: f64, right: f64) -> i8 {
+        // Fast path: both are plain numbers (not NaN-boxed strings)
+        if !is_string_tagged(left) && !is_string_tagged(right) {
+            // Both are raw f64 — compare directly (NaN handled by Scratch rules)
+            if left.is_nan() || right.is_nan() {
+                // Fall through to slow path for NaN edge cases
+            } else {
+                return if left == right {
+                    0
+                } else if left < right {
+                    -1
+                } else {
+                    1
+                };
+            }
+        }
+        self.compare_values_slow(left, right)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn compare_values_slow(&self, left: f64, right: f64) -> i8 {
+        // Scratch comparison follows the official VM's Cast.compare() rules:
+        // 1. Try to interpret both values as numbers (with isNotActuallyZero).
+        // 2. If both succeed → numeric comparison.
+        // 3. Otherwise → case-insensitive string comparison.
+
+        let left_as_number = self.value_to_number_for_compare(left);
+        let right_as_number = self.value_to_number_for_compare(right);
+
+        match (left_as_number, right_as_number) {
+            (Some(l), Some(r)) => {
+                if l == r {
+                    0
+                } else if l < r {
+                    -1
+                } else {
+                    1
+                }
+            }
+            _ => {
+                let left_str = self.value_as_string(left).to_lowercase();
+                let right_str = self.value_as_string(right).to_lowercase();
+
+                if left_str == right_str {
+                    0
+                } else if left_str < right_str {
+                    -1
+                } else {
+                    1
+                }
+            }
         }
     }
 
@@ -1245,6 +1511,9 @@ impl RuntimeState {
 
     fn clear_canvas(&mut self) {
         self.pen_rgba.fill(0);
+        self.pending_pen_batch.clear();
+        self.pending_pen_batch.push(PenBatchCommand::Clear);
+        self.pen_batch_sent_count = 0;
         self.live_canvas_dirty = true;
     }
 
@@ -1275,7 +1544,13 @@ impl RuntimeState {
     }
 
     fn sync_live_canvas(&mut self) {
-        self.compose_canvas_rgb();
+        let use_split_pen_layers = self.live_pen_layer.is_some() || self.live_pen_batch.is_some();
+        if use_split_pen_layers {
+            self.compose_canvas_rgb_without_pen();
+        } else {
+            self.rasterize_pen_batch_for_cpu_output();
+            self.compose_canvas_rgb();
+        }
         let Some(live_canvas) = &self.live_canvas else {
             return;
         };
@@ -1286,6 +1561,36 @@ impl RuntimeState {
             *guard = vec![255; self.canvas_rgb.len()];
         }
         guard.copy_from_slice(&self.canvas_rgb);
+        drop(guard);
+
+        if use_split_pen_layers {
+            if let Some(live_pen_layer) = &self.live_pen_layer {
+                if let Ok(mut pen_guard) = live_pen_layer.lock() {
+                    if pen_guard.len() != self.pen_rgba.len() {
+                        *pen_guard = vec![0; self.pen_rgba.len()];
+                    }
+                    pen_guard.copy_from_slice(&self.pen_rgba);
+                }
+            }
+        }
+
+        if let Some(live_pen_batch) = &self.live_pen_batch {
+            if let Ok(mut batch_guard) = live_pen_batch.lock() {
+                if self.pen_batch_sent_count > self.pending_pen_batch.len() {
+                    batch_guard.clear();
+                    self.pen_batch_sent_count = 0;
+                }
+                if self.pen_batch_sent_count < self.pending_pen_batch.len() {
+                    batch_guard
+                        .extend_from_slice(&self.pending_pen_batch[self.pen_batch_sent_count..]);
+                    self.pen_batch_sent_count = self.pending_pen_batch.len();
+                }
+            }
+        }
+
+        if let Some(generation) = &self.live_canvas_generation {
+            generation.fetch_add(1, Ordering::Release);
+        }
     }
 
     fn wait_for_next_frame(&mut self) {
@@ -1333,11 +1638,22 @@ impl RuntimeState {
         let Some(frame_duration) = self.frame_duration else {
             return false;
         };
-        let now = Instant::now();
-        let tick_started_at = *self.current_tick_started_at.get_or_insert(now);
         let work_time =
             Duration::from_secs_f64(frame_duration.as_secs_f64() * SCRATCH_VM_WORK_TIME_RATIO);
-        now.duration_since(tick_started_at) >= work_time
+        self.should_yield_for_time_slice(work_time)
+    }
+
+    fn should_yield_for_warp_time(&mut self) -> bool {
+        self.should_yield_for_time_slice(SCRATCH_VM_WARP_TIME)
+    }
+
+    fn should_yield_for_time_slice(&mut self, slice: Duration) -> bool {
+        let Some(_) = self.frame_duration else {
+            return false;
+        };
+        let now = Instant::now();
+        let tick_started_at = *self.current_tick_started_at.get_or_insert(now);
+        now.duration_since(tick_started_at) >= slice
     }
 
     fn note_paced_loop_guard(&mut self) -> bool {
@@ -1353,7 +1669,7 @@ impl RuntimeState {
             return;
         };
         let now = Instant::now();
-        let tick_started_at = *self.current_tick_started_at.get_or_insert(now);
+        let tick_started_at = self.current_tick_started_at.unwrap_or(now);
         let deadline = self
             .next_frame_deadline
             .get_or_insert(tick_started_at + frame_duration);
@@ -1429,6 +1745,9 @@ impl RuntimeState {
 
         // Main tick loop.
         loop {
+            // Anchor this scheduler iteration to a stable tick start so both
+            // time-slice checks and frame pacing use the same origin.
+            self.current_tick_started_at = Some(Instant::now());
             let mut any_active = false;
 
             // --- step each active fiber one yield ---
@@ -1464,6 +1783,7 @@ impl RuntimeState {
                 if self.frame_duration.is_some() {
                     self.remaining_steps = self.step_budget;
                 }
+                self.warp_depth = fiber.warp_depth;
 
                 // Install the fiber's control so yield-points use it.
                 self.active_fiber_control = Some(Arc::clone(&fiber.control));
@@ -1480,6 +1800,7 @@ impl RuntimeState {
                 // fiber is mid-broadcast-and-wait handler execution).
                 self.persist_runtime_into_actor(self.active_actor_id);
                 fiber.current_actor_id = self.active_actor_id;
+                fiber.warp_depth = self.warp_depth;
                 self.active_fiber_control = None;
                 if matches!(result, FiberSyncState::Done) {
                     self.complete_wait_group_task(fiber.wait_group_id);
@@ -1532,7 +1853,7 @@ impl RuntimeState {
             }
 
             // --- per-tick housekeeping ---
-            self.sync_live_canvas_if_due(false);
+            self.sync_live_canvas_if_due(true);
             self.enqueue_key_pressed_scripts();
 
             // --- frame pacing (applied once per tick) ---
@@ -1553,85 +1874,216 @@ impl RuntimeState {
         self.flush_live_canvas();
     }
 
-    fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
-        if !x0.is_finite() || !y0.is_finite() || !x1.is_finite() || !y1.is_finite() {
-            return;
-        }
-        let dx = x1 - x0;
-        let dy = y1 - y0;
-        let steps = dx.abs().max(dy.abs()).ceil() as i32;
-        if steps <= 0 {
-            self.draw_disc(x0, y0);
-            return;
-        }
-        for step in 0..=steps {
-            let t = step as f64 / steps as f64;
-            let x = x0 + dx * t;
-            let y = y0 + dy * t;
-            self.draw_disc(x, y);
+    fn clamp01(&mut self, v: f64) -> f64 {
+        if v < 0.0 {
+            0.0
+        } else if v > 1.0 {
+            1.0
+        } else {
+            v
         }
     }
 
-    fn draw_disc(&mut self, x: f64, y: f64) {
-        if !x.is_finite() || !y.is_finite() {
+    // self.pixels: Vec<u8> (RGBA), canvas_width/height: i32 を想定
+    fn blend_pixel_coverage(
+        &mut self,
+        x: i32,
+        y: i32,
+        src: [u8; 3],
+        src_alpha: f64,
+        coverage: f64,
+    ) {
+        if x < 0 || y < 0 || x >= self.canvas_width as i32 || y >= self.canvas_height as i32 {
             return;
         }
-        let cx = scratch_to_pixel_x(x, self.canvas_width);
-        let cy = scratch_to_pixel_y(y, self.canvas_height);
-        let canvas_scale = (self.canvas_width as f64) / (STAGE_WIDTH as f64);
-        // Pen size is defined in stage-space units, so scale thickness with canvas resolution.
-        // Keep pen size 1 at a single pixel even after scaling.
-        let scaled_pen_size = self.pen_size.max(1.0) * canvas_scale.max(1.0);
-        let radius = ((scaled_pen_size - 1.0) / 2.0).max(0.0);
-        let extent = radius.ceil() as i32;
-        let radius_sq = radius * radius;
 
-        for oy in -extent..=extent {
-            for ox in -extent..=extent {
-                let distance_sq = (ox as f64) * (ox as f64) + (oy as f64) * (oy as f64);
-                if distance_sq > radius_sq {
+        let cov = self.clamp01(coverage);
+        if cov <= 0.0 {
+            return;
+        }
+
+        let idx = ((y as usize) * (self.canvas_width) + (x as usize)) * 4;
+
+        let sa = src_alpha * cov;
+        if sa <= 0.0 {
+            return;
+        }
+
+        let da = self.pen_rgba[idx + 3] as f64 / 255.0;
+
+        let sr = src[0] as f64 / 255.0;
+        let sg = src[1] as f64 / 255.0;
+        let sb = src[2] as f64 / 255.0;
+
+        let dr = self.pen_rgba[idx] as f64 / 255.0;
+        let dg = self.pen_rgba[idx + 1] as f64 / 255.0;
+        let db = self.pen_rgba[idx + 2] as f64 / 255.0;
+
+        let out_a = sa + da * (1.0 - sa);
+        if out_a <= 0.0 {
+            return;
+        }
+
+        let out_r = (sr * sa + dr * da * (1.0 - sa)) / out_a;
+        let out_g = (sg * sa + dg * da * (1.0 - sa)) / out_a;
+        let out_b = (sb * sa + db * da * (1.0 - sa)) / out_a;
+
+        self.pen_rgba[idx] = (out_r * 255.0).round().clamp(0.0, 255.0) as u8;
+        self.pen_rgba[idx + 1] = (out_g * 255.0).round().clamp(0.0, 255.0) as u8;
+        self.pen_rgba[idx + 2] = (out_b * 255.0).round().clamp(0.0, 255.0) as u8;
+        self.pen_rgba[idx + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+
+    fn draw_line_with_style_cpu(
+        &mut self,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        style: PenStrokeStyle,
+    ) {
+        if !x0.is_finite() || !y0.is_finite() || !x1.is_finite() || !y1.is_finite() {
+            return;
+        }
+
+        // 例: pen_brush_shapeから半径取得
+        let (_extent, radius_sq) = self.pen_brush_shape_for_size(style.size as f64);
+        let radius = radius_sq.sqrt();
+        if radius <= 0.0 {
+            let px = scratch_to_pixel_x(x0, self.canvas_width);
+            let py = scratch_to_pixel_y(y0, self.canvas_height);
+            self.blend_pixel_coverage(px, py, style.color, style.alpha as f64, 1.0);
+            return;
+        }
+
+        let x0p = scratch_to_pixel_x(x0, self.canvas_width) as f64;
+        let y0p = scratch_to_pixel_y(y0, self.canvas_height) as f64;
+        let x1p = scratch_to_pixel_x(x1, self.canvas_width) as f64;
+        let y1p = scratch_to_pixel_y(y1, self.canvas_height) as f64;
+
+        let min_x = ((x0p.min(x1p) - radius - 1.0).floor() as i32).max(0);
+        let max_x =
+            ((x0p.max(x1p) + radius + 1.0).ceil() as i32).min((self.canvas_width - 1) as i32);
+        let min_y = ((y0p.min(y1p) - radius - 1.0).floor() as i32).max(0);
+        let max_y =
+            ((y0p.max(y1p) + radius + 1.0).ceil() as i32).min((self.canvas_width - 1) as i32);
+
+        let vx = x1p - x0p;
+        let vy = y1p - y0p;
+        let len2 = vx * vx + vy * vy;
+
+        let inner = (radius - 0.5).max(0.0);
+        let outer = radius + 0.5;
+        let inner2 = inner * inner;
+        let outer2 = outer * outer;
+
+        for py in min_y..=max_y {
+            let cy = py as f64 + 0.5;
+            for px in min_x..=max_x {
+                let cx = px as f64 + 0.5;
+
+                let t = if len2 > 1e-12 {
+                    (((cx - x0p) * vx + (cy - y0p) * vy) / len2).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+
+                let nx = x0p + t * vx;
+                let ny = y0p + t * vy;
+                let dx = cx - nx;
+                let dy = cy - ny;
+                let d2 = dx * dx + dy * dy;
+
+                if d2 >= outer2 {
                     continue;
                 }
-                self.set_pixel(cx + ox, cy + oy, self.pen_color);
+
+                let coverage = if d2 <= inner2 {
+                    1.0
+                } else {
+                    let d = d2.sqrt();
+                    (radius + 0.5 - d).clamp(0.0, 1.0)
+                };
+
+                self.blend_pixel_coverage(px, py, style.color, style.alpha as f64, coverage);
             }
         }
     }
 
-    fn set_pixel(&mut self, x: i32, y: i32, rgb: [u8; 3]) {
-        if x < 0 || y < 0 {
-            return;
+    fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+        let style = self.current_pen_style();
+        match self.pen_render_mode {
+            PenRenderMode::CpuRealtime => self.draw_line_with_style_cpu(x0, y0, x1, y1, style),
+            PenRenderMode::GpuBatch => self.push_pen_batch_command(PenBatchCommand::Line {
+                x0: x0 as f32,
+                y0: y0 as f32,
+                x1: x1 as f32,
+                y1: y1 as f32,
+                style,
+            }),
         }
-        let x = x as usize;
-        let y = y as usize;
-        if x >= self.canvas_width || y >= self.canvas_height {
-            return;
-        }
-        let offset = (y * self.canvas_width + x) * 4;
-        let src_alpha = self.pen_alpha.clamp(0.0, 1.0);
-        if src_alpha <= 0.0 {
-            return;
-        }
-        let dst_alpha = (self.pen_rgba[offset + 3] as f64) / 255.0;
-        let out_alpha = src_alpha + dst_alpha * (1.0 - src_alpha);
-        if out_alpha <= 0.0 {
-            return;
-        }
+    }
 
-        let dst_r = (self.pen_rgba[offset] as f64) / 255.0;
-        let dst_g = (self.pen_rgba[offset + 1] as f64) / 255.0;
-        let dst_b = (self.pen_rgba[offset + 2] as f64) / 255.0;
-        let src_r = (rgb[0] as f64) / 255.0;
-        let src_g = (rgb[1] as f64) / 255.0;
-        let src_b = (rgb[2] as f64) / 255.0;
+    fn draw_disc_with_brush_cpu(
+        &mut self,
+        x: f64,
+        y: f64,
+        extent: i32,
+        radius_sq: f64,
+        style: PenStrokeStyle,
+    ) {
+        if !x.is_finite() || !y.is_finite() {
+            return;
+        }
+        let extent = extent as f64;
+        let center_x = scratch_to_pixel_x(x, self.canvas_width) as f64;
+        let center_y = scratch_to_pixel_y(y, self.canvas_height) as f64;
+        let radius = radius_sq.sqrt();
+        let min_x = ((center_x - radius - 1.0).floor() as i32).max(0);
+        let max_x = ((center_x + radius + 1.0).ceil() as i32).min((self.canvas_width - 1) as i32);
+        let min_y = ((center_y - radius - 1.0).floor() as i32).max(0);
+        let max_y = ((center_y + radius + 1.0).ceil() as i32).min((self.canvas_height - 1) as i32);
 
-        let out_r = (src_r * src_alpha + dst_r * dst_alpha * (1.0 - src_alpha)) / out_alpha;
-        let out_g = (src_g * src_alpha + dst_g * dst_alpha * (1.0 - src_alpha)) / out_alpha;
-        let out_b = (src_b * src_alpha + dst_b * dst_alpha * (1.0 - src_alpha)) / out_alpha;
+        for py in min_y..=max_y {
+            let cy = py as f64 + 0.5;
+            for px in min_x..=max_x {
+                let cx = px as f64 + 0.5;
+                let dx = cx - center_x;
+                let dy = cy - center_y;
+                let d2 = dx * dx + dy * dy;
 
-        self.pen_rgba[offset] = (out_r * 255.0).round().clamp(0.0, 255.0) as u8;
-        self.pen_rgba[offset + 1] = (out_g * 255.0).round().clamp(0.0, 255.0) as u8;
-        self.pen_rgba[offset + 2] = (out_b * 255.0).round().clamp(0.0, 255.0) as u8;
-        self.pen_rgba[offset + 3] = (out_alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+                if d2 >= radius_sq {
+                    continue;
+                }
+
+                let coverage = if extent > 1e-6 {
+                    (extent - (d2 / radius_sq)).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+
+                self.blend_pixel_coverage(px, py, style.color, style.alpha as f64, coverage);
+            }
+        }
+    }
+
+    fn draw_disc_with_style_cpu(&mut self, x: f64, y: f64, style: PenStrokeStyle) {
+        let (extent, radius_sq) = self.pen_brush_shape_for_size(style.size as f64);
+        self.draw_disc_with_brush_cpu(x, y, extent, radius_sq, style);
+    }
+
+    fn draw_disc(&mut self, x: f64, y: f64) {
+        let style = self.current_pen_style();
+        match self.pen_render_mode {
+            PenRenderMode::CpuRealtime => self.draw_disc_with_style_cpu(x, y, style),
+            PenRenderMode::GpuBatch => {
+                self.push_pen_batch_command(PenBatchCommand::Disc {
+                    x: x as f32,
+                    y: y as f32,
+                    style,
+                });
+            }
+        }
     }
 
     fn stamp_active_sprite_to_pen_layer(&mut self) {
@@ -1663,6 +2115,12 @@ impl RuntimeState {
         self.canvas_rgb.fill(255);
         self.compose_backdrop();
         self.blend_pen_layer_into_canvas();
+        self.compose_sprites();
+    }
+
+    fn compose_canvas_rgb_without_pen(&mut self) {
+        self.canvas_rgb.fill(255);
+        self.compose_backdrop();
         self.compose_sprites();
     }
 
@@ -1712,23 +2170,35 @@ impl RuntimeState {
         for index in 0..pixel_count {
             let src_offset = index * 4;
             let dst_offset = index * 3;
-            let alpha = (self.pen_rgba[src_offset + 3] as f64) / 255.0;
-            if alpha <= 0.0 {
+            let alpha = self.pen_rgba[src_offset + 3] as u32;
+            if alpha == 0 {
                 continue;
             }
-            let inv_alpha = 1.0 - alpha;
-            self.canvas_rgb[dst_offset] = ((self.pen_rgba[src_offset] as f64) * alpha
-                + (self.canvas_rgb[dst_offset] as f64) * inv_alpha)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            self.canvas_rgb[dst_offset + 1] = ((self.pen_rgba[src_offset + 1] as f64) * alpha
-                + (self.canvas_rgb[dst_offset + 1] as f64) * inv_alpha)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            self.canvas_rgb[dst_offset + 2] = ((self.pen_rgba[src_offset + 2] as f64) * alpha
-                + (self.canvas_rgb[dst_offset + 2] as f64) * inv_alpha)
-                .round()
-                .clamp(0.0, 255.0) as u8;
+            if alpha >= 255 {
+                self.canvas_rgb[dst_offset] = self.pen_rgba[src_offset];
+                self.canvas_rgb[dst_offset + 1] = self.pen_rgba[src_offset + 1];
+                self.canvas_rgb[dst_offset + 2] = self.pen_rgba[src_offset + 2];
+                continue;
+            }
+            let inv_alpha = 255u32 - alpha;
+            self.canvas_rgb[dst_offset] = Self::div_round_u32(
+                (self.pen_rgba[src_offset] as u32) * alpha
+                    + (self.canvas_rgb[dst_offset] as u32) * inv_alpha,
+                255,
+            )
+            .min(255) as u8;
+            self.canvas_rgb[dst_offset + 1] = Self::div_round_u32(
+                (self.pen_rgba[src_offset + 1] as u32) * alpha
+                    + (self.canvas_rgb[dst_offset + 1] as u32) * inv_alpha,
+                255,
+            )
+            .min(255) as u8;
+            self.canvas_rgb[dst_offset + 2] = Self::div_round_u32(
+                (self.pen_rgba[src_offset + 2] as u32) * alpha
+                    + (self.canvas_rgb[dst_offset + 2] as u32) * inv_alpha,
+                255,
+            )
+            .min(255) as u8;
         }
     }
 
@@ -1906,32 +2376,19 @@ impl RuntimeState {
                     continue;
                 };
                 let src_offset = (src_y * costume.width + src_x) * 4;
-                let src_alpha = (costume.pixels_rgba[src_offset + 3] as f64) / 255.0;
-                if src_alpha <= 0.0 {
+                let src_alpha = costume.pixels_rgba[src_offset + 3];
+                if src_alpha == 0 {
                     continue;
                 }
                 let dst_offset = ((py as usize) * self.canvas_width + (px as usize)) * 4;
-                let dst_alpha = (self.pen_rgba[dst_offset + 3] as f64) / 255.0;
-                let out_alpha = src_alpha + dst_alpha * (1.0 - src_alpha);
-                if out_alpha <= 0.0 {
-                    continue;
-                }
-
-                let src_r = (costume.pixels_rgba[src_offset] as f64) / 255.0;
-                let src_g = (costume.pixels_rgba[src_offset + 1] as f64) / 255.0;
-                let src_b = (costume.pixels_rgba[src_offset + 2] as f64) / 255.0;
-                let dst_r = (self.pen_rgba[dst_offset] as f64) / 255.0;
-                let dst_g = (self.pen_rgba[dst_offset + 1] as f64) / 255.0;
-                let dst_b = (self.pen_rgba[dst_offset + 2] as f64) / 255.0;
-
-                let out_r = (src_r * src_alpha + dst_r * dst_alpha * (1.0 - src_alpha)) / out_alpha;
-                let out_g = (src_g * src_alpha + dst_g * dst_alpha * (1.0 - src_alpha)) / out_alpha;
-                let out_b = (src_b * src_alpha + dst_b * dst_alpha * (1.0 - src_alpha)) / out_alpha;
-
-                self.pen_rgba[dst_offset] = (out_r * 255.0).round().clamp(0.0, 255.0) as u8;
-                self.pen_rgba[dst_offset + 1] = (out_g * 255.0).round().clamp(0.0, 255.0) as u8;
-                self.pen_rgba[dst_offset + 2] = (out_b * 255.0).round().clamp(0.0, 255.0) as u8;
-                self.pen_rgba[dst_offset + 3] = (out_alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+                Self::blend_unpremultiplied_rgba_pixel(
+                    &mut self.pen_rgba,
+                    dst_offset,
+                    costume.pixels_rgba[src_offset],
+                    costume.pixels_rgba[src_offset + 1],
+                    costume.pixels_rgba[src_offset + 2],
+                    src_alpha,
+                );
             }
         }
     }
@@ -1945,26 +2402,31 @@ impl RuntimeState {
             return encode_string_id(EMPTY_STRING_ID);
         }
 
-        let resolved_index = if let Some(string_index) = decode_string_id(index) {
-            let selector = self
-                .strings
-                .get(string_index)
-                .map(|text| text.trim().to_ascii_lowercase())
-                .unwrap_or_default();
-            match selector.as_str() {
-                "last" => Some(len - 1),
-                "random" | "any" => {
-                    let selected = ((next_random_unit(self) * len as f64).floor() as usize)
-                        .min(len.saturating_sub(1));
-                    Some(selected)
+        let resolved_index = if is_string_tagged(index) {
+            if let Some(string_index) = decode_string_id(index) {
+                let selector = self
+                    .strings
+                    .get(string_index)
+                    .map(|text| text.trim().to_ascii_lowercase())
+                    .unwrap_or_default();
+                match selector.as_str() {
+                    "last" => Some(len - 1),
+                    "random" | "any" => {
+                        let selected = ((next_random_unit(self) * len as f64).floor() as usize)
+                            .min(len.saturating_sub(1));
+                        Some(selected)
+                    }
+                    _ => None,
                 }
-                _ => None,
+            } else {
+                None
             }
         } else {
             None
         }
         .or_else(|| {
-            let numeric_index = rt_repeat_count(self.value_to_number(index)) as usize;
+            let numeric_index =
+                rt_repeat_count(self as *mut RuntimeState, self.value_to_number(index)) as usize;
             if numeric_index == 0 || numeric_index > len {
                 None
             } else {
@@ -2011,26 +2473,31 @@ impl RuntimeState {
             return;
         };
 
-        let resolved_index = if let Some(string_index) = decode_string_id(index) {
-            let selector = self
-                .strings
-                .get(string_index)
-                .map(|text| text.trim().to_ascii_lowercase())
-                .unwrap_or_default();
-            match selector.as_str() {
-                "last" => Some(len - 1),
-                "random" | "any" => {
-                    let selected = ((next_random_unit(self) * len as f64).floor() as usize)
-                        .min(len.saturating_sub(1));
-                    Some(selected)
+        let resolved_index = if is_string_tagged(index) {
+            if let Some(string_index) = decode_string_id(index) {
+                let selector = self
+                    .strings
+                    .get(string_index)
+                    .map(|text| text.trim().to_ascii_lowercase())
+                    .unwrap_or_default();
+                match selector.as_str() {
+                    "last" => Some(len - 1),
+                    "random" | "any" => {
+                        let selected = ((next_random_unit(self) * len as f64).floor() as usize)
+                            .min(len.saturating_sub(1));
+                        Some(selected)
+                    }
+                    _ => None,
                 }
-                _ => None,
+            } else {
+                None
             }
         } else {
             None
         }
         .or_else(|| {
-            let numeric_index = rt_repeat_count(self.value_to_number(index)) as usize;
+            let numeric_index =
+                rt_repeat_count(self as *mut RuntimeState, self.value_to_number(index)) as usize;
             if numeric_index == 0 || numeric_index > len {
                 None
             } else {
@@ -2098,7 +2565,8 @@ impl RuntimeState {
             }
         }
 
-        let item_index = rt_repeat_count(self.value_to_number(index)) as usize;
+        let item_index =
+            rt_repeat_count(self as *mut RuntimeState, self.value_to_number(index)) as usize;
         if item_index == 0 || item_index > len {
             return;
         }
@@ -2601,12 +3069,26 @@ fn env_message_list(name: &str) -> Vec<String> {
 }
 
 fn string_is_not_actually_zero(value: &str) -> bool {
-    for code in value.chars().map(|ch| ch as u32) {
-        if code == 48 || code == 9 {
-            return false;
-        }
+    // Scratch's precise numeric comparison behavior:
+    // This function is called ONLY when a string parses to exactly 0.0
+    // It should return true if the string should be treated as a non-numeric string
+    // It should return false if the string should be treated as numeric zero
+
+    let trimmed = value.trim();
+
+    // Empty strings are treated as numeric zero
+    if trimmed.is_empty() {
+        return false;
     }
-    true
+
+    // Strings that start with non-numeric characters should be treated as strings
+    let first_char = trimmed.chars().next().unwrap_or('\0');
+    if !first_char.is_ascii_digit() && first_char != '+' && first_char != '-' && first_char != '.' {
+        return true; // This is a non-numeric string
+    }
+
+    // For strings that look numeric, if they parsed to 0.0, they ARE zero
+    false
 }
 
 fn normalize_key_name(raw: &str) -> String {
@@ -2758,7 +3240,7 @@ fn pixel_to_scratch_y(y: usize, height: usize) -> f64 {
     180.0 - (y as f64 / max) * 360.0
 }
 
-fn next_random_unit(state: &mut RuntimeState) -> f64 {
+pub(super) fn next_random_unit(state: &mut RuntimeState) -> f64 {
     // Numerical Recipes LCG (deterministic and cheap for runtime integration).
     state.rng_state = state
         .rng_state
@@ -2768,29 +3250,45 @@ fn next_random_unit(state: &mut RuntimeState) -> f64 {
     mantissa as f64 / ((1_u64 << 53) as f64)
 }
 
-fn parse_hex_color(raw: &str) -> Option<[u8; 3]> {
+pub(super) fn parse_hex_color_with_alpha(raw: &str) -> Option<([u8; 3], Option<f64>)> {
     let hex = raw
         .trim()
         .trim_start_matches('#')
         .trim_start_matches("0x")
         .trim_start_matches("0X");
-    if hex.len() != 6 {
-        return None;
+
+    match hex.len() {
+        6 => {
+            // Standard 6-digit hex color: RRGGBB
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(([r, g, b], None))
+        }
+        8 => {
+            // 8-digit hex color with alpha: AARRGGBB
+            let a = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let r = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let g = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let b = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            Some(([r, g, b], Some((a as f64) / 255.0)))
+        }
+        _ => None,
     }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some([r, g, b])
 }
 
-fn hue_to_rgb(color: f64) -> [u8; 3] {
+pub(super) fn parse_hex_color(raw: &str) -> Option<[u8; 3]> {
+    parse_hex_color_with_alpha(raw).map(|(rgb, _)| rgb)
+}
+
+pub(super) fn hue_to_rgb(color: f64) -> [u8; 3] {
     let hue = color.rem_euclid(200.0) * 360.0 / 200.0;
     hsv_to_rgb(hue, 1.0, 1.0)
 }
 
 /// Convert a decimal colour value to RGB, matching scratch-vm's
 /// `Color.decimalToRgb`.  The integer is interpreted as 0xRRGGBB.
-fn decimal_to_rgb(decimal: f64) -> [u8; 3] {
+pub(super) fn decimal_to_rgb(decimal: f64) -> [u8; 3] {
     let decimal = decimal as i64;
     let r = ((decimal >> 16) & 0xFF) as u8;
     let g = ((decimal >> 8) & 0xFF) as u8;
@@ -2798,7 +3296,7 @@ fn decimal_to_rgb(decimal: f64) -> [u8; 3] {
     [r, g, b]
 }
 
-fn rgb_to_hsv(rgb: [u8; 3]) -> (f64, f64, f64) {
+pub(super) fn rgb_to_hsv(rgb: [u8; 3]) -> (f64, f64, f64) {
     let r = (rgb[0] as f64) / 255.0;
     let g = (rgb[1] as f64) / 255.0;
     let b = (rgb[2] as f64) / 255.0;
@@ -2820,7 +3318,7 @@ fn rgb_to_hsv(rgb: [u8; 3]) -> (f64, f64, f64) {
     (hue, saturation, value)
 }
 
-fn hsv_to_rgb(hue: f64, saturation: f64, value: f64) -> [u8; 3] {
+pub(super) fn hsv_to_rgb(hue: f64, saturation: f64, value: f64) -> [u8; 3] {
     let h = hue.rem_euclid(360.0);
     let s = saturation.clamp(0.0, 1.0);
     let v = value.clamp(0.0, 1.0);
@@ -2849,7 +3347,7 @@ fn hsv_to_rgb(hue: f64, saturation: f64, value: f64) -> [u8; 3] {
     ]
 }
 
-fn apply_mathop(op_code: u64, value: f64) -> f64 {
+pub(super) fn apply_mathop(op_code: u64, value: f64) -> f64 {
     match op_code {
         0 => value.abs(),
         1 => value.floor(),
@@ -2869,9 +3367,159 @@ fn apply_mathop(op_code: u64, value: f64) -> f64 {
     }
 }
 
-fn js_round(value: f64) -> f64 {
+pub(super) fn js_round(value: f64) -> f64 {
     if !value.is_finite() {
         return value;
     }
     (value + 0.5).floor()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    unsafe extern "C" fn script_capture_and_mutate_warp(state: *mut RuntimeState) {
+        unsafe {
+            let Some(state_ref) = state.as_mut() else {
+                return;
+            };
+            if let Some(slot) = state_ref.variables.get_mut(0) {
+                *slot = state_ref.warp_depth as f64;
+            }
+            state_ref.warp_depth = 3;
+        }
+    }
+
+    unsafe extern "C" fn script_yield_in_warp(state: *mut RuntimeState) {
+        rt_warp_enter(state);
+        rt_control_wait(state, 0.0);
+        rt_warp_leave(state);
+    }
+
+    unsafe extern "C" fn script_record_warp_depth(state: *mut RuntimeState) {
+        unsafe {
+            let Some(state_ref) = state.as_mut() else {
+                return;
+            };
+            if let Some(slot) = state_ref.variables.get_mut(0) {
+                *slot = state_ref.warp_depth as f64;
+            }
+        }
+    }
+
+    fn runtime_with_scripts(script_functions: Vec<ScriptEntry>) -> RuntimeState {
+        let mut state = RuntimeState::new(
+            vec![0.0],
+            vec!["v".to_string()],
+            vec![0],
+            Vec::new(),
+            Vec::new(),
+            100,
+        );
+        let script_names = (0..script_functions.len())
+            .map(|index| format!("script{index}"))
+            .collect::<Vec<_>>();
+        let script_target_by_id = vec![0; script_functions.len()];
+        state.install_scheduler(
+            script_functions,
+            script_names,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            script_target_by_id,
+            vec!["Sprite1".to_string()],
+            1,
+        );
+        state
+    }
+
+    #[test]
+    fn run_script_resets_and_restores_warp_depth() {
+        let mut state = runtime_with_scripts(vec![script_capture_and_mutate_warp]);
+        state.warp_depth = 7;
+
+        state.run_script(0, 0);
+
+        assert_eq!(state.variables[0], 0.0);
+        assert_eq!(state.warp_depth, 7);
+    }
+
+    #[test]
+    fn concurrent_fibers_do_not_share_warp_depth() {
+        let mut state = runtime_with_scripts(vec![script_yield_in_warp, script_record_warp_depth]);
+        state.enqueue_scripts(&[0, 1]);
+
+        state.execute_concurrent();
+
+        assert_eq!(state.variables[0], 0.0);
+    }
+
+    #[test]
+    fn warp_uses_longer_yield_time_slice_than_normal_mode() {
+        let mut state = runtime_with_scripts(Vec::new());
+        state.set_target_fps(Some(30.0));
+
+        state.current_tick_started_at = Some(Instant::now() - Duration::from_millis(100));
+        assert!(state.should_yield_for_work_time());
+        assert!(!state.should_yield_for_warp_time());
+
+        state.current_tick_started_at = Some(Instant::now() - Duration::from_millis(600));
+        assert!(state.should_yield_for_warp_time());
+    }
+
+    #[test]
+    fn parse_argb_hex_color_exposes_alpha() {
+        let parsed = parse_hex_color_with_alpha("#40ffffff").expect("valid ARGB hex");
+        assert_eq!(parsed.0, [255, 255, 255]);
+        let alpha = parsed.1.expect("alpha should be present");
+        assert!((alpha - (0x40 as f64 / 255.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_rgb_hex_color_has_no_alpha() {
+        let parsed = parse_hex_color_with_alpha("#112233").expect("valid RGB hex");
+        assert_eq!(parsed.0, [0x11, 0x22, 0x33]);
+        assert!(parsed.1.is_none());
+    }
+
+    #[test]
+    fn control_wait_short_duration_is_not_clamped_to_full_frame() {
+        let mut state = runtime_with_scripts(Vec::new());
+        state.set_target_fps(Some(1.0));
+
+        let started_at = Instant::now();
+        rt_control_wait(&mut state as *mut RuntimeState, 0.03);
+        let elapsed = started_at.elapsed();
+
+        assert!(
+            elapsed < Duration::from_millis(600),
+            "control_wait(0.03) should not consume a full 1s frame; elapsed={elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn pen_set_color_argb_updates_pen_alpha() {
+        let mut state = runtime_with_scripts(Vec::new());
+        state.pen_alpha = 1.0;
+        let color_id = state.intern_string("#40ffffff");
+
+        rt_pen_set_color(&mut state as *mut RuntimeState, encode_string_id(color_id));
+
+        assert_eq!(state.pen_color, [255, 255, 255]);
+        assert!((state.pen_alpha - (0x40 as f64 / 255.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pen_set_color_rgb_keeps_existing_pen_alpha() {
+        let mut state = runtime_with_scripts(Vec::new());
+        state.pen_alpha = 0.25;
+        let color_id = state.intern_string("#abcdef");
+
+        rt_pen_set_color(&mut state as *mut RuntimeState, encode_string_id(color_id));
+
+        assert_eq!(state.pen_color, [0xab, 0xcd, 0xef]);
+        assert!((state.pen_alpha - 0.25).abs() < 1e-9);
+    }
 }

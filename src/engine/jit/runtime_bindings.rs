@@ -392,7 +392,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
 
         let repeat_count = module.add_function(
             "rt_repeat_count",
-            i64_type.fn_type(&[f64_type.into()], false),
+            i64_type.fn_type(&[ptr_type.into(), f64_type.into()], false),
             None,
         );
         execution_engine.add_global_mapping(&repeat_count, rt_repeat_count as usize);
@@ -438,6 +438,41 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
         execution_engine.add_global_mapping(&operator_mathop, rt_operator_mathop as usize);
+
+        let operator_add = module.add_function(
+            "rt_operator_add",
+            f64_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&operator_add, rt_operator_add as usize);
+
+        let operator_subtract = module.add_function(
+            "rt_operator_subtract",
+            f64_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&operator_subtract, rt_operator_subtract as usize);
+
+        let operator_multiply = module.add_function(
+            "rt_operator_multiply",
+            f64_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&operator_multiply, rt_operator_multiply as usize);
+
+        let operator_divide = module.add_function(
+            "rt_operator_divide",
+            f64_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&operator_divide, rt_operator_divide as usize);
+
+        let operator_mod = module.add_function(
+            "rt_operator_mod",
+            f64_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&operator_mod, rt_operator_mod as usize);
 
         let operator_equals = module.add_function(
             "rt_operator_equals",
@@ -567,6 +602,20 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             rt_loop_should_continue_warp as usize,
         );
 
+        let warp_enter = module.add_function(
+            "rt_warp_enter",
+            void_type.fn_type(&[ptr_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&warp_enter, rt_warp_enter as usize);
+
+        let warp_leave = module.add_function(
+            "rt_warp_leave",
+            void_type.fn_type(&[ptr_type.into()], false),
+            None,
+        );
+        execution_engine.add_global_mapping(&warp_leave, rt_warp_leave as usize);
+
         let random = module.add_function(
             "rt_random",
             f64_type.fn_type(&[ptr_type.into(), f64_type.into(), f64_type.into()], false),
@@ -629,6 +678,11 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             operator_round,
             operator_letter_of,
             operator_mathop,
+            operator_add,
+            operator_subtract,
+            operator_multiply,
+            operator_divide,
+            operator_mod,
             operator_equals,
             operator_greater_than,
             operator_less_than,
@@ -647,6 +701,8 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             forever_should_continue_warp,
             loop_should_continue,
             loop_should_continue_warp,
+            warp_enter,
+            warp_leave,
             random,
         }
     }

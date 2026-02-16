@@ -91,6 +91,7 @@ By default it writes output to `<project-bin>.ppm` (or a custom path as the firs
 GUI preview is enabled by default and shows composed stage rendering (backdrop/sprites/pen) in real time.
 Use `Esc` or window close to stop GUI execution.
 When GUI is enabled, execution is paced at `60 FPS` by default and present sync uses `vsync 60 Hz`.
+GUI backend uses OpenGL (`eframe`/Glow), and pen layer compositing is GPU-accelerated in the preview path.
 Current render FPS is shown in the window title.
 GUI window size is fixed at `2x` display size by default.
 

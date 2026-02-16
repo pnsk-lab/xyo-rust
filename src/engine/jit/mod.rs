@@ -3,10 +3,10 @@ use crate::engine::ir::{
     ScriptTrigger, SensingCurrentMenu, Stmt,
 };
 use crate::engine::runtime::{
-    RuntimeState, ScriptEntry, encode_string_id, rt_change_var, rt_control_create_clone_of,
-    rt_control_delete_this_clone, rt_control_stop, rt_control_wait, rt_count_executed_block,
-    rt_data_add_to_list, rt_data_delete_all_of_list, rt_data_delete_of_list,
-    rt_data_item_num_of_list, rt_data_item_of_list, rt_data_length_of_list,
+    RuntimeState, STRING_TAG_BITS, STRING_TAG_MASK, ScriptEntry, encode_string_id, rt_change_var,
+    rt_control_create_clone_of, rt_control_delete_this_clone, rt_control_stop, rt_control_wait,
+    rt_count_executed_block, rt_data_add_to_list, rt_data_delete_all_of_list,
+    rt_data_delete_of_list, rt_data_item_num_of_list, rt_data_item_of_list, rt_data_length_of_list,
     rt_data_list_contains_item, rt_data_replace_item_of_list, rt_event_broadcast_and_wait_value,
     rt_event_broadcast_value, rt_forever_should_continue, rt_forever_should_continue_warp,
     rt_get_var, rt_looks_costume_name, rt_looks_costume_number, rt_looks_hide, rt_looks_say_number,
@@ -14,15 +14,16 @@ use crate::engine::runtime::{
     rt_looks_switch_backdrop_to, rt_looks_switch_costume_to, rt_loop_should_continue,
     rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y, rt_motion_goto_xy,
     rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x, rt_motion_set_y,
-    rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo, rt_operator_contains,
-    rt_operator_equals, rt_operator_greater_than, rt_operator_join, rt_operator_length,
-    rt_operator_less_than, rt_operator_letter_of, rt_operator_mathop, rt_operator_round,
-    rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param, rt_pen_set_size,
-    rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
+    rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo, rt_operator_add,
+    rt_operator_contains, rt_operator_divide, rt_operator_equals, rt_operator_greater_than,
+    rt_operator_join, rt_operator_length, rt_operator_less_than, rt_operator_letter_of,
+    rt_operator_mathop, rt_operator_mod, rt_operator_multiply, rt_operator_round,
+    rt_operator_subtract, rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param,
+    rt_pen_set_size, rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
     rt_sensing_ask_and_wait, rt_sensing_current, rt_sensing_days_since_2000,
     rt_sensing_key_pressed, rt_sensing_mouse_down, rt_sensing_mouse_x, rt_sensing_mouse_y,
     rt_sensing_of, rt_sensing_reset_timer, rt_sensing_timer, rt_sensing_touching_color,
-    rt_sensing_touching_object, rt_set_var,
+    rt_sensing_touching_object, rt_set_var, rt_warp_enter, rt_warp_leave,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use inkwell::builder::{Builder, BuilderError};
@@ -44,6 +45,50 @@ use tempfile::Builder as TempDirBuilder;
 
 mod layout;
 mod runtime_bindings;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JitOptimizationLevel {
+    O0,
+    O1,
+    O2,
+    O3,
+}
+
+impl JitOptimizationLevel {
+    pub fn parse(raw: &str) -> Result<Self> {
+        match raw.trim().to_ascii_uppercase().as_str() {
+            "O0" | "0" => Ok(Self::O0),
+            "O1" | "1" => Ok(Self::O1),
+            "O2" | "2" => Ok(Self::O2),
+            "O3" | "3" | "AGGRESSIVE" => Ok(Self::O3),
+            _ => bail!("invalid LLVM optimization level: {raw} (expected O0, O1, O2, or O3)"),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::O0 => "O0",
+            Self::O1 => "O1",
+            Self::O2 => "O2",
+            Self::O3 => "O3",
+        }
+    }
+
+    fn to_inkwell(self) -> OptimizationLevel {
+        match self {
+            Self::O0 => OptimizationLevel::None,
+            Self::O1 => OptimizationLevel::Less,
+            Self::O2 => OptimizationLevel::Default,
+            Self::O3 => OptimizationLevel::Aggressive,
+        }
+    }
+}
+
+impl Default for JitOptimizationLevel {
+    fn default() -> Self {
+        Self::O3
+    }
+}
 
 /// Represents a compiled Scratch program ready for execution
 pub struct CompiledProgram {
@@ -85,6 +130,13 @@ impl CompiledProgram {
 
 /// Compile a Scratch program into native code and load it
 pub fn compile_and_load_program(program: &Program) -> Result<CompiledProgram> {
+    compile_and_load_program_with_optimization(program, JitOptimizationLevel::default())
+}
+
+pub fn compile_and_load_program_with_optimization(
+    program: &Program,
+    optimization_level: JitOptimizationLevel,
+) -> Result<CompiledProgram> {
     if program.scripts.is_empty() {
         bail!("no scripts to compile");
     }
@@ -95,7 +147,7 @@ pub fn compile_and_load_program(program: &Program) -> Result<CompiledProgram> {
     let context = LlvmContext::create();
     let module = context.create_module("scratch_native_runtime");
     let execution_engine = module
-        .create_jit_execution_engine(OptimizationLevel::Aggressive)
+        .create_jit_execution_engine(optimization_level.to_inkwell())
         .map_err(|message| anyhow!("failed to create LLVM execution engine: {}", message))?;
 
     let runtime_functions = RuntimeFunctions::declare(&context, &module, &execution_engine);
@@ -106,7 +158,7 @@ pub fn compile_and_load_program(program: &Program) -> Result<CompiledProgram> {
         .verify()
         .map_err(|message| anyhow!("generated invalid LLVM module: {}", message.to_string()))?;
 
-    let (target_machine, triple) = create_host_target_machine(RelocMode::PIC)?;
+    let (target_machine, triple) = create_host_target_machine(RelocMode::PIC, optimization_level)?;
     module.set_triple(&triple);
     module.set_data_layout(&target_machine.get_target_data().get_data_layout());
 
@@ -149,7 +201,15 @@ pub fn compile_and_load_program(program: &Program) -> Result<CompiledProgram> {
 }
 
 pub fn execute_program(program: &Program, runtime_state: &mut RuntimeState) -> Result<()> {
-    let compiled = compile_and_load_program(program)?;
+    execute_program_with_optimization(program, runtime_state, JitOptimizationLevel::default())
+}
+
+pub fn execute_program_with_optimization(
+    program: &Program,
+    runtime_state: &mut RuntimeState,
+    optimization_level: JitOptimizationLevel,
+) -> Result<()> {
+    let compiled = compile_and_load_program_with_optimization(program, optimization_level)?;
     runtime_state.install_scheduler(
         compiled.script_functions.clone(),
         compiled.layout.script_names_by_id.clone(),
@@ -172,11 +232,25 @@ pub fn execute_program_with_mode(
     runtime_state: &mut RuntimeState,
     native_async: bool,
 ) -> Result<()> {
+    execute_program_with_mode_and_optimization(
+        program,
+        runtime_state,
+        native_async,
+        JitOptimizationLevel::default(),
+    )
+}
+
+pub fn execute_program_with_mode_and_optimization(
+    program: &Program,
+    runtime_state: &mut RuntimeState,
+    native_async: bool,
+    optimization_level: JitOptimizationLevel,
+) -> Result<()> {
     if native_async {
-        return execute_program(program, runtime_state);
+        return execute_program_with_optimization(program, runtime_state, optimization_level);
     }
 
-    let compiled = compile_and_load_program(program)?;
+    let compiled = compile_and_load_program_with_optimization(program, optimization_level)?;
     runtime_state.install_scheduler(
         compiled.script_functions.clone(),
         compiled.layout.script_names_by_id.clone(),
@@ -195,6 +269,14 @@ pub fn execute_program_with_mode(
 }
 
 pub fn emit_native_object(program: &Program, output_path: &Path) -> Result<()> {
+    emit_native_object_with_optimization(program, output_path, JitOptimizationLevel::default())
+}
+
+pub fn emit_native_object_with_optimization(
+    program: &Program,
+    output_path: &Path,
+    optimization_level: JitOptimizationLevel,
+) -> Result<()> {
     Target::initialize_native(&InitializationConfig::default())
         .map_err(|message| anyhow!("failed to initialize native LLVM target: {}", message))?;
 
@@ -202,7 +284,7 @@ pub fn emit_native_object(program: &Program, output_path: &Path) -> Result<()> {
     let module = context.create_module("scratch_native_runtime");
     // Reuse the existing declaration path that wires host runtime symbols.
     let execution_engine = module
-        .create_jit_execution_engine(OptimizationLevel::Aggressive)
+        .create_jit_execution_engine(optimization_level.to_inkwell())
         .map_err(|message| anyhow!("failed to create LLVM execution engine: {}", message))?;
     let runtime_functions = RuntimeFunctions::declare(&context, &module, &execution_engine);
     let mut compiler = JitCompiler::new(&context, &module, runtime_functions);
@@ -212,7 +294,8 @@ pub fn emit_native_object(program: &Program, output_path: &Path) -> Result<()> {
         .verify()
         .map_err(|message| anyhow!("generated invalid LLVM module: {}", message.to_string()))?;
 
-    let (target_machine, triple) = create_host_target_machine(RelocMode::Default)?;
+    let (target_machine, triple) =
+        create_host_target_machine(RelocMode::Default, optimization_level)?;
 
     module.set_triple(&triple);
     module.set_data_layout(&target_machine.get_target_data().get_data_layout());
@@ -241,7 +324,10 @@ pub fn emit_native_object(program: &Program, output_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn create_host_target_machine(reloc_mode: RelocMode) -> Result<(TargetMachine, TargetTriple)> {
+fn create_host_target_machine(
+    reloc_mode: RelocMode,
+    optimization_level: JitOptimizationLevel,
+) -> Result<(TargetMachine, TargetTriple)> {
     let triple = TargetMachine::get_default_triple();
     let cpu = TargetMachine::get_host_cpu_name();
     let features = TargetMachine::get_host_cpu_features();
@@ -252,7 +338,7 @@ fn create_host_target_machine(reloc_mode: RelocMode) -> Result<(TargetMachine, T
             &triple,
             cpu.to_str().unwrap_or("generic"),
             features.to_str().unwrap_or(""),
-            OptimizationLevel::Aggressive,
+            optimization_level.to_inkwell(),
             reloc_mode,
             CodeModel::Default,
         )
@@ -334,6 +420,7 @@ fn load_script_functions(native_module: &Library, symbols: &[String]) -> Result<
     Ok(script_functions)
 }
 
+#[allow(dead_code)]
 struct RuntimeFunctions<'ctx> {
     count_executed_block: FunctionValue<'ctx>,
     move_steps: FunctionValue<'ctx>,
@@ -389,6 +476,11 @@ struct RuntimeFunctions<'ctx> {
     operator_round: FunctionValue<'ctx>,
     operator_letter_of: FunctionValue<'ctx>,
     operator_mathop: FunctionValue<'ctx>,
+    operator_add: FunctionValue<'ctx>,
+    operator_subtract: FunctionValue<'ctx>,
+    operator_multiply: FunctionValue<'ctx>,
+    operator_divide: FunctionValue<'ctx>,
+    operator_mod: FunctionValue<'ctx>,
     operator_equals: FunctionValue<'ctx>,
     operator_greater_than: FunctionValue<'ctx>,
     operator_less_than: FunctionValue<'ctx>,
@@ -407,6 +499,8 @@ struct RuntimeFunctions<'ctx> {
     forever_should_continue_warp: FunctionValue<'ctx>,
     loop_should_continue: FunctionValue<'ctx>,
     loop_should_continue_warp: FunctionValue<'ctx>,
+    warp_enter: FunctionValue<'ctx>,
+    warp_leave: FunctionValue<'ctx>,
     random: FunctionValue<'ctx>,
 }
 
@@ -436,6 +530,7 @@ struct JitCompiler<'ctx, 'm> {
     target_index_by_name: HashMap<String, u64>,
     script_target_ids: Vec<u64>,
     procedure_functions: HashMap<usize, FunctionValue<'ctx>>,
+    procedure_warp_flags: HashMap<usize, bool>,
     message_index_by_name: HashMap<String, u64>,
     broadcast_messages: Vec<String>,
     broadcast_targets: Vec<Vec<u64>>,
@@ -469,6 +564,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             target_index_by_name: HashMap::new(),
             script_target_ids: Vec::new(),
             procedure_functions: HashMap::new(),
+            procedure_warp_flags: HashMap::new(),
             message_index_by_name: HashMap::new(),
             broadcast_messages: Vec::new(),
             broadcast_targets: Vec::new(),
@@ -590,19 +686,15 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
     }
 
     fn current_loop_guard(&self) -> FunctionValue<'ctx> {
-        if self.current_warp_mode {
-            self.runtime.loop_should_continue_warp
-        } else {
-            self.runtime.loop_should_continue
-        }
+        // Warp mode is now tracked dynamically via RuntimeState::warp_depth.
+        // The guard function checks warp_depth at runtime.
+        self.runtime.loop_should_continue
     }
 
     fn current_forever_guard(&self) -> FunctionValue<'ctx> {
-        if self.current_warp_mode {
-            self.runtime.forever_should_continue_warp
-        } else {
-            self.runtime.forever_should_continue
-        }
+        // Warp mode is now tracked dynamically via RuntimeState::warp_depth.
+        // The guard function checks warp_depth at runtime.
+        self.runtime.forever_should_continue
     }
 
     fn compile_statement(
@@ -897,8 +989,19 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                     .ok_or_else(|| {
                         anyhow!("missing procedure function index {}", procedure_index)
                     })?;
+                let is_warp = self
+                    .procedure_warp_flags
+                    .get(procedure_index)
+                    .copied()
+                    .unwrap_or(false);
                 let call_args = self.build_procedure_call_args(runtime_ptr, function, args)?;
+                if is_warp {
+                    self.call_void(self.runtime.warp_enter, &[runtime_ptr.into()])?;
+                }
                 self.build(self.builder.build_call(function, &call_args, ""))?;
+                if is_warp {
+                    self.call_void(self.runtime.warp_leave, &[runtime_ptr.into()])?;
+                }
             }
             Stmt::ProcedureReturn { value } => {
                 let value = self.compile_expr(runtime_ptr, value)?;
@@ -942,7 +1045,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         let raw_count = self.compile_expr(runtime_ptr, times)?;
         let count = self.call_i64(
             self.runtime.repeat_count,
-            &[raw_count.into()],
+            &[runtime_ptr.into(), raw_count.into()],
             "repeat.count",
         )?;
 
@@ -1028,7 +1131,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         let raw_count = self.compile_expr(runtime_ptr, count_expr)?;
         let count = self.call_i64(
             self.runtime.repeat_count,
-            &[raw_count.into()],
+            &[runtime_ptr.into(), raw_count.into()],
             "for_each.count",
         )?;
 
@@ -1483,59 +1586,114 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                     .ok_or_else(|| {
                         anyhow!("missing procedure function index {}", procedure_index)
                     })?;
+                let is_warp = self
+                    .procedure_warp_flags
+                    .get(procedure_index)
+                    .copied()
+                    .unwrap_or(false);
                 let call_args = self.build_procedure_call_args(runtime_ptr, function, args)?;
-                self.call_f64(function, &call_args, "proc.call")
+                if is_warp {
+                    self.call_void(self.runtime.warp_enter, &[runtime_ptr.into()])?;
+                }
+                let result = self.call_f64(function, &call_args, "proc.call")?;
+                if is_warp {
+                    self.call_void(self.runtime.warp_leave, &[runtime_ptr.into()])?;
+                }
+                Ok(result)
             }
             Expr::Add(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.build(self.builder.build_float_add(left, right, "add"))
+                self.compile_inline_binop(
+                    runtime_ptr,
+                    left,
+                    right,
+                    "add",
+                    |s, l, r| s.build(s.builder.build_float_add(l, r, "add.fast")),
+                    self.runtime.operator_add,
+                )
             }
             Expr::Subtract(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.build(self.builder.build_float_sub(left, right, "sub"))
+                self.compile_inline_binop(
+                    runtime_ptr,
+                    left,
+                    right,
+                    "sub",
+                    |s, l, r| s.build(s.builder.build_float_sub(l, r, "sub.fast")),
+                    self.runtime.operator_subtract,
+                )
             }
             Expr::Multiply(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.build(self.builder.build_float_mul(left, right, "mul"))
+                self.compile_inline_binop(
+                    runtime_ptr,
+                    left,
+                    right,
+                    "mul",
+                    |s, l, r| s.build(s.builder.build_float_mul(l, r, "mul.fast")),
+                    self.runtime.operator_multiply,
+                )
             }
             Expr::Divide(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.build(self.builder.build_float_div(left, right, "div"))
+                self.compile_inline_binop(
+                    runtime_ptr,
+                    left,
+                    right,
+                    "div",
+                    |s, l, r| s.build(s.builder.build_float_div(l, r, "div.fast")),
+                    self.runtime.operator_divide,
+                )
             }
             Expr::Mod(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.build(self.builder.build_float_rem(left, right, "mod"))
+                // Mod has Scratch-specific floored semantics; use extern for
+                // both fast and slow paths to keep correctness simple.
+                self.call_f64(
+                    self.runtime.operator_mod,
+                    &[runtime_ptr.into(), left.into(), right.into()],
+                    "mod",
+                )
             }
             Expr::GreaterThan(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.call_f64(
-                    self.runtime.operator_greater_than,
-                    &[runtime_ptr.into(), left.into(), right.into()],
+                self.compile_inline_cmp(
+                    runtime_ptr,
+                    left,
+                    right,
                     "gt",
+                    FloatPredicate::OGT,
+                    self.runtime.operator_greater_than,
                 )
             }
             Expr::LessThan(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.call_f64(
-                    self.runtime.operator_less_than,
-                    &[runtime_ptr.into(), left.into(), right.into()],
+                self.compile_inline_cmp(
+                    runtime_ptr,
+                    left,
+                    right,
                     "lt",
+                    FloatPredicate::OLT,
+                    self.runtime.operator_less_than,
                 )
             }
             Expr::Equals(left, right) => {
                 let left = self.compile_expr(runtime_ptr, left)?;
                 let right = self.compile_expr(runtime_ptr, right)?;
-                self.call_f64(
-                    self.runtime.operator_equals,
-                    &[runtime_ptr.into(), left.into(), right.into()],
+                self.compile_inline_cmp(
+                    runtime_ptr,
+                    left,
+                    right,
                     "eq",
+                    FloatPredicate::OEQ,
+                    self.runtime.operator_equals,
                 )
             }
             Expr::Random(from, to) => {
@@ -1708,6 +1866,189 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 )
             }
         }
+    }
+
+    /// Emit an inline fast-path for a binary arithmetic operation.
+    ///
+    /// When both operands are plain IEEE-754 numbers (not NaN-boxed strings),
+    /// the fast path executes the native LLVM instruction directly (fadd, fsub,
+    /// fmul, fdiv).  Only when at least one operand carries the string tag
+    /// do we fall back to the extern runtime function for string→number
+    /// coercion.  This eliminates the function-call overhead for the
+    /// overwhelmingly common all-numeric case.
+    fn compile_inline_binop(
+        &mut self,
+        runtime_ptr: PointerValue<'ctx>,
+        left: FloatValue<'ctx>,
+        right: FloatValue<'ctx>,
+        label: &str,
+        fast_op: impl FnOnce(&Self, FloatValue<'ctx>, FloatValue<'ctx>) -> Result<FloatValue<'ctx>>,
+        slow_fn: FunctionValue<'ctx>,
+    ) -> Result<FloatValue<'ctx>> {
+        let function = self.current_fn.unwrap();
+        let fast_bb = self
+            .context
+            .append_basic_block(function, &format!("{label}.fast"));
+        let slow_bb = self
+            .context
+            .append_basic_block(function, &format!("{label}.slow"));
+        let merge_bb = self
+            .context
+            .append_basic_block(function, &format!("{label}.merge"));
+
+        let either_is_string = self.compile_either_is_string(left, right, label)?;
+        self.build(
+            self.builder
+                .build_conditional_branch(either_is_string, slow_bb, fast_bb),
+        )?;
+
+        // Fast path: native LLVM arithmetic
+        self.builder.position_at_end(fast_bb);
+        let fast_result = fast_op(self, left, right)?;
+        let fast_exit_bb = self.builder.get_insert_block().unwrap();
+        self.build(self.builder.build_unconditional_branch(merge_bb))?;
+
+        // Slow path: call extern with string→number coercion
+        self.builder.position_at_end(slow_bb);
+        let slow_result = self.call_f64(
+            slow_fn,
+            &[runtime_ptr.into(), left.into(), right.into()],
+            &format!("{label}.slow.result"),
+        )?;
+        let slow_exit_bb = self.builder.get_insert_block().unwrap();
+        self.build(self.builder.build_unconditional_branch(merge_bb))?;
+
+        // Merge
+        self.builder.position_at_end(merge_bb);
+        let phi = self.build(
+            self.builder
+                .build_phi(self.f64_type, &format!("{label}.result")),
+        )?;
+        phi.add_incoming(&[(&fast_result, fast_exit_bb), (&slow_result, slow_exit_bb)]);
+        Ok(phi.as_basic_value().into_float_value())
+    }
+
+    /// Emit an inline fast-path for a comparison operation.
+    ///
+    /// When both operands are plain numbers, uses native LLVM fcmp.
+    /// Falls back to the extern function when strings are involved.
+    fn compile_inline_cmp(
+        &mut self,
+        runtime_ptr: PointerValue<'ctx>,
+        left: FloatValue<'ctx>,
+        right: FloatValue<'ctx>,
+        label: &str,
+        predicate: FloatPredicate,
+        slow_fn: FunctionValue<'ctx>,
+    ) -> Result<FloatValue<'ctx>> {
+        let function = self.current_fn.unwrap();
+        let fast_bb = self
+            .context
+            .append_basic_block(function, &format!("{label}.fast"));
+        let slow_bb = self
+            .context
+            .append_basic_block(function, &format!("{label}.slow"));
+        let merge_bb = self
+            .context
+            .append_basic_block(function, &format!("{label}.merge"));
+
+        let either_is_string = self.compile_either_is_string(left, right, label)?;
+        self.build(
+            self.builder
+                .build_conditional_branch(either_is_string, slow_bb, fast_bb),
+        )?;
+
+        // Fast path: native comparison → 1.0 or 0.0
+        self.builder.position_at_end(fast_bb);
+        let cmp_result = self.build(self.builder.build_float_compare(
+            predicate,
+            left,
+            right,
+            &format!("{label}.cmp"),
+        ))?;
+        let fast_result = self.build(self.builder.build_unsigned_int_to_float(
+            cmp_result,
+            self.f64_type,
+            &format!("{label}.fast.result"),
+        ))?;
+        let fast_exit_bb = self.builder.get_insert_block().unwrap();
+        self.build(self.builder.build_unconditional_branch(merge_bb))?;
+
+        // Slow path
+        self.builder.position_at_end(slow_bb);
+        let slow_result = self.call_f64(
+            slow_fn,
+            &[runtime_ptr.into(), left.into(), right.into()],
+            &format!("{label}.slow.result"),
+        )?;
+        let slow_exit_bb = self.builder.get_insert_block().unwrap();
+        self.build(self.builder.build_unconditional_branch(merge_bb))?;
+
+        // Merge
+        self.builder.position_at_end(merge_bb);
+        let phi = self.build(
+            self.builder
+                .build_phi(self.f64_type, &format!("{label}.result")),
+        )?;
+        phi.add_incoming(&[(&fast_result, fast_exit_bb), (&slow_result, slow_exit_bb)]);
+        Ok(phi.as_basic_value().into_float_value())
+    }
+
+    /// Check whether either of two f64 values carries the NaN-boxed string
+    /// tag.  Returns an i1 that is true when at least one is a string.
+    fn compile_either_is_string(
+        &self,
+        left: FloatValue<'ctx>,
+        right: FloatValue<'ctx>,
+        label: &str,
+    ) -> Result<IntValue<'ctx>> {
+        let mask = self.i64_type.const_int(STRING_TAG_MASK, false);
+        let tag = self.i64_type.const_int(STRING_TAG_BITS, false);
+
+        let left_bits = self
+            .build(
+                self.builder
+                    .build_bit_cast(left, self.i64_type, &format!("{label}.l.bits")),
+            )?
+            .into_int_value();
+        let right_bits = self
+            .build(
+                self.builder
+                    .build_bit_cast(right, self.i64_type, &format!("{label}.r.bits")),
+            )?
+            .into_int_value();
+
+        // Check each operand individually — ORing raw bits before masking
+        // would cause false positives when two non-string values happen to
+        // OR into the string tag pattern.
+        let left_masked = self.build(self.builder.build_and(
+            left_bits,
+            mask,
+            &format!("{label}.l.masked"),
+        ))?;
+        let left_is_str = self.build(self.builder.build_int_compare(
+            IntPredicate::EQ,
+            left_masked,
+            tag,
+            &format!("{label}.l.is_str"),
+        ))?;
+
+        let right_masked = self.build(self.builder.build_and(
+            right_bits,
+            mask,
+            &format!("{label}.r.masked"),
+        ))?;
+        let right_is_str = self.build(self.builder.build_int_compare(
+            IntPredicate::EQ,
+            right_masked,
+            tag,
+            &format!("{label}.r.is_str"),
+        ))?;
+
+        self.build(
+            self.builder
+                .build_or(left_is_str, right_is_str, &format!("{label}.either_str")),
+        )
     }
 
     fn compile_truthy(&self, value: FloatValue<'ctx>) -> Result<IntValue<'ctx>> {
