@@ -4,13 +4,13 @@ use super::super::{RuntimeState, is_string_tagged};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rt_get_var(state: *mut RuntimeState, index: u64) -> f64 {
-    unsafe { *(*state).variables.get_unchecked(index as usize) }
+    unsafe { *(&(*state).variables).get_unchecked(index as usize) }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rt_set_var(state: *mut RuntimeState, index: u64, value: f64) {
     unsafe {
-        *(*state).variables.get_unchecked_mut(index as usize) = value;
+        *(&mut (*state).variables).get_unchecked_mut(index as usize) = value;
     }
 }
 
