@@ -33,6 +33,7 @@ struct CliOptions {
     native_async_enabled: bool,
     pen_render_mode: runtime::PenRenderMode,
     llvm_opt_level: jit::JitOptimizationLevel,
+    concurrency_mode: runtime::ConcurrencyMode,
     debug_enabled: bool,
     break_on_messages: Vec<String>,
 }
@@ -264,20 +265,18 @@ fn run() -> Result<()> {
         initial_strings,
         step_budget,
     );
-    let pen_render_mode = if !cli.gui_enabled
-        && matches!(cli.pen_render_mode, runtime::PenRenderMode::GpuBatch)
-    {
-        eprintln!(
-            "warning: gpu-batch pen rendering requires --gui; falling back to cpu mode"
-        );
-        runtime::PenRenderMode::CpuRealtime
-    } else {
-        cli.pen_render_mode
-    };
+    let pen_render_mode =
+        if !cli.gui_enabled && matches!(cli.pen_render_mode, runtime::PenRenderMode::GpuBatch) {
+            eprintln!("warning: gpu-batch pen rendering requires --gui; falling back to cpu mode");
+            runtime::PenRenderMode::CpuRealtime
+        } else {
+            cli.pen_render_mode
+        };
     runtime_state.set_pen_render_mode(pen_render_mode);
     runtime_state.attach_stop_flag(Arc::clone(&stop_requested));
     runtime_state.set_debug_mode(cli.debug_enabled);
     runtime_state.set_break_on_messages(cli.break_on_messages.clone());
+    runtime_state.set_concurrency_mode(cli.concurrency_mode);
     let (target_render_data, target_initial_visuals) =
         build_render_configuration(&project).context("failed to build render configuration")?;
     runtime_state.configure_render_targets(target_render_data, target_initial_visuals);
@@ -319,6 +318,7 @@ fn run() -> Result<()> {
             "disabled"
         }
     );
+    println!("Concurrency mode: {}", cli.concurrency_mode.as_str());
     println!("LLVM JIT optimization: {}", cli.llvm_opt_level.as_str());
     println!("Pen rendering: {}", pen_render_mode.as_str());
     if !cli.break_on_messages.is_empty() {
@@ -435,7 +435,7 @@ fn parse_cli() -> Result<CliOptions> {
         .next()
         .unwrap_or_else(|| "scratch-native-runtime".to_string());
     let usage = format!(
-        "usage: {bin_name} [project.sb3] [output.ppm] [--emit-native <output.o>] [--emit-executable <output-bin>] [--emit-only] [--gui|--no-gui] [--scale <1|2|4|8|16>] [--vsync|--no-vsync] [--vsync-fps <value>] [--fps <value>|--turbo] [--native-async|--no-native-async] [--pen-render <cpu|gpu-batch>] [--llvm-opt <O0|O1|O2|O3>] [--debug|--no-debug] [--break-on-message <message>]"
+        "usage: {bin_name} [project.sb3] [output.ppm] [--emit-native <output.o>] [--emit-executable <output-bin>] [--emit-only] [--gui|--no-gui] [--scale <1|2|4|8|16>] [--vsync|--no-vsync] [--vsync-fps <value>] [--fps <value>|--turbo] [--native-async|--no-native-async] [--concurrency <userspace|native-threads>] [--pen-render <cpu|gpu-batch>] [--llvm-opt <O0|O1|O2|O3>] [--debug|--no-debug] [--break-on-message <message>]"
     );
 
     let mut positional = Vec::new();
@@ -451,6 +451,7 @@ fn parse_cli() -> Result<CliOptions> {
     let mut turbo = false;
     let mut native_async_enabled = true;
     let mut pen_render_mode = runtime::PenRenderMode::CpuRealtime;
+    let mut concurrency_mode = runtime::ConcurrencyMode::default();
     let mut llvm_opt_level = env::var(ENV_SCRATCH_LLVM_OPT_LEVEL)
         .ok()
         .map(|raw| {
@@ -553,6 +554,20 @@ fn parse_cli() -> Result<CliOptions> {
                 };
                 llvm_opt_level = jit::JitOptimizationLevel::parse(raw)?;
             }
+            "--concurrency" => {
+                index += 1;
+                let Some(raw) = rest.get(index) else {
+                    bail!("--concurrency requires one of: userspace, native-threads");
+                };
+                concurrency_mode = match raw.to_ascii_lowercase().as_str() {
+                    #[cfg(target_arch = "x86_64")]
+                    "userspace" | "user" | "uspace" => runtime::ConcurrencyMode::Userspace,
+                    "native-threads" | "native_threads" | "threads" => {
+                        runtime::ConcurrencyMode::NativeThreads
+                    }
+                    _ => bail!("--concurrency must be one of: userspace, native-threads"),
+                };
+            }
             "--fps" => {
                 index += 1;
                 let Some(raw) = rest.get(index) else {
@@ -616,6 +631,7 @@ fn parse_cli() -> Result<CliOptions> {
         native_async_enabled,
         pen_render_mode,
         llvm_opt_level,
+        concurrency_mode,
         debug_enabled,
         break_on_messages,
     })

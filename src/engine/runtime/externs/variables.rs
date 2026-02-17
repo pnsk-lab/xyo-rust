@@ -2,15 +2,24 @@
 
 use super::super::{RuntimeState, is_string_tagged};
 
+/// Returns the base pointer of the variables array.
+/// Called once at the start of each JIT-compiled function; subsequent
+/// variable accesses use direct GEP+load/store from this pointer,
+/// eliminating per-access function call overhead.
+#[unsafe(no_mangle)]
+pub extern "C" fn rt_get_variables_ptr(state: *mut RuntimeState) -> *mut f64 {
+    unsafe { (*state).variables.as_mut_ptr() }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn rt_get_var(state: *mut RuntimeState, index: u64) -> f64 {
-    unsafe { *(*state).variables.get_unchecked(index as usize) }
+    unsafe { *(&(*state).variables).get_unchecked(index as usize) }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rt_set_var(state: *mut RuntimeState, index: u64, value: f64) {
     unsafe {
-        *(*state).variables.get_unchecked_mut(index as usize) = value;
+        *(&mut (*state).variables).get_unchecked_mut(index as usize) = value;
     }
 }
 

@@ -1,6 +1,7 @@
+use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -12,11 +13,49 @@ mod externs;
 pub use externs::*;
 
 // Re-export constants for public API
-use crate::constants::ENV_SCRATCH_PEN_LOG;
 pub use crate::constants::{STAGE_HEIGHT, STAGE_WIDTH};
 
 /// Function pointer type for JIT-compiled Scratch script entry points.
 pub type ScriptEntry = unsafe extern "C" fn(*mut RuntimeState);
+
+// ---------------------------------------------------------------------------
+// Concurrency mode selection
+// ---------------------------------------------------------------------------
+
+/// Controls how fibers (cooperative Scratch script threads) are implemented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConcurrencyMode {
+    /// Each fiber gets a real OS thread (original behaviour).
+    /// May exhaust OS resources when many clones are created.
+    NativeThreads,
+    /// Fibers use userspace context switching (no OS threads).
+    /// Much lighter and avoids thread-exhaustion crashes.
+    #[cfg(target_arch = "x86_64")]
+    Userspace,
+}
+
+impl Default for ConcurrencyMode {
+    fn default() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        {
+            Self::Userspace
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            Self::NativeThreads
+        }
+    }
+}
+
+impl ConcurrencyMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NativeThreads => "native-threads",
+            #[cfg(target_arch = "x86_64")]
+            Self::Userspace => "userspace",
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Fiber-based cooperative concurrency
@@ -35,11 +74,154 @@ enum FiberSyncState {
     Done,
 }
 
-/// Synchronisation primitive shared between a fiber thread and the scheduler.
+// ---------------------------------------------------------------------------
+// Userspace context switching (x86_64 only)
+// ---------------------------------------------------------------------------
+
+/// Saved callee-saved CPU registers for userspace cooperative context switching.
+#[cfg(target_arch = "x86_64")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct MachineContext {
+    rbx: u64,
+    rbp: u64,
+    r12: u64,
+    r13: u64,
+    r14: u64,
+    r15: u64,
+    rsp: u64,
+}
+
+#[cfg(target_arch = "x86_64")]
+impl MachineContext {
+    const fn zeroed() -> Self {
+        Self {
+            rbx: 0,
+            rbp: 0,
+            r12: 0,
+            r13: 0,
+            r14: 0,
+            r15: 0,
+            rsp: 0,
+        }
+    }
+}
+
+/// Stack size for userspace fiber stacks (256 KiB).
+#[cfg(target_arch = "x86_64")]
+const USERSPACE_FIBER_STACK_SIZE: usize = 256 * 1024;
+
+// Assembly routines for context switching on x86_64.
+//
+// `asm_swap_context(save, restore)`: saves the current callee-saved registers
+// and RSP into `save`, then restores them from `restore` and returns to the
+// saved program counter (via `ret`).
+//
+// `asm_fiber_trampoline`: initial entry point placed on a new fiber's stack.
+// Moves the data pointer from r12 into rdi (first argument) and calls the
+// Rust entry function `asm_fiber_entry`.
+#[cfg(target_arch = "x86_64")]
+std::arch::global_asm!(
+    ".globl asm_swap_context",
+    ".type asm_swap_context, @function",
+    "asm_swap_context:",
+    "mov [rdi + 0x00], rbx",
+    "mov [rdi + 0x08], rbp",
+    "mov [rdi + 0x10], r12",
+    "mov [rdi + 0x18], r13",
+    "mov [rdi + 0x20], r14",
+    "mov [rdi + 0x28], r15",
+    "mov [rdi + 0x30], rsp",
+    "mov rbx, [rsi + 0x00]",
+    "mov rbp, [rsi + 0x08]",
+    "mov r12, [rsi + 0x10]",
+    "mov r13, [rsi + 0x18]",
+    "mov r14, [rsi + 0x20]",
+    "mov r15, [rsi + 0x28]",
+    "mov rsp, [rsi + 0x30]",
+    "ret",
+    ".size asm_swap_context, . - asm_swap_context",
+    "",
+    ".globl asm_fiber_trampoline",
+    ".type asm_fiber_trampoline, @function",
+    "asm_fiber_trampoline:",
+    // r12 = FiberStartInfo pointer (set up when the context was created)
+    "mov rdi, r12",
+    // Align stack to 16 bytes before the call (ABI requirement).
+    "and rsp, -16",
+    "call asm_fiber_entry",
+    // Should never return – trap.
+    "ud2",
+    ".size asm_fiber_trampoline, . - asm_fiber_trampoline",
+);
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" {
+    fn asm_swap_context(save: *mut MachineContext, restore: *const MachineContext);
+    fn asm_fiber_trampoline();
+}
+
+// Thread-local scheduler context for userspace cooperative switching.
+#[cfg(target_arch = "x86_64")]
+thread_local! {
+    static SCHEDULER_CTX: UnsafeCell<MachineContext> =
+        const { UnsafeCell::new(MachineContext::zeroed()) };
+}
+
+/// Data passed from the scheduler to the userspace fiber trampoline.
+/// Must live on the heap (via `Box`) so that its address is stable even when
+/// the owning `Fiber` struct is moved (e.g. when the `Vec<Fiber>` grows).
+#[cfg(target_arch = "x86_64")]
+struct FiberStartInfo {
+    function: ScriptEntry,
+    state_ptr: *mut RuntimeState,
+    control: *const FiberControl,
+}
+
+/// Rust entry point called from `asm_fiber_trampoline`.
+#[cfg(target_arch = "x86_64")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn asm_fiber_entry(info_ptr: *mut FiberStartInfo) {
+    let info = unsafe { &*info_ptr };
+    // Execute the JIT-compiled Scratch script.
+    unsafe {
+        (info.function)(info.state_ptr);
+    }
+    // Mark this fiber as finished.
+    unsafe {
+        (*info.control).uspace_done.store(true, Ordering::Relaxed);
+    }
+    // Switch back to the scheduler.
+    #[cfg(target_arch = "x86_64")]
+    SCHEDULER_CTX.with(|sched| unsafe {
+        asm_swap_context((*info.control).fiber_ctx.get(), sched.get() as *const _);
+    });
+    // Should never reach here.
+    unreachable!("fiber entry returned after final context switch");
+}
+
+// ---------------------------------------------------------------------------
+// FiberControl – synchronisation between scheduler and fiber
+// ---------------------------------------------------------------------------
+
+/// Synchronisation primitive shared between a fiber and the scheduler.
+/// Supports both OS-thread mode and userspace context-switching mode.
 struct FiberControl {
+    mode: ConcurrencyMode,
+    // --- Native-thread mode fields ---
     state: Mutex<FiberSyncState>,
     condvar: Condvar,
+    // --- Userspace mode fields ---
+    #[cfg(target_arch = "x86_64")]
+    fiber_ctx: UnsafeCell<MachineContext>,
+    #[cfg(target_arch = "x86_64")]
+    uspace_done: AtomicBool,
 }
+
+// Safety: In NativeThreads mode the userspace fields are never accessed.
+// In Userspace mode everything runs on a single OS thread, so concurrent
+// access cannot occur.
+unsafe impl Sync for FiberControl {}
 
 impl std::fmt::Debug for FiberControl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -49,21 +231,27 @@ impl std::fmt::Debug for FiberControl {
             .map(|g| *g)
             .unwrap_or(FiberSyncState::Done);
         f.debug_struct("FiberControl")
+            .field("mode", &self.mode)
             .field("state", &state)
             .finish()
     }
 }
 
 impl FiberControl {
-    fn new() -> Self {
+    fn new(mode: ConcurrencyMode) -> Self {
         Self {
+            mode,
             state: Mutex::new(FiberSyncState::WaitingToStart),
             condvar: Condvar::new(),
+            #[cfg(target_arch = "x86_64")]
+            fiber_ctx: UnsafeCell::new(MachineContext::zeroed()),
+            #[cfg(target_arch = "x86_64")]
+            uspace_done: AtomicBool::new(false),
         }
     }
 
-    /// Called by the **fiber thread** – block until the scheduler sets the
-    /// state to `Running`.
+    /// Called by the **fiber thread** (native-thread mode only) – block
+    /// until the scheduler sets state to `Running`.
     fn wait_for_resume(&self) {
         let mut guard = self.state.lock().unwrap();
         while *guard != FiberSyncState::Running {
@@ -71,49 +259,93 @@ impl FiberControl {
         }
     }
 
-    /// Called by the **fiber thread** at a yield-point.  Signals `Yielded`
-    /// then blocks until the scheduler sets `Running` again.
+    /// Called at a yield-point inside JIT code (both modes).
     fn yield_to_scheduler(&self) {
-        {
-            let mut guard = self.state.lock().unwrap();
-            *guard = FiberSyncState::Yielded;
-            self.condvar.notify_all();
-        }
-        let mut guard = self.state.lock().unwrap();
-        while *guard != FiberSyncState::Running {
-            guard = self.condvar.wait(guard).unwrap();
+        match self.mode {
+            ConcurrencyMode::NativeThreads => {
+                {
+                    let mut guard = self.state.lock().unwrap();
+                    *guard = FiberSyncState::Yielded;
+                    self.condvar.notify_all();
+                }
+                let mut guard = self.state.lock().unwrap();
+                while *guard != FiberSyncState::Running {
+                    guard = self.condvar.wait(guard).unwrap();
+                }
+            }
+            #[cfg(target_arch = "x86_64")]
+            ConcurrencyMode::Userspace => {
+                // Save fiber context and jump back to the scheduler.
+                SCHEDULER_CTX.with(|sched| unsafe {
+                    asm_swap_context(self.fiber_ctx.get(), sched.get() as *const _);
+                });
+            }
         }
     }
 
-    /// Called by the **fiber thread** when the JIT function returns.
+    /// Called by the native-thread fiber when the JIT function returns.
     fn signal_done(&self) {
         let mut guard = self.state.lock().unwrap();
         *guard = FiberSyncState::Done;
         self.condvar.notify_all();
     }
 
-    /// Called by the **scheduler** – set state to `Running` and wake the
-    /// fiber thread.
+    /// Called by the **scheduler** – resume the fiber.
+    /// In native-thread mode this wakes the blocked thread.
+    /// In userspace mode this performs a context switch (blocking until
+    /// the fiber yields or finishes).
     fn resume(&self) {
-        let mut guard = self.state.lock().unwrap();
-        *guard = FiberSyncState::Running;
-        self.condvar.notify_all();
+        match self.mode {
+            ConcurrencyMode::NativeThreads => {
+                let mut guard = self.state.lock().unwrap();
+                *guard = FiberSyncState::Running;
+                self.condvar.notify_all();
+            }
+            #[cfg(target_arch = "x86_64")]
+            ConcurrencyMode::Userspace => {
+                // Switch to the fiber context.  Returns when the fiber
+                // yields or finishes.
+                SCHEDULER_CTX.with(|sched| unsafe {
+                    asm_swap_context(sched.get(), self.fiber_ctx.get() as *const _);
+                });
+            }
+        }
     }
 
-    /// Called by the **scheduler** – block until the fiber reports `Yielded`
-    /// or `Done`.
+    /// Called by the **scheduler** – block until the fiber yields or finishes.
+    /// In userspace mode `resume()` already does this, so this is a no-op
+    /// that simply returns the current state.
     fn wait_for_yield_or_done(&self) -> FiberSyncState {
-        let mut guard = self.state.lock().unwrap();
-        loop {
-            match *guard {
-                FiberSyncState::Yielded | FiberSyncState::Done => return *guard,
-                _ => guard = self.condvar.wait(guard).unwrap(),
+        match self.mode {
+            ConcurrencyMode::NativeThreads => {
+                let mut guard = self.state.lock().unwrap();
+                loop {
+                    match *guard {
+                        FiberSyncState::Yielded | FiberSyncState::Done => return *guard,
+                        _ => guard = self.condvar.wait(guard).unwrap(),
+                    }
+                }
+            }
+            #[cfg(target_arch = "x86_64")]
+            ConcurrencyMode::Userspace => {
+                // resume() already blocked until the fiber switched back.
+                if self.uspace_done.load(Ordering::Relaxed) {
+                    FiberSyncState::Done
+                } else {
+                    FiberSyncState::Yielded
+                }
             }
         }
     }
 
     fn is_done(&self) -> bool {
-        matches!(*self.state.lock().unwrap(), FiberSyncState::Done)
+        match self.mode {
+            ConcurrencyMode::NativeThreads => {
+                matches!(*self.state.lock().unwrap(), FiberSyncState::Done)
+            }
+            #[cfg(target_arch = "x86_64")]
+            ConcurrencyMode::Userspace => self.uspace_done.load(Ordering::Relaxed),
+        }
     }
 }
 
@@ -121,58 +353,121 @@ impl FiberControl {
 pub struct Fiber {
     #[allow(dead_code)]
     script_id: u64,
+    #[allow(dead_code)]
     actor_id: u64,
     /// Tracks which actor is currently loaded in the RuntimeState fields.
-    /// Initially equals `actor_id`, but may differ when the fiber is inside
-    /// a `run_script` call for a different actor (e.g. during
-    /// broadcast-and-wait handler execution).
     current_actor_id: u64,
     /// Depth of active warp procedure calls for this fiber.
     warp_depth: u32,
     wait_group_id: Option<u64>,
     control: Arc<FiberControl>,
+    /// OS thread handle (native-thread mode only).
     handle: Option<thread::JoinHandle<()>>,
+    /// Heap-allocated stack for the fiber (userspace mode only).
+    #[cfg(target_arch = "x86_64")]
+    _userspace_stack: Option<Box<[u8]>>,
+    /// Start-info kept alive while the fiber runs (userspace mode only).
+    #[cfg(target_arch = "x86_64")]
+    _start_info: Option<Box<FiberStartInfo>>,
 }
 
 impl Fiber {
-    /// Spawn a new fiber for `script_id` / `actor_id`.  The fiber thread is
-    /// created immediately but blocks until `resume()` is called by the
-    /// scheduler.
+    /// Create a new fiber.
+    ///
+    /// * `NativeThreads` mode: spawns a real OS thread that blocks until
+    ///   `resume()` is called.
+    /// * `Userspace` mode: allocates a small stack and sets up a
+    ///   `MachineContext` for context-switch–based execution.
     fn spawn(
         state_ptr: *mut RuntimeState,
         function: ScriptEntry,
         script_id: u64,
         actor_id: u64,
         wait_group_id: Option<u64>,
+        mode: ConcurrencyMode,
     ) -> Self {
-        let control = Arc::new(FiberControl::new());
-        let control_for_thread = Arc::clone(&control);
+        let control = Arc::new(FiberControl::new(mode));
 
-        // Safety: `state_ptr` is valid for the entire duration of program
-        // execution.  Only one fiber accesses RuntimeState at a time
-        // (enforced by the cooperative turn-taking protocol).
-        let raw = state_ptr as usize; // usize is Send
+        match mode {
+            ConcurrencyMode::NativeThreads => {
+                let control_for_thread = Arc::clone(&control);
+                let raw = state_ptr as usize; // usize is Send
 
-        let handle = thread::spawn(move || {
-            let state_ptr = raw as *mut RuntimeState;
-            // Wait for the scheduler to tell us to start.
-            control_for_thread.wait_for_resume();
-            // Execute the JIT-compiled script function.
-            unsafe {
-                function(state_ptr);
+                let handle = thread::Builder::new()
+                    .stack_size(256 * 1024)
+                    .spawn(move || {
+                        let state_ptr = raw as *mut RuntimeState;
+                        control_for_thread.wait_for_resume();
+                        unsafe {
+                            function(state_ptr);
+                        }
+                        control_for_thread.signal_done();
+                    })
+                    .expect("failed to spawn fiber thread");
+
+                Fiber {
+                    script_id,
+                    actor_id,
+                    current_actor_id: actor_id,
+                    warp_depth: 0,
+                    wait_group_id,
+                    control,
+                    handle: Some(handle),
+                    #[cfg(target_arch = "x86_64")]
+                    _userspace_stack: None,
+                    #[cfg(target_arch = "x86_64")]
+                    _start_info: None,
+                }
             }
-            // Tell the scheduler we are done.
-            control_for_thread.signal_done();
-        });
+            #[cfg(target_arch = "x86_64")]
+            ConcurrencyMode::Userspace => {
+                // Allocate a stack for this fiber.
+                let stack = vec![0u8; USERSPACE_FIBER_STACK_SIZE].into_boxed_slice();
 
-        Fiber {
-            script_id,
-            actor_id,
-            current_actor_id: actor_id,
-            warp_depth: 0,
-            wait_group_id,
-            control,
-            handle: Some(handle),
+                // Build the start-info on the heap so its address is stable.
+                let start_info = Box::new(FiberStartInfo {
+                    function,
+                    state_ptr,
+                    control: Arc::as_ptr(&control),
+                });
+
+                // Set up the initial MachineContext so that the first
+                // `asm_swap_context` into this fiber lands in
+                // `asm_fiber_trampoline`, which reads the FiberStartInfo
+                // pointer from r12 and calls `asm_fiber_entry`.
+                let stack_top = (stack.as_ptr() as usize + stack.len()) & !0xF;
+                let rsp = stack_top - 8; // space for the "return address"
+                unsafe {
+                    // Place the trampoline address where `ret` will pop it.
+                    std::ptr::write(
+                        rsp as *mut usize,
+                        asm_fiber_trampoline as *const () as usize,
+                    );
+                }
+
+                let ctx = unsafe { &mut *control.fiber_ctx.get() };
+                *ctx = MachineContext {
+                    rbx: 0,
+                    rbp: 0,
+                    r12: &*start_info as *const FiberStartInfo as u64,
+                    r13: 0,
+                    r14: 0,
+                    r15: 0,
+                    rsp: rsp as u64,
+                };
+
+                Fiber {
+                    script_id,
+                    actor_id,
+                    current_actor_id: actor_id,
+                    warp_depth: 0,
+                    wait_group_id,
+                    control,
+                    handle: None,
+                    _userspace_stack: Some(stack),
+                    _start_info: Some(start_info),
+                }
+            }
         }
     }
 
@@ -184,6 +479,8 @@ impl Fiber {
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
+        // In userspace mode there is no thread to join; dropping the fiber
+        // frees the stack and start-info automatically.
     }
 }
 const EMPTY_STRING_ID: usize = 0;
@@ -473,6 +770,7 @@ pub struct RuntimeState {
     script_names: Vec<String>,
     broadcast_messages: Vec<String>,
     broadcast_targets: Vec<Vec<u64>>,
+    broadcast_message_targets: HashMap<String, Vec<u64>>,
     key_press_options: Vec<String>,
     key_press_targets: Vec<Vec<u64>>,
     previous_keys_down: HashSet<String>,
@@ -489,6 +787,7 @@ pub struct RuntimeState {
     /// When set, the runtime is executing inside a fiber and yield-points
     /// should cooperatively yield to the scheduler instead of sleeping.
     active_fiber_control: Option<Arc<FiberControl>>,
+    concurrency_mode: ConcurrencyMode,
     rng_state: u64,
     trace_broadcasts: bool,
     debug_mode: bool,
@@ -637,24 +936,6 @@ impl RuntimeState {
             .map(|message| normalize_broadcast_message(&message))
             .filter(|message| !message.is_empty())
             .collect::<HashSet<_>>();
-        let pen_log_file = env::var(ENV_SCRATCH_PEN_LOG)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .and_then(|path| {
-                match OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(&path)
-                {
-                    Ok(file) => Some(file),
-                    Err(error) => {
-                        eprintln!("warning: failed to open pen log file '{}': {error}", path);
-                        None
-                    }
-                }
-            });
 
         Self {
             sprite_x: 0.0,
@@ -712,6 +993,7 @@ impl RuntimeState {
             script_names: Vec::new(),
             broadcast_messages: Vec::new(),
             broadcast_targets: Vec::new(),
+            broadcast_message_targets: HashMap::new(),
             key_press_options: Vec::new(),
             key_press_targets: Vec::new(),
             previous_keys_down: HashSet::new(),
@@ -726,6 +1008,7 @@ impl RuntimeState {
             next_wait_group_id: 1,
             processing_queued_script: false,
             active_fiber_control: None,
+            concurrency_mode: ConcurrencyMode::default(),
             rng_state: 0x4d595df4d0f33173,
             trace_broadcasts,
             debug_mode,
@@ -764,6 +1047,21 @@ impl RuntimeState {
         }
         self.broadcast_messages = broadcast_messages;
         self.broadcast_targets = broadcast_targets;
+        self.broadcast_message_targets.clear();
+        for (message, targets) in self
+            .broadcast_messages
+            .iter()
+            .zip(self.broadcast_targets.iter())
+        {
+            let normalized = normalize_broadcast_message(message);
+            if normalized.is_empty() {
+                continue;
+            }
+            self.broadcast_message_targets
+                .entry(normalized)
+                .or_default()
+                .extend(targets.iter().copied());
+        }
         self.key_press_options = key_press_options;
         self.key_press_targets = key_press_targets;
         self.previous_keys_down.clear();
@@ -1045,18 +1343,13 @@ impl RuntimeState {
 
     fn broadcast_script_ids_for_message_value(&self, message_value: f64) -> Vec<u64> {
         let message = normalize_broadcast_message(&self.value_as_string(message_value));
-        self.broadcast_messages
-            .iter()
-            .enumerate()
-            .filter_map(|(index, candidate)| {
-                if normalize_broadcast_message(candidate) == message {
-                    self.broadcast_targets.get(index)
-                } else {
-                    None
-                }
-            })
-            .flat_map(|scripts| scripts.iter().copied())
-            .collect()
+        if message.is_empty() {
+            return Vec::new();
+        }
+        self.broadcast_message_targets
+            .get(&message)
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn create_clone(&mut self, target_selector: i64) {
@@ -1230,6 +1523,10 @@ impl RuntimeState {
         self.debug_mode = enabled;
     }
 
+    pub fn set_concurrency_mode(&mut self, mode: ConcurrencyMode) {
+        self.concurrency_mode = mode;
+    }
+
     pub fn set_break_on_messages(&mut self, messages: Vec<String>) {
         self.break_on_messages = messages
             .into_iter()
@@ -1247,6 +1544,14 @@ impl RuntimeState {
         self.paced_frame_count = 0;
         self.paced_frame_started_at = None;
         self.paced_frame_last_at = None;
+        // In turbo mode (no frame pacing), give fibers an effectively
+        // unlimited step budget so they don't yield unnecessarily.
+        // The loop guard's time-slice checks and stop_requested flags are
+        // still in effect, so infinite loops remain interruptible.
+        if self.frame_duration.is_none() {
+            self.step_budget = u64::MAX;
+            self.remaining_steps = u64::MAX;
+        }
     }
 
     pub fn set_live_canvas_sync_fps(&mut self, fps: Option<f64>) {
@@ -1714,6 +2019,7 @@ impl RuntimeState {
     /// fiber and all active fibers advance one yield-step per tick.
     pub fn execute_concurrent(&mut self) {
         let state_ptr = self as *mut RuntimeState;
+        let mode = self.concurrency_mode;
 
         let mut fibers: Vec<Fiber> = Vec::new();
 
@@ -1740,6 +2046,7 @@ impl RuntimeState {
                 task.script_id,
                 task.actor_id,
                 task.wait_group_id,
+                mode,
             ));
         }
 
@@ -1777,10 +2084,15 @@ impl RuntimeState {
                 // this script" (which zeroes remaining_steps) does not
                 // bleed into the next fiber.
                 //
-                // Without frame pacing (turbo / no-gui), the global step
-                // budget acts as a termination bound – loops consume budget
-                // at full speed and exit when budget is exhausted.
-                if self.frame_duration.is_some() {
+                // When a GUI is attached (turbo + GUI), also reset the
+                // budget so that forever loops keep running until the user
+                // closes the window or triggers "stop all".
+                //
+                // Without frame pacing AND without a GUI (turbo CLI), the
+                // global step budget acts as a termination bound – loops
+                // consume budget at full speed and exit when budget is
+                // exhausted.
+                if self.frame_duration.is_some() || self.live_canvas.is_some() {
                     self.remaining_steps = self.step_budget;
                 }
                 self.warp_depth = fiber.warp_depth;
@@ -1835,9 +2147,23 @@ impl RuntimeState {
                     task.script_id,
                     task.actor_id,
                     task.wait_group_id,
+                    mode,
                 ));
                 any_active = true;
             }
+
+            // --- reap completed fibers to free OS thread resources ---
+            // Without this, clone-heavy projects can accumulate thousands of
+            // finished-but-unjoined threads and hit the OS thread/memory
+            // limit (EAGAIN / "Resource temporarily unavailable").
+            fibers.retain_mut(|fiber| {
+                if fiber.is_done() {
+                    fiber.join();
+                    false
+                } else {
+                    true
+                }
+            });
 
             if !any_active {
                 break;
@@ -1860,11 +2186,14 @@ impl RuntimeState {
             self.pace_frame();
         }
 
-        // Clean up: signal remaining fibers so their threads can exit, then
-        // join them.
-        for fiber in fibers.iter() {
-            if !fiber.is_done() {
-                fiber.control.resume();
+        // Clean up: in native-thread mode, signal remaining fibers so their
+        // threads can exit, then join them.  In userspace mode, simply drop
+        // the fiber structs (freeing the stacks).
+        if mode == ConcurrencyMode::NativeThreads {
+            for fiber in fibers.iter() {
+                if !fiber.is_done() {
+                    fiber.control.resume();
+                }
             }
         }
         for fiber in &mut fibers {
@@ -3066,29 +3395,6 @@ fn env_message_list(name: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn string_is_not_actually_zero(value: &str) -> bool {
-    // Scratch's precise numeric comparison behavior:
-    // This function is called ONLY when a string parses to exactly 0.0
-    // It should return true if the string should be treated as a non-numeric string
-    // It should return false if the string should be treated as numeric zero
-
-    let trimmed = value.trim();
-
-    // Empty strings are treated as numeric zero
-    if trimmed.is_empty() {
-        return false;
-    }
-
-    // Strings that start with non-numeric characters should be treated as strings
-    let first_char = trimmed.chars().next().unwrap_or('\0');
-    if !first_char.is_ascii_digit() && first_char != '+' && first_char != '-' && first_char != '.' {
-        return true; // This is a non-numeric string
-    }
-
-    // For strings that look numeric, if they parsed to 0.0, they ARE zero
-    false
 }
 
 fn normalize_key_name(raw: &str) -> String {

@@ -1,6 +1,6 @@
 //! Loop control and random runtime functions
 
-use super::super::{next_random_unit, RuntimeState};
+use super::super::{RuntimeState, next_random_unit};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rt_forever_should_continue(state: *mut RuntimeState) -> bool {
@@ -63,7 +63,7 @@ fn loop_should_continue(
     consume_step_budget: bool,
 ) -> bool {
     use std::sync::atomic::Ordering;
-    
+
     if state
         .dump_vars_requested
         .as_ref()
@@ -80,6 +80,19 @@ fn loop_should_continue(
     }
     if consume_step_budget {
         if state.remaining_steps == 0 {
+            // In fiber + GUI (turbo) mode, yield to the scheduler instead
+            // of terminating the forever loop.  The scheduler will
+            // replenish the step budget before resuming this fiber, so
+            // the loop continues seamlessly.  This matches Scratch
+            // semantics where forever loops never exit on their own.
+            if let Some(ref control) = state.active_fiber_control {
+                if state.live_canvas.is_some() {
+                    let control = std::sync::Arc::clone(control);
+                    control.yield_to_scheduler();
+                    // Budget was refilled by the scheduler – continue loop.
+                    return true;
+                }
+            }
             if state.debug_mode {
                 eprintln!("[debug][loop] step budget exhausted, exiting loop");
             }

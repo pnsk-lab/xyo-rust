@@ -9,18 +9,18 @@ use crate::engine::runtime::{
     rt_data_delete_of_list, rt_data_item_num_of_list, rt_data_item_of_list, rt_data_length_of_list,
     rt_data_list_contains_item, rt_data_replace_item_of_list, rt_event_broadcast_and_wait_value,
     rt_event_broadcast_value, rt_forever_should_continue, rt_forever_should_continue_warp,
-    rt_get_var, rt_looks_costume_name, rt_looks_costume_number, rt_looks_hide, rt_looks_say_number,
-    rt_looks_say_text, rt_looks_set_effect_to, rt_looks_set_size, rt_looks_show,
-    rt_looks_switch_backdrop_to, rt_looks_switch_costume_to, rt_loop_should_continue,
-    rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y, rt_motion_goto_xy,
-    rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x, rt_motion_set_y,
-    rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo, rt_operator_add,
-    rt_operator_contains, rt_operator_divide, rt_operator_equals, rt_operator_greater_than,
-    rt_operator_join, rt_operator_length, rt_operator_less_than, rt_operator_letter_of,
-    rt_operator_mathop, rt_operator_mod, rt_operator_multiply, rt_operator_round,
-    rt_operator_subtract, rt_pen_clear, rt_pen_down, rt_pen_set_color, rt_pen_set_color_param,
-    rt_pen_set_size, rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count, rt_sensing_answer,
-    rt_sensing_ask_and_wait, rt_sensing_current, rt_sensing_days_since_2000,
+    rt_get_var, rt_get_variables_ptr, rt_looks_costume_name, rt_looks_costume_number,
+    rt_looks_hide, rt_looks_say_number, rt_looks_say_text, rt_looks_set_effect_to,
+    rt_looks_set_size, rt_looks_show, rt_looks_switch_backdrop_to, rt_looks_switch_costume_to,
+    rt_loop_should_continue, rt_loop_should_continue_warp, rt_motion_change_x, rt_motion_change_y,
+    rt_motion_goto_xy, rt_motion_move_steps, rt_motion_set_direction, rt_motion_set_x,
+    rt_motion_set_y, rt_motion_x_position, rt_motion_y_position, rt_music_set_tempo,
+    rt_operator_add, rt_operator_contains, rt_operator_divide, rt_operator_equals,
+    rt_operator_greater_than, rt_operator_join, rt_operator_length, rt_operator_less_than,
+    rt_operator_letter_of, rt_operator_mathop, rt_operator_mod, rt_operator_multiply,
+    rt_operator_round, rt_operator_subtract, rt_pen_clear, rt_pen_down, rt_pen_set_color,
+    rt_pen_set_color_param, rt_pen_set_size, rt_pen_stamp, rt_pen_up, rt_random, rt_repeat_count,
+    rt_sensing_answer, rt_sensing_ask_and_wait, rt_sensing_current, rt_sensing_days_since_2000,
     rt_sensing_key_pressed, rt_sensing_mouse_down, rt_sensing_mouse_x, rt_sensing_mouse_y,
     rt_sensing_of, rt_sensing_reset_timer, rt_sensing_timer, rt_sensing_touching_color,
     rt_sensing_touching_object, rt_set_var, rt_warp_enter, rt_warp_leave,
@@ -45,6 +45,15 @@ use tempfile::Builder as TempDirBuilder;
 
 mod layout;
 mod runtime_bindings;
+
+/// Number of loop iterations between full guard checks.
+/// On non-guard iterations the loop runs without any extern "C" function
+/// calls, eliminating register spill/reload overhead.  The full guard
+/// (which checks stop_requested, step budget, time-slice yield, etc.) is
+/// invoked once every LOOP_GUARD_INTERVAL iterations.
+///
+/// TurboWarp uses 100; we use 256 for power-of-two friendliness.
+const LOOP_GUARD_INTERVAL: u64 = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JitOptimizationLevel {
@@ -433,6 +442,7 @@ struct RuntimeFunctions<'ctx> {
     get_var: FunctionValue<'ctx>,
     set_var: FunctionValue<'ctx>,
     change_var: FunctionValue<'ctx>,
+    get_variables_ptr: FunctionValue<'ctx>,
     data_add_to_list: FunctionValue<'ctx>,
     data_delete_of_list: FunctionValue<'ctx>,
     data_delete_all_of_list: FunctionValue<'ctx>,
@@ -541,6 +551,11 @@ struct JitCompiler<'ctx, 'm> {
     current_proc_params: Vec<FloatValue<'ctx>>,
     current_is_procedure: bool,
     current_warp_mode: bool,
+    /// Cached base pointer of the variables Vec data buffer.
+    /// Set once at the entry of each function/procedure via
+    /// `rt_get_variables_ptr`.  Used for inline GEP+load/store
+    /// instead of calling `rt_get_var`/`rt_set_var` per access.
+    cached_vars_ptr: Option<PointerValue<'ctx>>,
     string_counter: usize,
 }
 
@@ -575,6 +590,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             current_proc_params: Vec::new(),
             current_is_procedure: false,
             current_warp_mode: false,
+            cached_vars_ptr: None,
             string_counter: 0,
         }
     }
@@ -597,6 +613,15 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             .get_nth_param(0)
             .ok_or_else(|| anyhow!("missing runtime state argument in {}", script.name))?
             .into_pointer_value();
+
+        // Cache the variables array base pointer for inline access.
+        let vars_ptr = self
+            .call_ptr(
+                self.runtime.get_variables_ptr,
+                &[runtime_ptr.into()],
+                "vars_ptr",
+            )?;
+        self.cached_vars_ptr = Some(vars_ptr);
 
         for statement in &script.body {
             self.compile_statement(runtime_ptr, statement)?;
@@ -657,6 +682,15 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             .ok_or_else(|| anyhow!("missing runtime state argument in {}", procedure.name))?
             .into_pointer_value();
 
+        // Cache the variables array base pointer for inline access.
+        let vars_ptr = self
+            .call_ptr(
+                self.runtime.get_variables_ptr,
+                &[runtime_ptr.into()],
+                "vars_ptr",
+            )?;
+        self.cached_vars_ptr = Some(vars_ptr);
+
         for statement in &procedure.body {
             self.compile_statement(runtime_ptr, statement)?;
             if self
@@ -697,12 +731,116 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         self.runtime.forever_should_continue
     }
 
+    /// Allocate a loop-local guard counter and return its stack pointer.
+    /// The counter is initialised to `LOOP_GUARD_INTERVAL` so the first
+    /// iteration always enters the fast path (no extern call).
+    fn alloc_loop_guard_counter(&self, label: &str) -> Result<PointerValue<'ctx>> {
+        let name = format!("{}.guard_ctr", label);
+        let counter_ptr = self.build(self.builder.build_alloca(self.i64_type, &name))?;
+        self.build(self.builder.build_store(
+            counter_ptr,
+            self.i64_type.const_int(LOOP_GUARD_INTERVAL, false),
+        ))?;
+        Ok(counter_ptr)
+    }
+
+    /// Emit an inline guard check that only calls the full extern guard
+    /// function every `LOOP_GUARD_INTERVAL` iterations.  On all other
+    /// iterations a simple counter decrement is performed — no extern
+    /// function call, no register-spill overhead.
+    ///
+    /// Returns an i1 value indicating whether the loop should continue.
+    fn emit_inline_guard(
+        &self,
+        runtime_ptr: PointerValue<'ctx>,
+        guard_counter_ptr: PointerValue<'ctx>,
+        guard_fn: FunctionValue<'ctx>,
+        label: &str,
+    ) -> Result<IntValue<'ctx>> {
+        let function = self
+            .current_fn
+            .ok_or_else(|| anyhow!("inline guard emitted without active function"))?;
+
+        let fast_bb = self
+            .context
+            .append_basic_block(function, &format!("{}.guard_fast", label));
+        let slow_bb = self
+            .context
+            .append_basic_block(function, &format!("{}.guard_slow", label));
+        let merge_bb = self
+            .context
+            .append_basic_block(function, &format!("{}.guard_merge", label));
+
+        // Load and decrement the counter.
+        let counter = self
+            .build(self.builder.build_load(
+                self.i64_type,
+                guard_counter_ptr,
+                &format!("{}.ctr", label),
+            ))?
+            .into_int_value();
+        let decremented = self.build(self.builder.build_int_sub(
+            counter,
+            self.i64_type.const_int(1, false),
+            &format!("{}.ctr_dec", label),
+        ))?;
+        self.build(self.builder.build_store(guard_counter_ptr, decremented))?;
+
+        // If counter > 0 after decrement, take the fast path (continue loop
+        // without any extern call).
+        let need_full = self.build(self.builder.build_int_compare(
+            IntPredicate::SLE,
+            decremented,
+            self.i64_type.const_zero(),
+            &format!("{}.need_full", label),
+        ))?;
+        self.build(
+            self.builder
+                .build_conditional_branch(need_full, slow_bb, fast_bb),
+        )?;
+
+        // Fast path: no extern call, loop continues.
+        self.builder.position_at_end(fast_bb);
+        let true_val = self.context.bool_type().const_int(1, false);
+        self.build(self.builder.build_unconditional_branch(merge_bb))?;
+
+        // Slow path: reset counter and call full guard.
+        self.builder.position_at_end(slow_bb);
+        self.build(self.builder.build_store(
+            guard_counter_ptr,
+            self.i64_type.const_int(LOOP_GUARD_INTERVAL, false),
+        ))?;
+        // Also bump the block counter by LOOP_GUARD_INTERVAL to maintain
+        // approximate statistics without per-statement overhead.
+        self.call_void(self.runtime.count_executed_block, &[runtime_ptr.into()])?;
+        let guard_result = self.call_i1(
+            guard_fn,
+            &[runtime_ptr.into()],
+            &format!("{}.guard_call", label),
+        )?;
+        self.build(self.builder.build_unconditional_branch(merge_bb))?;
+        let slow_bb_end = self.builder.get_insert_block().unwrap();
+
+        // Merge: phi node selects the result.
+        self.builder.position_at_end(merge_bb);
+        let phi = self.build(
+            self.builder
+                .build_phi(self.context.bool_type(), &format!("{}.guard_phi", label)),
+        )?;
+        phi.add_incoming(&[(&true_val, fast_bb), (&guard_result, slow_bb_end)]);
+
+        Ok(phi.as_basic_value().into_int_value())
+    }
+
     fn compile_statement(
         &mut self,
         runtime_ptr: PointerValue<'ctx>,
         statement: &Stmt,
     ) -> Result<()> {
-        self.call_void(self.runtime.count_executed_block, &[runtime_ptr.into()])?;
+        // NOTE: rt_count_executed_block removed from per-statement emission
+        // for performance.  Block counting is now done inside the loop guard
+        // functions (amortized over many iterations) to avoid the overhead of
+        // an extern "C" function call on every single statement.
         match statement {
             Stmt::MotionMoveSteps(steps) => {
                 let steps = self.compile_expr(runtime_ptr, steps)?;
@@ -743,12 +881,25 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 variable_index,
                 value,
             } => {
-                let index = self.i64_type.const_int(*variable_index as u64, false);
                 let value = self.compile_expr(runtime_ptr, value)?;
-                self.call_void(
-                    self.runtime.set_var,
-                    &[runtime_ptr.into(), index.into(), value.into()],
-                )?;
+                if let Some(vars_ptr) = self.cached_vars_ptr {
+                    // Inline variable store: GEP into cached variables array
+                    let gep = unsafe {
+                        self.build(self.builder.build_in_bounds_gep(
+                            self.f64_type,
+                            vars_ptr,
+                            &[self.i64_type.const_int(*variable_index as u64, false)],
+                            "var.set.gep",
+                        ))?
+                    };
+                    self.build(self.builder.build_store(gep, value))?;
+                } else {
+                    let index = self.i64_type.const_int(*variable_index as u64, false);
+                    self.call_void(
+                        self.runtime.set_var,
+                        &[runtime_ptr.into(), index.into(), value.into()],
+                    )?;
+                }
             }
             Stmt::DataChangeVariable {
                 variable_index,
@@ -1055,6 +1206,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 .build_store(index_ptr, self.i64_type.const_zero()),
         )?;
 
+        let guard_counter_ptr = self.alloc_loop_guard_counter("repeat")?;
         let cond_block = self.context.append_basic_block(function, "repeat.cond");
         let body_block = self.context.append_basic_block(function, "repeat.body");
         let end_block = self.context.append_basic_block(function, "repeat.end");
@@ -1074,8 +1226,9 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             count,
             "repeat.has_iterations",
         ))?;
-        let loop_guard = self.current_loop_guard();
-        let guard = self.call_i1(loop_guard, &[runtime_ptr.into()], "repeat.guard")?;
+        let loop_guard_fn = self.current_loop_guard();
+        let guard =
+            self.emit_inline_guard(runtime_ptr, guard_counter_ptr, loop_guard_fn, "repeat")?;
         let continue_loop = self.build(self.builder.build_and(
             has_iterations,
             guard,
@@ -1141,6 +1294,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 .build_store(index_ptr, self.i64_type.const_zero()),
         )?;
 
+        let guard_counter_ptr = self.alloc_loop_guard_counter("for_each")?;
         let cond_block = self.context.append_basic_block(function, "for_each.cond");
         let body_block = self.context.append_basic_block(function, "for_each.body");
         let end_block = self.context.append_basic_block(function, "for_each.end");
@@ -1160,8 +1314,9 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             count,
             "for_each.has_iterations",
         ))?;
-        let loop_guard = self.current_loop_guard();
-        let guard = self.call_i1(loop_guard, &[runtime_ptr.into()], "for_each.guard")?;
+        let loop_guard_fn = self.current_loop_guard();
+        let guard =
+            self.emit_inline_guard(runtime_ptr, guard_counter_ptr, loop_guard_fn, "for_each")?;
         let should_continue = self.build(self.builder.build_and(
             has_iterations,
             guard,
@@ -1222,6 +1377,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             .current_fn
             .ok_or_else(|| anyhow!("forever loop emitted without active function"))?;
 
+        let guard_counter_ptr = self.alloc_loop_guard_counter("forever")?;
         let cond_block = self.context.append_basic_block(function, "forever.cond");
         let body_block = self.context.append_basic_block(function, "forever.body");
         let end_block = self.context.append_basic_block(function, "forever.end");
@@ -1229,8 +1385,9 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         self.build(self.builder.build_unconditional_branch(cond_block))?;
 
         self.builder.position_at_end(cond_block);
-        let loop_guard = self.current_forever_guard();
-        let should_continue = self.call_i1(loop_guard, &[runtime_ptr.into()], "forever.guard")?;
+        let loop_guard_fn = self.current_forever_guard();
+        let should_continue =
+            self.emit_inline_guard(runtime_ptr, guard_counter_ptr, loop_guard_fn, "forever")?;
         self.build(
             self.builder
                 .build_conditional_branch(should_continue, body_block, end_block),
@@ -1271,6 +1428,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             .current_fn
             .ok_or_else(|| anyhow!("while loop emitted without active function"))?;
 
+        let guard_counter_ptr = self.alloc_loop_guard_counter("while")?;
         let cond_block = self.context.append_basic_block(function, "while.cond");
         let body_block = self.context.append_basic_block(function, "while.body");
         let end_block = self.context.append_basic_block(function, "while.end");
@@ -1278,8 +1436,9 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         self.build(self.builder.build_unconditional_branch(cond_block))?;
 
         self.builder.position_at_end(cond_block);
-        let loop_guard = self.current_loop_guard();
-        let guard = self.call_i1(loop_guard, &[runtime_ptr.into()], "while.guard")?;
+        let loop_guard_fn = self.current_loop_guard();
+        let guard =
+            self.emit_inline_guard(runtime_ptr, guard_counter_ptr, loop_guard_fn, "while")?;
         let condition = self.compile_condition(runtime_ptr, condition)?;
         let should_continue = self.build(self.builder.build_and(guard, condition, "while.cont"))?;
         self.build(
@@ -1322,6 +1481,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             .current_fn
             .ok_or_else(|| anyhow!("repeat-until loop emitted without active function"))?;
 
+        let guard_counter_ptr = self.alloc_loop_guard_counter("repeat_until")?;
         let cond_block = self
             .context
             .append_basic_block(function, "repeat_until.cond");
@@ -1335,8 +1495,13 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         self.build(self.builder.build_unconditional_branch(cond_block))?;
 
         self.builder.position_at_end(cond_block);
-        let loop_guard = self.current_loop_guard();
-        let guard = self.call_i1(loop_guard, &[runtime_ptr.into()], "repeat_until.guard")?;
+        let loop_guard_fn = self.current_loop_guard();
+        let guard = self.emit_inline_guard(
+            runtime_ptr,
+            guard_counter_ptr,
+            loop_guard_fn,
+            "repeat_until",
+        )?;
         let done = self.compile_condition(runtime_ptr, condition)?;
         let continue_loop = self.build(self.builder.build_not(done, "repeat_until.not_done"))?;
         let should_continue = self.build(self.builder.build_and(
@@ -1383,14 +1548,16 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
             .current_fn
             .ok_or_else(|| anyhow!("wait-until emitted without active function"))?;
 
+        let guard_counter_ptr = self.alloc_loop_guard_counter("wait_until")?;
         let cond_block = self.context.append_basic_block(function, "wait_until.cond");
         let end_block = self.context.append_basic_block(function, "wait_until.end");
 
         self.build(self.builder.build_unconditional_branch(cond_block))?;
 
         self.builder.position_at_end(cond_block);
-        let loop_guard = self.current_forever_guard();
-        let guard = self.call_i1(loop_guard, &[runtime_ptr.into()], "wait_until.guard")?;
+        let loop_guard_fn = self.current_forever_guard();
+        let guard =
+            self.emit_inline_guard(runtime_ptr, guard_counter_ptr, loop_guard_fn, "wait_until")?;
         let done = self.compile_condition(runtime_ptr, condition)?;
         let wait_more = self.build(self.builder.build_not(done, "wait_until.not_done"))?;
         let should_continue =
@@ -1563,12 +1730,29 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
                 )
             }
             Expr::Variable(index) => {
-                let index_value = self.i64_type.const_int(*index as u64, false);
-                self.call_f64(
-                    self.runtime.get_var,
-                    &[runtime_ptr.into(), index_value.into()],
-                    "var.get",
-                )
+                if let Some(vars_ptr) = self.cached_vars_ptr {
+                    // Inline variable load: GEP into cached variables array
+                    let gep = unsafe {
+                        self.build(self.builder.build_in_bounds_gep(
+                            self.f64_type,
+                            vars_ptr,
+                            &[self.i64_type.const_int(*index as u64, false)],
+                            "var.gep",
+                        ))?
+                    };
+                    let value = self
+                        .build(self.builder.build_load(self.f64_type, gep, "var.get"))?
+                        .into_float_value();
+                    Ok(value)
+                } else {
+                    // Fallback: use extern call
+                    let index_value = self.i64_type.const_int(*index as u64, false);
+                    self.call_f64(
+                        self.runtime.get_var,
+                        &[runtime_ptr.into(), index_value.into()],
+                        "var.get",
+                    )
+                }
             }
             Expr::ProcedureArg(index) => Ok(self
                 .current_proc_params
@@ -2088,7 +2272,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         name: &str,
     ) -> Result<FloatValue<'ctx>> {
         let call = self.build(self.builder.build_call(function, args, name))?;
-        let value = call.try_as_basic_value().left().ok_or_else(|| {
+        let value = call.try_as_basic_value().basic().ok_or_else(|| {
             anyhow!(
                 "expected non-void return from {}",
                 function.get_name().to_string_lossy()
@@ -2104,7 +2288,7 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         name: &str,
     ) -> Result<IntValue<'ctx>> {
         let call = self.build(self.builder.build_call(function, args, name))?;
-        let value = call.try_as_basic_value().left().ok_or_else(|| {
+        let value = call.try_as_basic_value().basic().ok_or_else(|| {
             anyhow!(
                 "expected non-void return from {}",
                 function.get_name().to_string_lossy()
@@ -2120,13 +2304,29 @@ impl<'ctx, 'm> JitCompiler<'ctx, 'm> {
         name: &str,
     ) -> Result<IntValue<'ctx>> {
         let call = self.build(self.builder.build_call(function, args, name))?;
-        let value = call.try_as_basic_value().left().ok_or_else(|| {
+        let value = call.try_as_basic_value().basic().ok_or_else(|| {
             anyhow!(
                 "expected non-void return from {}",
                 function.get_name().to_string_lossy()
             )
         })?;
         Ok(value.into_int_value())
+    }
+
+    fn call_ptr(
+        &self,
+        function: FunctionValue<'ctx>,
+        args: &[BasicMetadataValueEnum<'ctx>],
+        name: &str,
+    ) -> Result<PointerValue<'ctx>> {
+        let call = self.build(self.builder.build_call(function, args, name))?;
+        let value = call.try_as_basic_value().basic().ok_or_else(|| {
+            anyhow!(
+                "expected non-void return from {}",
+                function.get_name().to_string_lossy()
+            )
+        })?;
+        Ok(value.into_pointer_value())
     }
 
     fn build<T>(&self, result: std::result::Result<T, BuilderError>) -> Result<T> {

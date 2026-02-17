@@ -21,9 +21,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0"
 
-inkwell = { version = "0.6.0", default-features = false, features = ["llvm18-1", "llvm18-1-prefer-dynamic"] }
+inkwell = { version = "0.8.0", features = ["llvm21-1"] }
 
-llvm-sys = "=181.3.0"
+llvm-sys = "211.0.0"
 
 libloading = "0.8"
 termios = "0.3"
