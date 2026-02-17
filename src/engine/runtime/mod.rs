@@ -488,6 +488,11 @@ pub const STRING_TAG_MASK: u64 = 0x7fff_0000_0000_0000;
 pub const STRING_TAG_BITS: u64 = 0x7ff9_0000_0000_0000;
 const STRING_PAYLOAD_MASK: u64 = 0x0000_ffff_ffff_ffff;
 const DEFAULT_LIVE_CANVAS_SYNC_INTERVAL: Duration = Duration::from_millis(16);
+// Linux has poor timer granularity (typically 1ms), requiring a larger margin
+// to avoid excessive oversleep. macOS and Windows have better precision.
+#[cfg(target_os = "linux")]
+const FRAME_SLEEP_COARSE_MARGIN: Duration = Duration::from_micros(2000);
+#[cfg(not(target_os = "linux"))]
 const FRAME_SLEEP_COARSE_MARGIN: Duration = Duration::from_micros(800);
 // scratch-vm Sequencer uses WORK_TIME = currentStepTime * 0.75.
 const SCRATCH_VM_WORK_TIME_RATIO: f64 = 0.75;
