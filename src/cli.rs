@@ -11,13 +11,9 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// run <path>
-    Run {
-        /// 入力パス
-        path: PathBuf,
-    },
+    Run { path: PathBuf },
     /// stats <path>
-    Stats {
-        /// 入力パス
-        path: PathBuf,
-    },
+    Stats { path: PathBuf },
+    /// json <path>
+    JSON { path: PathBuf },
 }

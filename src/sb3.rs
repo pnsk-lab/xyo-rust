@@ -1,8 +1,9 @@
+use clap::parser::ValueSource;
 use zip::ZipArchive;
 
 use crate::types::{self, ScratchProject};
 
-use std::{error::Error, fmt, fs::File, io::Read};
+use std::{error::Error, fmt, fs::File, io::Read, string::FromUtf8Error};
 
 #[derive(Debug)]
 pub enum ReadSb3Error {
@@ -27,6 +28,10 @@ pub enum ReadSb3Error {
         source: serde_json::Error,
         json_path: Option<String>,
         context: String,
+    },
+    ReadAsUTF8 {
+        path: String,
+        source: FromUtf8Error,
     },
 }
 
@@ -60,6 +65,9 @@ impl fmt::Display for ReadSb3Error {
                     write!(f, "Failed to parse `project.json`: `{path}`\n{context}")
                 }
             }
+            Self::ReadAsUTF8 { path, .. } => {
+                write!(f, "Can't open project.json with utf-8: {path}")
+            }
         }
     }
 }
@@ -72,6 +80,7 @@ impl Error for ReadSb3Error {
             Self::MissingProjectJson { source, .. } => Some(source),
             Self::ReadProjectJson { source, .. } => Some(source),
             Self::ParseProjectJson { source, .. } => Some(source),
+            Self::ReadAsUTF8 { source, .. } => Some(source),
         }
     }
 }
@@ -163,6 +172,35 @@ fn refine_json_path(input: &str, json_path: &str) -> Option<String> {
     None
 }
 
+pub fn read_json(path: &str) -> Result<String, ReadSb3Error> {
+    let stream = File::open(path).map_err(|source| ReadSb3Error::OpenFile {
+        path: path.to_string(),
+        source,
+    })?;
+    let mut archive = ZipArchive::new(stream).map_err(|source| ReadSb3Error::OpenZip {
+        path: path.to_string(),
+        source,
+    })?;
+    let mut entry =
+        archive
+            .by_name("project.json")
+            .map_err(|source| ReadSb3Error::MissingProjectJson {
+                path: path.to_string(),
+                source,
+            })?;
+    let mut buf = Vec::with_capacity(entry.size() as usize);
+    entry
+        .read_to_end(&mut buf)
+        .map_err(|source| ReadSb3Error::ReadProjectJson {
+            path: path.to_string(),
+            source,
+        })?;
+    let str = String::from_utf8(buf).map_err(|source| ReadSb3Error::ReadAsUTF8 {
+        path: path.to_string(),
+        source: source,
+    })?;
+    Ok(str)
+}
 pub fn read_sb3(path: &str) -> Result<ScratchProject, ReadSb3Error> {
     let stream = File::open(path).map_err(|source| ReadSb3Error::OpenFile {
         path: path.to_string(),
