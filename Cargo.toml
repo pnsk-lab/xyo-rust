@@ -10,26 +10,15 @@ readme = "README.md"
 keywords = ["scratch", "llvm", "jit", "compiler", "runtime"]
 categories = ["compilers", "development-tools"]
 
-[lib]
-name = "scratch_native_runtime"
-path = "src/lib.rs"
-
 [[bin]]
-name = "scratch-native-runtime"
+name = "xyo"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0"
-
+clap = { version = "4.5.59", features = ["derive"] }
 inkwell = { version = "0.6.0", default-features = false, features = ["llvm18-1", "llvm18-1-prefer-dynamic"] }
-
-llvm-sys = "=181.3.0"
-
-libloading = "0.8"
-termios = "0.3"
-eframe = "0.31"
-image = "0.25"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tempfile = "3.14"
-zip = { version = "2.2", default-features = false, features = ["deflate"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+serde_path_to_error = "0.1.16"
+serde_repr = "0.1.20"
+zip = "8.1.0"
