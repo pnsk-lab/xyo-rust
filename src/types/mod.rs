@@ -1,9 +1,9 @@
-mod inputtype;
-mod primitive;
-mod shadow;
+pub mod inputtype;
+pub mod primitive;
+pub mod shadow;
 use std::collections::{HashMap, HashSet};
 
-use serde::{Serialize, de::Error as _};
+use serde::de::Error as _;
 use serde_repr::Deserialize_repr;
 use std::ops::{Deref, DerefMut};
 
@@ -16,6 +16,117 @@ use crate::types::{
 };
 
 // Str => enum, enum => Strを実現できます
+#[macro_export]
+macro_rules! str_enum_with_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $Name:ident : $Kind:ty {
+            $(
+                $Group:ident {
+                    $(
+                        $Var:ident => $lit:literal
+                    ),* $(,)?
+                }
+            ),* $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        $vis enum $Name {
+            $(
+                $($Var),*,
+            )*
+        }
+
+        impl $Name {
+            $vis fn as_str(self) -> &'static str {
+                match self {
+                    $($(
+                        Self::$Var => $lit,
+                    )*)*
+                }
+            }
+
+            $vis const fn kind(self) -> $Kind {
+                match self {
+                    $($(
+                        Self::$Var => <$Kind>::$Group,
+                    )*)*
+                }
+            }
+        }
+
+        impl ::core::fmt::Display for $Name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                f.write_str((*self).as_str())
+            }
+        }
+
+        impl ::core::str::FromStr for $Name {
+            type Err = String;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $($(
+                        $lit => Ok(Self::$Var),
+                    )*)*
+                    _ => Err(format!("unknown {}: {}", stringify!($Name), s)),
+                }
+            }
+        }
+
+        impl ::serde::Serialize for $Name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> ::serde::Deserialize<'de> for $Name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                struct V;
+
+                impl<'de> ::serde::de::Visitor<'de> for V {
+                    type Value = $Name;
+
+                    fn expecting(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                        write!(f, "a string for {}", stringify!($Name))
+                    }
+
+                    fn visit_str<E>(self, v: &str) -> Result<$Name, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        ::core::str::FromStr::from_str(v)
+                            .map_err(|e| E::custom(e))
+                    }
+
+                    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<$Name, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        self.visit_str(v)
+                    }
+
+                    fn visit_string<E>(self, v: String) -> Result<$Name, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        self.visit_str(&v)
+                    }
+                }
+
+                deserializer.deserialize_str(V)
+            }
+        }
+    };
+}
+// Str => enum, enum => Strを実現できます
+#[macro_export]
 macro_rules! str_enum {
     (
         $(#[$meta:meta])*
@@ -107,189 +218,204 @@ macro_rules! str_enum {
     };
 }
 
-str_enum! {
-    pub enum BlockOpCodes {
-        // Motion
-        MotionMoveSteps => "motion_movesteps",
-        MotionGoToXY => "motion_gotoxy",
-        MotionGoTo => "motion_goto",
-        MotionTurnRight => "motion_turnright",
-        MotionTurnLeft => "motion_turnleft",
-        MotionPointInDirection => "motion_pointindirection",
-        MotionPointTowards => "motion_pointtowards",
-        MotionGlideSecsToXY => "motion_glidesecstoxy",
-        MotionGlideTo => "motion_glideto",
-        MotionIfOnEdgeBounce => "motion_ifonedgebounce",
-        MotionSetRotationStyle => "motion_setrotationstyle",
-        MotionChangeXBy => "motion_changexby",
-        MotionSetX => "motion_setx",
-        MotionChangeYBy => "motion_changeyby",
-        MotionSetY => "motion_sety",
-        MotionXPosition => "motion_xposition",
-        MotionYPosition => "motion_yposition",
-        MotionDirection => "motion_direction",
-        MotionScrollRight => "motion_scroll_right",
-        MotionScrollUp => "motion_scroll_up",
-        MotionAlignScene => "motion_align_scene",
-        MotionXScroll => "motion_xscroll",
-        MotionYScroll => "motion_yscroll",
-
-        // Looks
-        LooksSay => "looks_say",
-        LooksSayForSecs => "looks_sayforsecs",
-        LooksThink => "looks_think",
-        LooksThinkForSecs => "looks_thinkforsecs",
-        LooksShow => "looks_show",
-        LooksHide => "looks_hide",
-        LooksHideAllSprites => "looks_hideallsprites",
-        LooksSwitchCostumeTo => "looks_switchcostumeto",
-        LooksSwitchBackdropTo => "looks_switchbackdropto",
-        LooksSwitchBackdropToAndWait => "looks_switchbackdroptoandwait",
-        LooksNextCostume => "looks_nextcostume",
-        LooksNextBackdrop => "looks_nextbackdrop",
-        LooksChangeEffectBy => "looks_changeeffectby",
-        LooksSetEffectTo => "looks_seteffectto",
-        LooksClearGraphicEffects => "looks_cleargraphiceffects",
-        LooksSetSizeTo => "looks_setsizeto",
-        LooksCostume => "looks_costume",
-        LooksCostumeNumberName => "looks_costumenumbername",
-        LooksGoForwardBackwardLayers => "looks_goforwardbackwardlayers",
-        LooksGotoFrontBack => "looks_gotofrontback",
-        LooksChangeSizeBy => "looks_changesizeby",
-        LooksSize => "looks_size",
-        LooksBackdrops => "looks_backdrops",
-
-        // Sound
-        SoundPlay => "sound_play",
-        SoundPlayUntilDone => "sound_playuntildone",
-        SoundStopAllSounds => "sound_stopallsounds",
-        SoundChangeEffectBy => "sound_changeeffectby",
-        SoundSetEffectTo => "sound_seteffectto",
-        SoundClearEffects => "sound_cleareffects",
-        SoundChangeVolumeBy => "sound_changevolumeby",
-        SoundSetVolumeTo => "sound_setvolumeto",
-        SoundVolume => "sound_volume",
-        SoundSoundsMenu => "sound_sounds_menu",
-
-        // Event
-        EventWhenTouchingObject => "event_whentouchingobject",
-        EventBroadcast => "event_broadcast",
-        EventBroadcastAndWait => "event_broadcastandwait",
-        EventWhenGreaterThan => "event_whengreaterthan",
-        EventWhenFlagClicked => "event_whenflagclicked",
-        EventWhenKeyPressed => "event_whenkeypressed",
-        EventWhenThisSpriteClicked => "event_whenthisspriteclicked",
-        EventWhenStageClick => "event_whenstageclick",
-        EventWhenBackdropSwitchesTo => "event_whenbackdropswitchesto",
-        EventWhenBroadcastReceived => "event_whenbroadcastreceived",
-
-        // Control
-        ControlRepeat => "control_repeat",
-        ControlRepeatUntil => "control_repeat_until",
-        ControlWhile => "control_while",
-        ControlForEach => "control_for_each",
-        ControlForever => "control_forever",
-        ControlWait => "control_wait",
-        ControlWaitUntil => "control_wait_until",
-        ControlIf => "control_if",
-        ControlIfElse => "control_if_else",
-        ControlStop => "control_stop",
-        ControlCreateCloneOf => "control_create_clone_of",
-        ControlDeleteThisClone => "control_delete_this_clone",
-        ControlGetCounter => "control_get_counter",
-        ControlIncrCounter => "control_incr_counter",
-        ControlClearCounter => "control_clear_counter",
-        ControlAllAtOnce => "control_all_at_once",
-        ControlStartAsClone => "control_start_as_clone",
-        ControlCreateCloneOfMenu => "control_create_clone_of_menu",
-
-        // Sensing
-        SensingTouchingObject => "sensing_touchingobject",
-        SensingTouchingColor => "sensing_touchingcolor",
-        SensingColorIsTouchingColor => "sensing_coloristouchingcolor",
-        SensingDistanceTo => "sensing_distanceto",
-        SensingTimer => "sensing_timer",
-        SensingResetTimer => "sensing_resettimer",
-        SensingOf => "sensing_of",
-        SensingMouseX => "sensing_mousex",
-        SensingMouseY => "sensing_mousey",
-        SensingSetDragMode => "sensing_setdragmode",
-        SensingMouseDown => "sensing_mousedown",
-        SensingKeyPressed => "sensing_keypressed",
-        SensingCurrent => "sensing_current",
-        SensingDaysSince2000 => "sensing_dayssince2000",
-        SensingLoudness => "sensing_loudness",
-        SensingLoud => "sensing_loud",
-        SensingAskAndWait => "sensing_askandwait",
-        SensingAnswer => "sensing_answer",
-        SensingUsername => "sensing_username",
-        SensingUserId => "sensing_userid",
-        SensingOnline => "sensing_online",
-        SensingKeyOptions => "sensing_keyoptions",
-        SensingTouchingObjectMenu => "sensing_touchingobjectmenu",
-        SensingOfObjectMenu => "sensing_of_object_menu",
-
-        // Operators
-        OperatorAdd => "operator_add",
-        OperatorSubtract => "operator_subtract",
-        OperatorMultiply => "operator_multiply",
-        OperatorDivide => "operator_divide",
-        OperatorLt => "operator_lt",
-        OperatorEquals => "operator_equals",
-        OperatorGt => "operator_gt",
-        OperatorAnd => "operator_and",
-        OperatorOr => "operator_or",
-        OperatorNot => "operator_not",
-        OperatorRandom => "operator_random",
-        OperatorJoin => "operator_join",
-        OperatorLetterOf => "operator_letter_of",
-        OperatorLength => "operator_length",
-        OperatorContains => "operator_contains",
-        OperatorMod => "operator_mod",
-        OperatorRound => "operator_round",
-        OperatorMathOp => "operator_mathop",
-
-        // Data
-        DataVariable => "data_variable",
-        DataSetVariableTo => "data_setvariableto",
-        DataChangeVariableBy => "data_changevariableby",
-        DataHideVariable => "data_hidevariable",
-        DataShowVariable => "data_showvariable",
-        DataListContents => "data_listcontents",
-        DataAddToList => "data_addtolist",
-        DataDeleteOfList => "data_deleteoflist",
-        DataDeleteAllOfList => "data_deletealloflist",
-        DataInsertAtList => "data_insertatlist",
-        DataReplaceItemOfList => "data_replaceitemoflist",
-        DataItemOfList => "data_itemoflist",
-        DataItemNumOfList => "data_itemnumoflist",
-        DataLengthOfList => "data_lengthoflist",
-        DataListContainsItem => "data_listcontainsitem",
-        DataHideList => "data_hidelist",
-        DataShowList => "data_showlist",
-
-        // Procedures
-        ProceduresDefinition => "procedures_definition",
-        ProceduresCall => "procedures_call",
-        ProceduresPrototype => "procedures_prototype",
-        ArgumentReporterStringNumber => "argument_reporter_string_number",
-        ArgumentReporterBoolean => "argument_reporter_boolean",
-
-        // Pen
-        PenClear => "pen_clear",
-        PenStamp => "pen_stamp",
-        PenDown => "pen_penDown",
-        PenUp => "pen_penUp",
-        PenSetPenColorToColor => "pen_setPenColorToColor",
-        PenChangePenColorParamBy => "pen_changePenColorParamBy",
-        PenSetPenColorParamTo => "pen_setPenColorParamTo",
-        PenChangePenSizeBy => "pen_changePenSizeBy",
-        PenSetPenSizeTo => "pen_setPenSizeTo",
-        PenSetPenShadeToNumber => "pen_setPenShadeToNumber",
-        PenChangePenShadeBy => "pen_changePenShadeBy",
-        PenSetPenHueToNumber => "pen_setPenHueToNumber",
-        PenChangePenHueBy => "pen_changePenHueBy",
-        PenMenuColorParam => "pen_menu_colorParam"
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BlockKind {
+    Motion,
+    Looks,
+    Sound,
+    Event,
+    Control,
+    Sensing,
+    Operator,
+    Data,
+    Procedures,
+    Pen,
+}
+str_enum_with_enum! {
+    pub enum BlockOpCodes: BlockKind {
+        Motion {
+            MotionMoveSteps => "motion_movesteps",
+            MotionGoToXY => "motion_gotoxy",
+            MotionGoTo => "motion_goto",
+            MotionTurnRight => "motion_turnright",
+            MotionTurnLeft => "motion_turnleft",
+            MotionPointInDirection => "motion_pointindirection",
+            MotionPointTowards => "motion_pointtowards",
+            MotionGlideSecsToXY => "motion_glidesecstoxy",
+            MotionGlideTo => "motion_glideto",
+            MotionIfOnEdgeBounce => "motion_ifonedgebounce",
+            MotionSetRotationStyle => "motion_setrotationstyle",
+            MotionChangeXBy => "motion_changexby",
+            MotionSetX => "motion_setx",
+            MotionChangeYBy => "motion_changeyby",
+            MotionSetY => "motion_sety",
+            MotionXPosition => "motion_xposition",
+            MotionYPosition => "motion_yposition",
+            MotionDirection => "motion_direction",
+            MotionScrollRight => "motion_scroll_right",
+            MotionScrollUp => "motion_scroll_up",
+            MotionAlignScene => "motion_align_scene",
+            MotionXScroll => "motion_xscroll",
+            MotionYScroll => "motion_yscroll"
+        },
+        Looks {
+            LooksSay => "looks_say",
+            LooksSayForSecs => "looks_sayforsecs",
+            LooksThink => "looks_think",
+            LooksThinkForSecs => "looks_thinkforsecs",
+            LooksShow => "looks_show",
+            LooksHide => "looks_hide",
+            LooksHideAllSprites => "looks_hideallsprites",
+            LooksSwitchCostumeTo => "looks_switchcostumeto",
+            LooksSwitchBackdropTo => "looks_switchbackdropto",
+            LooksSwitchBackdropToAndWait => "looks_switchbackdroptoandwait",
+            LooksNextCostume => "looks_nextcostume",
+            LooksNextBackdrop => "looks_nextbackdrop",
+            LooksChangeEffectBy => "looks_changeeffectby",
+            LooksSetEffectTo => "looks_seteffectto",
+            LooksClearGraphicEffects => "looks_cleargraphiceffects",
+            LooksSetSizeTo => "looks_setsizeto",
+            LooksCostume => "looks_costume",
+            LooksCostumeNumberName => "looks_costumenumbername",
+            LooksGoForwardBackwardLayers => "looks_goforwardbackwardlayers",
+            LooksGotoFrontBack => "looks_gotofrontback",
+            LooksChangeSizeBy => "looks_changesizeby",
+            LooksSize => "looks_size",
+            LooksBackdrops => "looks_backdrops",
+            LooksBackdropNumberName => "looks_backdropnumbername"
+        },
+        Sound {
+            SoundPlay => "sound_play",
+            SoundPlayUntilDone => "sound_playuntildone",
+            SoundStopAllSounds => "sound_stopallsounds",
+            SoundChangeEffectBy => "sound_changeeffectby",
+            SoundSetEffectTo => "sound_seteffectto",
+            SoundClearEffects => "sound_cleareffects",
+            SoundChangeVolumeBy => "sound_changevolumeby",
+            SoundSetVolumeTo => "sound_setvolumeto",
+            SoundVolume => "sound_volume",
+            SoundSoundsMenu => "sound_sounds_menu"
+        },
+        Event {
+            EventWhenTouchingObject => "event_whentouchingobject",
+            EventBroadcast => "event_broadcast",
+            EventBroadcastAndWait => "event_broadcastandwait",
+            EventWhenGreaterThan => "event_whengreaterthan",
+            EventWhenFlagClicked => "event_whenflagclicked",
+            EventWhenKeyPressed => "event_whenkeypressed",
+            EventWhenThisSpriteClicked => "event_whenthisspriteclicked",
+            EventWhenStageClick => "event_whenstageclick",
+            EventWhenBackdropSwitchesTo => "event_whenbackdropswitchesto",
+            EventWhenBroadcastReceived => "event_whenbroadcastreceived"
+        },
+        Control {
+            ControlRepeat => "control_repeat",
+            ControlRepeatUntil => "control_repeat_until",
+            ControlWhile => "control_while",
+            ControlForEach => "control_for_each",
+            ControlForever => "control_forever",
+            ControlWait => "control_wait",
+            ControlWaitUntil => "control_wait_until",
+            ControlIf => "control_if",
+            ControlIfElse => "control_if_else",
+            ControlStop => "control_stop",
+            ControlCreateCloneOf => "control_create_clone_of",
+            ControlDeleteThisClone => "control_delete_this_clone",
+            ControlGetCounter => "control_get_counter",
+            ControlIncrCounter => "control_incr_counter",
+            ControlClearCounter => "control_clear_counter",
+            ControlAllAtOnce => "control_all_at_once",
+            ControlStartAsClone => "control_start_as_clone",
+            ControlCreateCloneOfMenu => "control_create_clone_of_menu"
+        },
+        Sensing {
+            SensingTouchingObject => "sensing_touchingobject",
+            SensingTouchingColor => "sensing_touchingcolor",
+            SensingColorIsTouchingColor => "sensing_coloristouchingcolor",
+            SensingDistanceTo => "sensing_distanceto",
+            SensingDistanceToMenu=> "sensing_distancetomenu",
+            SensingTimer => "sensing_timer",
+            SensingResetTimer => "sensing_resettimer",
+            SensingOf => "sensing_of",
+            SensingMouseX => "sensing_mousex",
+            SensingMouseY => "sensing_mousey",
+            SensingSetDragMode => "sensing_setdragmode",
+            SensingMouseDown => "sensing_mousedown",
+            SensingKeyPressed => "sensing_keypressed",
+            SensingCurrent => "sensing_current",
+            SensingDaysSince2000 => "sensing_dayssince2000",
+            SensingLoudness => "sensing_loudness",
+            SensingLoud => "sensing_loud",
+            SensingAskAndWait => "sensing_askandwait",
+            SensingAnswer => "sensing_answer",
+            SensingUsername => "sensing_username",
+            SensingOnline => "sensing_online",
+            SensingKeyOptions => "sensing_keyoptions",
+            SensingTouchingObjectMenu => "sensing_touchingobjectmenu",
+            SensingOfObjectMenu => "sensing_of_object_menu"
+        },
+        Operator {
+            OperatorAdd => "operator_add",
+            OperatorSubtract => "operator_subtract",
+            OperatorMultiply => "operator_multiply",
+            OperatorDivide => "operator_divide",
+            OperatorLt => "operator_lt",
+            OperatorEquals => "operator_equals",
+            OperatorGt => "operator_gt",
+            OperatorAnd => "operator_and",
+            OperatorOr => "operator_or",
+            OperatorNot => "operator_not",
+            OperatorRandom => "operator_random",
+            OperatorJoin => "operator_join",
+            OperatorLetterOf => "operator_letter_of",
+            OperatorLength => "operator_length",
+            OperatorContains => "operator_contains",
+            OperatorMod => "operator_mod",
+            OperatorRound => "operator_round",
+            OperatorMathOp => "operator_mathop"
+        },
+        Data {
+            DataVariable => "data_variable",
+            DataSetVariableTo => "data_setvariableto",
+            DataChangeVariableBy => "data_changevariableby",
+            DataHideVariable => "data_hidevariable",
+            DataShowVariable => "data_showvariable",
+            DataListContents => "data_listcontents",
+            DataAddToList => "data_addtolist",
+            DataDeleteOfList => "data_deleteoflist",
+            DataDeleteAllOfList => "data_deletealloflist",
+            DataInsertAtList => "data_insertatlist",
+            DataReplaceItemOfList => "data_replaceitemoflist",
+            DataItemOfList => "data_itemoflist",
+            DataItemNumOfList => "data_itemnumoflist",
+            DataLengthOfList => "data_lengthoflist",
+            DataListContainsItem => "data_listcontainsitem",
+            DataHideList => "data_hidelist",
+            DataShowList => "data_showlist"
+        },
+        Procedures {
+            ProceduresDefinition => "procedures_definition",
+            ProceduresCall => "procedures_call",
+            ProceduresPrototype => "procedures_prototype",
+            ArgumentReporterStringNumber => "argument_reporter_string_number",
+            ArgumentReporterBoolean => "argument_reporter_boolean"
+        },
+        Pen {
+            PenClear => "pen_clear",
+            PenStamp => "pen_stamp",
+            PenDown => "pen_penDown",
+            PenUp => "pen_penUp",
+            PenSetPenColorToColor => "pen_setPenColorToColor",
+            PenChangePenColorParamBy => "pen_changePenColorParamBy",
+            PenSetPenColorParamTo => "pen_setPenColorParamTo",
+            PenChangePenSizeBy => "pen_changePenSizeBy",
+            PenSetPenSizeTo => "pen_setPenSizeTo",
+            PenSetPenShadeToNumber => "pen_setPenShadeToNumber",
+            PenChangePenShadeBy => "pen_changePenShadeBy",
+            PenSetPenHueToNumber => "pen_setPenHueToNumber",
+            PenChangePenHueBy => "pen_changePenHueBy",
+            PenMenuColorParam => "pen_menu_colorParam"
+        }
     }
 }
 
@@ -394,13 +520,13 @@ pub enum RotationStyle {
 #[allow(non_snake_case)]
 pub struct Stage {
     #[serde(flatten)]
-    base: Target,
-    name: String,
-    isStage: bool,
-    tempo: Option<f64>,
-    videoTransparency: Option<f64>,
-    videoState: Option<VideoState>,
-    layerOrder: Option<u32>,
+    pub base: Target,
+    pub name: String,
+    pub isStage: bool,
+    pub tempo: Option<f64>,
+    pub videoTransparency: Option<f64>,
+    pub videoState: Option<VideoState>,
+    pub layerOrder: Option<u32>,
 }
 impl Deref for Stage {
     type Target = Target;
@@ -419,16 +545,16 @@ impl DerefMut for Stage {
 pub struct Sprite {
     #[serde(flatten)]
     base: Target,
-    name: String,
-    isStage: bool,
-    visible: Option<bool>,
-    x: Option<f64>,
-    y: Option<f64>,
-    size: Option<f64>,
-    direction: Option<f64>,
-    draggable: Option<bool>,
-    rotationStyle: Option<RotationStyle>,
-    layerOrder: Option<u32>,
+    pub name: String,
+    pub isStage: bool,
+    pub visible: Option<bool>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub size: Option<f64>,
+    pub direction: Option<f64>,
+    pub draggable: Option<bool>,
+    pub rotationStyle: Option<RotationStyle>,
+    pub layerOrder: Option<u32>,
 }
 impl Deref for Sprite {
     type Target = Target;
@@ -516,25 +642,25 @@ pub struct MutationControlStop {
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 pub struct Comment {
-    blockId: Option<String>,
-    text: String,
-    minimized: Option<bool>,
-    x: Option<f64>,
-    y: Option<f64>,
-    width: Option<f64>,
-    height: Option<f64>,
+    pub blockId: Option<String>,
+    pub text: String,
+    pub minimized: Option<bool>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 pub struct Costume {
-    assetId: String,
-    bitmapResolution: Option<f64>,
-    dataFormat: ImageFormat,
-    md5ext: Option<String>,
-    name: String,
-    rotationCenterX: Option<f64>,
-    rotationCenterY: Option<f64>,
+    pub assetId: String,
+    pub bitmapResolution: Option<f64>,
+    pub dataFormat: ImageFormat,
+    pub md5ext: Option<String>,
+    pub name: String,
+    pub rotationCenterX: Option<f64>,
+    pub rotationCenterY: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -589,12 +715,12 @@ pub enum AudioFormat {
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 pub struct Sound {
-    assetId: String,
-    dataFormat: AudioFormat,
-    md5ext: Option<String>,
-    name: String,
-    rate: Option<f64>,
-    sampleCount: Option<f64>,
+    pub assetId: String,
+    pub dataFormat: AudioFormat,
+    pub md5ext: Option<String>,
+    pub name: String,
+    pub rate: Option<f64>,
+    pub sampleCount: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -647,8 +773,7 @@ impl List {
 #[serde(untagged)]
 pub enum InputPrimitiveOrReference {
     InputPrimitive(InputPrimitive),
-    String(String),
-    Null,
+    Reference(String),
 }
 
 #[repr(u8)]

@@ -1,4 +1,3 @@
-use clap::parser::ValueSource;
 use zip::ZipArchive;
 
 use crate::types::{self, ScratchProject};

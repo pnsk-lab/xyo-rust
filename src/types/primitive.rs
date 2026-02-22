@@ -134,7 +134,15 @@ impl TryFrom<u8> for VariablePrimitiveInputTypes {
 #[serde(untagged)]
 pub enum VariablePrimitive {
     V3((VariablePrimitiveInputTypes, String, String)),
-    V5((VariablePrimitiveInputTypes, String, String, Option<f64>, Option<f64>)),
+    V5(
+        (
+            VariablePrimitiveInputTypes,
+            String,
+            String,
+            Option<f64>,
+            Option<f64>,
+        ),
+    ),
 }
 
 #[repr(u8)]
@@ -162,7 +170,15 @@ impl TryFrom<u8> for ListPrimitiveInputTypes {
 #[serde(untagged)]
 pub enum ListPrimitive {
     V3((ListPrimitiveInputTypes, String, String)),
-    V5((ListPrimitiveInputTypes, String, String, Option<f64>, Option<f64>)),
+    V5(
+        (
+            ListPrimitiveInputTypes,
+            String,
+            String,
+            Option<f64>,
+            Option<f64>,
+        ),
+    ),
 }
 
 #[repr(u8)]

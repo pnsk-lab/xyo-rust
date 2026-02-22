@@ -4,11 +4,11 @@
       "isStage": true,
       "name": "Stage",
       "variables": { "`jEk@4|i[#Fk?(8x)AV.-my variable": ["変数", 0] },
-      "lists": {},
+      "lists": { "%ok$.QwN-;6Nb0U`%jL|": ["a", []] },
       "broadcasts": {},
       "blocks": {},
       "comments": {},
-      "currentCostume": 0,
+      "currentCostume": 1,
       "costumes": [
         {
           "name": "背景1",
@@ -17,6 +17,15 @@
           "md5ext": "cd21514d0531fdffb22204e0ec5ed84a.svg",
           "rotationCenterX": 240,
           "rotationCenterY": 180
+        },
+        {
+          "name": "Playground",
+          "bitmapResolution": 2,
+          "dataFormat": "png",
+          "assetId": "e5f794c8756ca0cead5cb7e7fe354c41",
+          "md5ext": "e5f794c8756ca0cead5cb7e7fe354c41.png",
+          "rotationCenterX": 480,
+          "rotationCenterY": 360
         }
       ],
       "sounds": [],
@@ -35,20 +44,81 @@
       "broadcasts": {},
       "blocks": {
         "a": {
-          "opcode": "control_stop",
+          "opcode": "sensing_current",
           "next": null,
           "parent": null,
           "inputs": {},
-          "fields": { "STOP_OPTION": ["all", null] },
+          "fields": { "CURRENTMENU": ["YEAR", null] },
           "shadow": false,
           "topLevel": true,
-          "x": 42,
-          "y": 222,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "hasnext": "false"
-          }
+          "x": -137,
+          "y": 155
+        },
+        "b": {
+          "opcode": "sensing_current",
+          "next": null,
+          "parent": null,
+          "inputs": {},
+          "fields": { "CURRENTMENU": ["MONTH", null] },
+          "shadow": false,
+          "topLevel": true,
+          "x": -161,
+          "y": 218
+        },
+        "c": {
+          "opcode": "sensing_current",
+          "next": null,
+          "parent": null,
+          "inputs": {},
+          "fields": { "CURRENTMENU": ["DATE", null] },
+          "shadow": false,
+          "topLevel": true,
+          "x": -50,
+          "y": 343
+        },
+        "d": {
+          "opcode": "sensing_current",
+          "next": null,
+          "parent": null,
+          "inputs": {},
+          "fields": { "CURRENTMENU": ["DAYOFWEEK", null] },
+          "shadow": false,
+          "topLevel": true,
+          "x": -8,
+          "y": 442
+        },
+        "e": {
+          "opcode": "sensing_current",
+          "next": null,
+          "parent": null,
+          "inputs": {},
+          "fields": { "CURRENTMENU": ["HOUR", null] },
+          "shadow": false,
+          "topLevel": true,
+          "x": 79,
+          "y": 312
+        },
+        "f": {
+          "opcode": "sensing_current",
+          "next": null,
+          "parent": null,
+          "inputs": {},
+          "fields": { "CURRENTMENU": ["MINUTE", null] },
+          "shadow": false,
+          "topLevel": true,
+          "x": 226,
+          "y": 217
+        },
+        "g": {
+          "opcode": "sensing_current",
+          "next": null,
+          "parent": null,
+          "inputs": {},
+          "fields": { "CURRENTMENU": ["SECOND", null] },
+          "shadow": false,
+          "topLevel": true,
+          "x": 306,
+          "y": 334
         }
       },
       "comments": {},
@@ -66,17 +136,81 @@
       ],
       "sounds": [],
       "volume": 100,
+      "layerOrder": 2,
+      "visible": true,
+      "x": 76,
+      "y": 15,
+      "size": 100,
+      "direction": 90,
+      "draggable": false,
+      "rotationStyle": "all around"
+    },
+    {
+      "isStage": false,
+      "name": "スプライト2",
+      "variables": {},
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {},
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [
+        {
+          "name": "コスチューム1",
+          "bitmapResolution": 1,
+          "dataFormat": "svg",
+          "assetId": "3339a2953a3bf62bb80e54ff575dbced",
+          "md5ext": "3339a2953a3bf62bb80e54ff575dbced.svg",
+          "rotationCenterX": 0,
+          "rotationCenterY": 0
+        }
+      ],
+      "sounds": [],
+      "volume": 100,
       "layerOrder": 1,
       "visible": true,
-      "x": 0,
-      "y": 0,
+      "x": 36,
+      "y": 28,
       "size": 100,
       "direction": 90,
       "draggable": false,
       "rotationStyle": "all around"
     }
   ],
-  "monitors": [],
+  "monitors": [
+    {
+      "id": "loudness",
+      "mode": "default",
+      "opcode": "sensing_loudness",
+      "params": {},
+      "spriteName": null,
+      "value": 0,
+      "width": 0,
+      "height": 0,
+      "x": 5,
+      "y": 5,
+      "visible": false,
+      "sliderMin": 0,
+      "sliderMax": 100,
+      "isDiscrete": true
+    },
+    {
+      "id": "timer",
+      "mode": "default",
+      "opcode": "sensing_timer",
+      "params": {},
+      "spriteName": null,
+      "value": 0,
+      "width": 0,
+      "height": 0,
+      "x": 5,
+      "y": 32,
+      "visible": false,
+      "sliderMin": 0,
+      "sliderMax": 100,
+      "isDiscrete": true
+    }
+  ],
   "extensions": [],
   "meta": {
     "semver": "3.0.0",

@@ -9,7 +9,6 @@ use std::{error::Error, time::Instant};
 
 use crate::cli::{Cli, Command};
 use crate::parser::parser::project_parser;
-use crate::sb3::read_json;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -28,7 +27,6 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
-            println!("{:?}", project);
             project_parser(project);
         }
         Command::Stats { path } => {
