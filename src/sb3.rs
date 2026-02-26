@@ -2,7 +2,7 @@ use zip::ZipArchive;
 
 use crate::types::{self, ScratchProject};
 
-use std::{error::Error, fmt, fs::File, io::Read, string::FromUtf8Error};
+use std::{error::Error, fmt, fs::File, io::Read, path::Path, string::FromUtf8Error};
 
 #[derive(Debug)]
 pub enum ReadSb3Error {
@@ -159,70 +159,57 @@ fn refine_json_path(input: &str, json_path: &str) -> Option<String> {
     let target = targets.get(target_index)?;
     let blocks = target.get("blocks")?.as_object()?;
 
-    for (block_index, (block_id, block_value)) in blocks.iter().enumerate() {
+    for (block_id, block_value) in blocks.iter() {
         if serde_json::from_value::<types::BlockAndTopLevelPrimitive>(block_value.clone()).is_err()
         {
-            return Some(format!(
-                "targets[{target_index}].blocks[{block_index}] (id: {block_id})"
-            ));
+            return Some(format!(".targets[{target_index}].blocks[{block_id}]"));
         }
     }
 
     None
 }
 
-pub fn read_json(path: &str) -> Result<String, ReadSb3Error> {
+fn read_project_json_bytes(path: &Path) -> Result<Vec<u8>, ReadSb3Error> {
+    let path_label = path.display().to_string();
     let stream = File::open(path).map_err(|source| ReadSb3Error::OpenFile {
-        path: path.to_string(),
+        path: path_label.clone(),
         source,
     })?;
     let mut archive = ZipArchive::new(stream).map_err(|source| ReadSb3Error::OpenZip {
-        path: path.to_string(),
+        path: path_label.clone(),
         source,
     })?;
     let mut entry =
         archive
             .by_name("project.json")
             .map_err(|source| ReadSb3Error::MissingProjectJson {
-                path: path.to_string(),
+                path: path_label.clone(),
                 source,
             })?;
     let mut buf = Vec::with_capacity(entry.size() as usize);
     entry
         .read_to_end(&mut buf)
         .map_err(|source| ReadSb3Error::ReadProjectJson {
-            path: path.to_string(),
+            path: path_label,
             source,
         })?;
+    Ok(buf)
+}
+
+pub fn read_json(path: impl AsRef<Path>) -> Result<String, ReadSb3Error> {
+    let path = path.as_ref();
+    let path_label = path.display().to_string();
+    let buf = read_project_json_bytes(path)?;
     let str = String::from_utf8(buf).map_err(|source| ReadSb3Error::ReadAsUTF8 {
-        path: path.to_string(),
-        source: source,
+        path: path_label,
+        source,
     })?;
     Ok(str)
 }
-pub fn read_sb3(path: &str) -> Result<ScratchProject, ReadSb3Error> {
-    let stream = File::open(path).map_err(|source| ReadSb3Error::OpenFile {
-        path: path.to_string(),
-        source,
-    })?;
-    let mut archive = ZipArchive::new(stream).map_err(|source| ReadSb3Error::OpenZip {
-        path: path.to_string(),
-        source,
-    })?;
-    let mut entry =
-        archive
-            .by_name("project.json")
-            .map_err(|source| ReadSb3Error::MissingProjectJson {
-                path: path.to_string(),
-                source,
-            })?;
-    let mut buf = Vec::with_capacity(entry.size() as usize);
-    entry
-        .read_to_end(&mut buf)
-        .map_err(|source| ReadSb3Error::ReadProjectJson {
-            path: path.to_string(),
-            source,
-        })?;
+pub fn read_sb3(path: impl AsRef<Path>) -> Result<ScratchProject, ReadSb3Error> {
+    let path = path.as_ref();
+    let path_label = path.display().to_string();
+    let buf = read_project_json_bytes(path)?;
     let mut deserializer = serde_json::Deserializer::from_slice(&buf);
     let project: ScratchProject = match serde_path_to_error::deserialize(&mut deserializer) {
         Ok(project) => project,
@@ -238,7 +225,7 @@ pub fn read_sb3(path: &str) -> Result<ScratchProject, ReadSb3Error> {
                 refine_json_path(json_str.as_ref(), &json_path).or(Some(json_path))
             };
             return Err(ReadSb3Error::ParseProjectJson {
-                path: path.to_string(),
+                path: path_label,
                 source,
                 json_path: refined_json_path,
                 context: json_error_context(json_str.as_ref(), line, column, 60),

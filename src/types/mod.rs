@@ -237,12 +237,15 @@ str_enum_with_enum! {
             MotionMoveSteps => "motion_movesteps",
             MotionGoToXY => "motion_gotoxy",
             MotionGoTo => "motion_goto",
+            MotionGoToMenu => "motion_goto_menu",
             MotionTurnRight => "motion_turnright",
             MotionTurnLeft => "motion_turnleft",
             MotionPointInDirection => "motion_pointindirection",
             MotionPointTowards => "motion_pointtowards",
+            MotionPointTowardsMenu => "motion_pointtowards_menu",
             MotionGlideSecsToXY => "motion_glidesecstoxy",
             MotionGlideTo => "motion_glideto",
+            MotionGlideToMenu => "motion_glideto_menu",
             MotionIfOnEdgeBounce => "motion_ifonedgebounce",
             MotionSetRotationStyle => "motion_setrotationstyle",
             MotionChangeXBy => "motion_changexby",
@@ -282,7 +285,9 @@ str_enum_with_enum! {
             LooksChangeSizeBy => "looks_changesizeby",
             LooksSize => "looks_size",
             LooksBackdrops => "looks_backdrops",
-            LooksBackdropNumberName => "looks_backdropnumbername"
+            LooksBackdropNumberName => "looks_backdropnumbername",
+            LooksChangeStretchBy => "looks_changestretchby",
+            LooksSetStretchTo => "looks_setstretchto"
         },
         Sound {
             SoundPlay => "sound_play",
@@ -294,7 +299,9 @@ str_enum_with_enum! {
             SoundChangeVolumeBy => "sound_changevolumeby",
             SoundSetVolumeTo => "sound_setvolumeto",
             SoundVolume => "sound_volume",
-            SoundSoundsMenu => "sound_sounds_menu"
+            SoundSoundsMenu => "sound_sounds_menu",
+            SoundBeatsMenu => "sound_beats_menu",
+            SoundEffectsMenu => "sound_effects_menu",
         },
         Event {
             EventWhenTouchingObject => "event_whentouchingobject",
@@ -304,7 +311,7 @@ str_enum_with_enum! {
             EventWhenFlagClicked => "event_whenflagclicked",
             EventWhenKeyPressed => "event_whenkeypressed",
             EventWhenThisSpriteClicked => "event_whenthisspriteclicked",
-            EventWhenStageClick => "event_whenstageclick",
+            EventWhenStageClicked => "event_whenstageclicked",
             EventWhenBackdropSwitchesTo => "event_whenbackdropswitchesto",
             EventWhenBroadcastReceived => "event_whenbroadcastreceived"
         },
@@ -352,7 +359,8 @@ str_enum_with_enum! {
             SensingOnline => "sensing_online",
             SensingKeyOptions => "sensing_keyoptions",
             SensingTouchingObjectMenu => "sensing_touchingobjectmenu",
-            SensingOfObjectMenu => "sensing_of_object_menu"
+            SensingOfObjectMenu => "sensing_of_object_menu",
+            SensingUserid => "sensing_userid"
         },
         Operator {
             OperatorAdd => "operator_add",
@@ -608,8 +616,8 @@ pub struct Block {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Mutation {
-    MutationProceduresCall(MutationProceduresCall),
     MutationProceduresPrototype(MutationProceduresPrototype),
+    MutationProceduresCall(MutationProceduresCall),
     MutationControlStop(MutationControlStop),
 }
 
@@ -617,7 +625,7 @@ pub enum Mutation {
 #[allow(non_snake_case)]
 pub struct MutationProceduresCall {
     pub tagName: Option<String>,
-    pub proccode: Option<String>,
+    pub proccode: String,
     pub argumentids: StringOrStringArray,
     pub warp: Option<WarpValue>,
 }
@@ -680,7 +688,7 @@ pub enum ImageFormat {
     gif,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum WarpValue {
     String(String),
@@ -777,7 +785,7 @@ pub enum InputPrimitiveOrReference {
 }
 
 #[repr(u8)]
-#[derive(Debug, Deserialize_repr)]
+#[derive(Debug, Deserialize_repr, PartialEq)]
 pub enum SameBlockShadowOrNoShadow {
     SameBlockShadow = Shadow::SameBlockShadow as u8,
     NoShadow = Shadow::NoShadow as u8,
@@ -823,12 +831,12 @@ impl TryFrom<u8> for DiffBlockShadow {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Input {
-    V2((SameBlockShadowOrNoShadow, InputPrimitiveOrReference)),
+    V2((SameBlockShadowOrNoShadow, Option<InputPrimitiveOrReference>)),
     V3(
         (
             DiffBlockShadow,
-            InputPrimitiveOrReference,
-            InputPrimitiveOrReference,
+            Option<InputPrimitiveOrReference>,
+            Option<InputPrimitiveOrReference>,
         ),
     ),
 }

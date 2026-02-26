@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use crate::{
     str_enum,
-    types::{BlockOpCodes, StringOrBool},
+    types::{BlockOpCodes, RotationStyle, StringOrBool, primitive::StringOrNumber},
 };
 use std::{error::Error, fmt};
 
@@ -22,9 +22,10 @@ pub enum GreaterTarget {
 pub enum HatStmt {
     WhenFlagClicked,
     WhenKeyPressed {
-        key: Keys,
+        key: String,
     },
     WhenThisSpriteClicked,
+    WhenStageClicked,
     WhenBacdropSwitchesTo {
         backdrop: usize,
     },
@@ -37,7 +38,7 @@ pub enum HatStmt {
     },
     ControlStartAsClone,
     ProcedureDefinition {
-        default: HashMap<String, StringOrBool>,
+        prototype: ProceduresPrototypeStruct,
     },
 }
 
@@ -52,28 +53,219 @@ pub enum Stmt {
     Operator(OperatorStmt),
     DataStmt(DataStmt),
     Procedures(ProceduresStmt),
-    Pen(PenStmt),
+    PenStmt(PenStmt),
 }
 #[derive(Debug)]
-pub enum MotionStmt {}
+pub enum MotionStmt {
+    MoveStep { steps: Expr },
+    TurnRight { degrees: Expr },
+    TurnLeft { degrees: Expr },
+    Goto { to: Expr },
+    GotoXY { x: Expr, y: Expr },
+    GlideTo { secs: Expr, to: Expr },
+    GlideToXY { secs: Expr, x: Expr, y: Expr },
+    PointInDirection { direction: Expr },
+    PointToTowards { towards: Expr },
+    ChangeXBy { dx: Expr },
+    SetX { x: Expr },
+    ChangeYBy { dy: Expr },
+    SetY { y: Expr },
+    IfOnEdgeBounce,
+    SetRotationStyle { style: RotationStyle },
+}
 #[derive(Debug)]
-pub enum LooksStmt {}
+pub enum LooksEffects {
+    Color,
+    Fisheye,
+    Whirl,
+    Pixelate,
+    Mosaic,
+    Brightness,
+    Ghost,
+}
 #[derive(Debug)]
-pub enum SoundStmt {}
+pub enum LooksFrontback {
+    Front,
+    Back,
+}
 #[derive(Debug)]
-pub enum EventStmt {}
+pub enum LooksFowardBackward {
+    Forward,
+    Backward,
+}
 #[derive(Debug)]
-pub enum ControlStmt {}
+pub enum LooksStmt {
+    SayForSecs {
+        message: Expr,
+        secs: Expr,
+    },
+    Say {
+        message: Expr,
+    },
+    ThinkForSecs {
+        message: Expr,
+        secs: Expr,
+    },
+    Think {
+        message: Expr,
+    },
+    SwitchCostumeTo {
+        costume: Expr,
+    },
+    NextCostume,
+    SwitchBackdropTo {
+        backdrop: Expr,
+    },
+    NextBackdrop,
+    ChangeSizeBy {
+        change: Expr,
+    },
+    SetSizeTo {
+        size: Expr,
+    },
+    ChangeEffectBy {
+        change: Expr,
+        effect: LooksEffects,
+    },
+    SetEffectTo {
+        value: Expr,
+        effect: LooksEffects,
+    },
+    ClearEffects,
+    Show,
+    Hide,
+    GotoFrontback {
+        frontback: LooksFrontback,
+    },
+    GotoForwardBackwardLayers {
+        forward_backward: LooksFowardBackward,
+    },
+    ChangeStretchBy {
+        change: Expr,
+    },
+    SetStretchTo {
+        stretch: Expr,
+    },
+}
 #[derive(Debug)]
-pub enum SensingStmt {}
+pub enum SoundEffect {
+    Pitch,
+    Pan,
+}
+#[derive(Debug)]
+pub enum SoundStmt {
+    PlayUntilDone { sound: Expr },
+    Play { sound: Expr },
+    StopAllSounds,
+    ChangeSoundEffectBy { value: Expr, target: SoundEffect },
+    SetSoundEffectTo { value: Expr, target: SoundEffect },
+    ClearSoundEffect,
+    ChangeVolumeBy { value: Expr },
+    SetVolumeTo { value: Expr },
+}
+#[derive(Debug)]
+pub enum EventStmt {
+    Broadcast { target: Expr },
+    BroadcastAndWait { target: Expr },
+}
+#[derive(Debug)]
+pub enum StopOption {
+    All,
+    ThisScript,
+    OtherScrriptInSprite,
+}
+#[derive(Debug)]
+pub enum ControlStmt {
+    Wait {
+        duration: Expr,
+    },
+    Repeat {
+        times: Expr,
+        substack: Option<Vec<Stmt>>,
+    },
+    Forever {
+        substack: Option<Vec<Stmt>>,
+    },
+    If {
+        condition: Option<Expr>,
+        substack: Option<Vec<Stmt>>,
+    },
+    IfElse {
+        condition: Option<Expr>,
+        substack: Option<Vec<Stmt>>,
+        substack2: Option<Vec<Stmt>>,
+    },
+    WaitUntil {
+        condition: Option<Expr>,
+    },
+    RepeatUntil {
+        condition: Option<Expr>,
+        substack: Option<Vec<Stmt>>,
+    },
+    RepeatWhile {
+        condition: Option<Expr>,
+        substack: Option<Vec<Stmt>>,
+    },
+    AllAtOnce {
+        substack: Option<Vec<Stmt>>,
+    },
+    CreateCloneOf {
+        clone_option: Expr,
+    },
+    DeleteThisClone,
+    Stop {
+        option: StopOption,
+    },
+    ForEach {
+        variable: String,
+        value: Expr,
+        substack: Option<Vec<Stmt>>,
+    },
+    IncrCounter,
+    ClearCounter,
+}
+
+#[derive(Debug)]
+pub enum SensingStmt {
+    AskAndWait { question: Expr },
+    SetDraggable { draggable: bool },
+    ResetTimer,
+}
 #[derive(Debug)]
 pub enum OperatorStmt {}
 #[derive(Debug)]
-pub enum DataStmt {}
+pub enum DataStmt {
+    SetVariable { value: Expr, variable: String },
+    ChangeVariableBy { value: Expr, variable: String },
+    ShowVariable { variable: String },
+    HideVariable { variable: String },
+    AddToList { item: Expr, list: String },
+    DeleteOfList { idx: Expr, list: String },
+    DeleteAllOfList { list: String },
+    InsertAtList { item: Expr, idx: Expr, list: String },
+    ReplaceAtList { item: Expr, idx: Expr, list: String },
+    ShowList { list: String },
+    HideList { list: String },
+}
 #[derive(Debug)]
-pub enum ProceduresStmt {}
+pub enum ProceduresStmt {
+    ProceduresCall {
+        proccode: String,
+        inputs: HashMap<String, Expr>,
+    },
+}
 #[derive(Debug)]
-pub enum PenStmt {}
+pub enum PenStmt {
+    PenClear,
+    PenStamp,
+    PenDown,
+    PenUp,
+    SetPenColorToColor { color: Expr },
+    ChangePenColorParamBy { color_param: Expr, value: Expr },
+    SetPenColorParamTo { color_param: Expr, value: Expr },
+    ChangePenSizeBy { size: Expr },
+    SetPenSizeTo { size: Expr },
+}
 
 #[derive(Debug)]
 pub enum Expr {
@@ -113,7 +305,9 @@ pub enum SoundExpr {
 #[derive(Debug)]
 pub enum EventExpr {}
 #[derive(Debug)]
-pub enum ControlExpr {}
+pub enum ControlExpr {
+    GetCounter,
+}
 #[derive(Debug)]
 pub enum TimeTarget {
     Year,
@@ -168,6 +362,7 @@ pub enum SensingExpr {
     Timer,
     Since2000Days,
     Username,
+    Userid,
     Online,
 }
 #[derive(Debug)]
@@ -268,7 +463,27 @@ pub enum DataExpr {
 }
 #[derive(Debug)]
 pub enum ProceduresExpr {
-    ProcedureArgument,
+    ArgumentReporterBoolean {
+        name: String,
+    },
+    ArgumentReporterStringNumber {
+        name: String,
+    },
+    ProceduresPrototype {
+        prototype: ProceduresPrototypeStruct,
+    },
+}
+#[derive(Debug)]
+pub struct ProceduresPrototypeStruct {
+    pub proccode: String,
+    pub arguments: Vec<Argument>,
+    pub warp: bool,
+}
+#[derive(Debug)]
+pub struct Argument {
+    pub id: String,
+    pub default: StringOrNumber,
+    pub name: String,
 }
 #[derive(Debug)]
 pub enum PenExpr {}
@@ -280,6 +495,7 @@ pub enum Literal {
     List { target: String },
     Color { color: String },
     Broadcast { id: String },
+    Null,
 }
 
 #[derive(Debug)]
@@ -287,6 +503,12 @@ pub enum ParserError<'a> {
     NotHandledOp(BlockOpCodes),
     InvalidValue(&'a str),
     UnknownBlock(String),
+    InvalidTargetIndex(usize),
+    UnexpectedTopLevelPrimitive(String),
+    Context {
+        context: String,
+        source: Box<ParserError<'a>>,
+    },
 }
 
 impl fmt::Display for ParserError<'_> {
@@ -295,14 +517,28 @@ impl fmt::Display for ParserError<'_> {
             ParserError::NotHandledOp(s) => write!(f, "invalid opcode: {s}"),
             ParserError::InvalidValue(s) => write!(f, "invalid value: {s}"),
             ParserError::UnknownBlock(s) => write!(f, "unknown block id: {s}"),
+            ParserError::InvalidTargetIndex(idx) => {
+                write!(f, "invalid target index: {idx}")
+            }
+            ParserError::UnexpectedTopLevelPrimitive(block_id) => {
+                write!(f, "unexpected top-level primitive block: {block_id}")
+            }
+            ParserError::Context { context, source } => write!(f, "{context}: {source}"),
         }
     }
 }
 
 impl Error for ParserError<'_> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            _ => None,
+        None
+    }
+}
+
+impl<'a> ParserError<'a> {
+    pub fn context(self, context: impl Into<String>) -> Self {
+        ParserError::Context {
+            context: context.into(),
+            source: Box::new(self),
         }
     }
 }
@@ -353,5 +589,9 @@ str_enum! {
         RIGHT => "right arrow",
         DOWN => "down arrow",
         ANY => "any",
+        ENTER => "enter",
+        HYPHEN => "-",
+        COMMA => ",",
+        DOT => "."
     }
 }

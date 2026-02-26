@@ -12,59 +12,46 @@ use crate::parser::parser::project_parser;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    match run(cli) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(()) => ExitCode::FAILURE,
+    }
+}
+
+fn run(cli: Cli) -> Result<(), ()> {
     match cli.command {
         Command::Run { path } => {
-            let path = path.to_str().unwrap();
-            let project = match sb3::read_sb3(path) {
-                Ok(project) => project,
-                Err(err) => {
-                    eprintln!("Load error: {err}");
-                    let mut source = err.source();
-                    while let Some(cause) = source {
-                        eprintln!("  cause: {cause}");
-                        source = cause.source();
-                    }
-                    return ExitCode::FAILURE;
-                }
-            };
-            project_parser(project);
+            let project = handle_error(sb3::read_sb3(&path), "Load error")?;
+            handle_error(project_parser(&project), "Parse error")?;
         }
         Command::Stats { path } => {
-            let path = path.to_str().unwrap();
             let s = Instant::now();
-            let project = match sb3::read_sb3(path) {
-                Ok(project) => project,
-                Err(err) => {
-                    eprintln!("Load error: {err}");
-                    let mut source = err.source();
-                    while let Some(cause) = source {
-                        eprintln!("  cause: {cause}");
-                        source = cause.source();
-                    }
-                    return ExitCode::FAILURE;
-                }
-            };
-            println!("File: {}", path);
+            let project = handle_error(sb3::read_sb3(&path), "Load error")?;
+            println!("File: {}", path.display());
             println!("Loading Time: {:?}", s.elapsed());
             println!("Block Number: {}", project.count_blocks());
             println!("Using Op Codes: {:?}", project.check_op_codes());
         }
         Command::JSON { path } => {
-            let path = path.to_str().unwrap();
-            let json = match sb3::read_json(path) {
-                Ok(project) => project,
-                Err(err) => {
-                    eprintln!("Load error: {err}");
-                    let mut source = err.source();
-                    while let Some(cause) = source {
-                        eprintln!("  cause: {cause}");
-                        source = cause.source();
-                    }
-                    return ExitCode::FAILURE;
-                }
-            };
+            let json = handle_error(sb3::read_json(&path), "Load error")?;
             println!("{}", json);
         }
     };
-    ExitCode::SUCCESS
+    Ok(())
+}
+
+fn handle_error<T, E>(result: Result<T, E>, prefix: &str) -> Result<T, ()>
+where
+    E: Error,
+{
+    result.map_err(|err| report_error(prefix, &err))
+}
+
+fn report_error(prefix: &str, err: &dyn Error) {
+    eprintln!("{prefix}: {err}");
+    let mut source = err.source();
+    while let Some(cause) = source {
+        eprintln!("  cause: {cause}");
+        source = cause.source();
+    }
 }

@@ -1,13 +1,21 @@
+use std::collections::HashMap;
+
 use crate::{
     parser::{
         blocks::{
-            control::parse_control_expr, data::parse_data_expr, event::parse_event_expr,
-            looks::parse_looks_expr, motion::parse_motion_expr, operator::parse_operator_expr,
-            pen::parse_pen_expr, procedures::parse_procedures_expr, sensing::parse_sensing_expr,
-            sound::parse_sound_expr,
+            control::{parse_control_expr, parse_control_stmt},
+            data::{parse_data_expr, parse_data_stmt},
+            event::{parse_event_expr, parse_event_stmt},
+            looks::{parse_looks_expr, parse_looks_stmt},
+            motion::{parse_motion_expr, parse_motion_stmt},
+            operator::{parse_operator_expr, parse_operator_stmt},
+            pen::{parse_pen_expr, parse_pen_stmt},
+            procedures::{parse_procedures_expr, parse_procedures_stmt},
+            sensing::{parse_sensing_expr, parse_sensing_stmt},
+            sound::{parse_sound_expr, parse_sound_stmt},
         },
         hat::{is_hat_block, parse_hat},
-        types::{Expr, Literal, ParseResult, ParserError},
+        types::{Expr, Literal, ParseResult, ParserError, Stmt},
     },
     types::{
         Block, BlockAndTopLevelPrimitive, BlockKind, Input, InputPrimitiveOrReference,
@@ -16,21 +24,129 @@ use crate::{
     },
 };
 
-pub fn project_parser(project: ScratchProject) {
+fn get_target_blocks<'a>(
+    project: &'a ScratchProject,
+    target_idx: usize,
+) -> ParseResult<'a, &'a HashMap<String, BlockAndTopLevelPrimitive>> {
+    let target = project
+        .targets
+        .get(target_idx)
+        .ok_or(ParserError::InvalidTargetIndex(target_idx))?;
+    Ok(match target {
+        StageOrSprite::Stage(v) => &v.blocks,
+        StageOrSprite::Sprite(v) => &v.blocks,
+    })
+}
+
+fn with_context<'a, T>(
+    result: ParseResult<'a, T>,
+    context: impl Into<String>,
+) -> ParseResult<'a, T> {
+    let context = context.into();
+    result.map_err(|err| err.context(context))
+}
+
+fn primary_input_value<'a>(input: &'a Input) -> Option<&'a InputPrimitiveOrReference> {
+    match input {
+        Input::V2(v) => v.1.as_ref(),
+        Input::V3(v) => v.1.as_ref().or(v.2.as_ref()),
+    }
+}
+
+pub fn project_parser<'a>(project: &'a ScratchProject) -> ParseResult<'a, ()> {
     for (idx, sprite) in project.targets.iter().enumerate() {
-        let blocks = match &sprite {
+        let blocks = match sprite {
             StageOrSprite::Stage(v) => &v.blocks,
             StageOrSprite::Sprite(v) => &v.blocks,
         };
-        for b in blocks {
-            if let BlockAndTopLevelPrimitive::Block(block) = b.1
+        for (block_id, block_or_primitive) in blocks {
+            if let BlockAndTopLevelPrimitive::Block(block) = block_or_primitive
                 && is_hat_block(&block.opcode)
             {
-                let hat = parse_hat(&project, idx, block).unwrap();
-                println!("{:?}", hat);
+                let hat = with_context(
+                    parse_hat(project, idx, block),
+                    format!("failed to parse hat block `{block_id}` at target index {idx}"),
+                )?;
+                println!("hat: {:?}", hat);
+                with_context(
+                    parse_thread_from(project, idx, &block.next, true),
+                    format!(
+                        "failed to parse thread from hat block `{block_id}` at target index {idx}"
+                    ),
+                )?;
             }
         }
     }
+    Ok(())
+}
+
+pub fn parse_thread_from<'a>(
+    project: &'a ScratchProject,
+    target_idx: usize,
+    block_id: &Option<String>,
+    debug: bool,
+) -> ParseResult<'a, Vec<Stmt>> {
+    let blocks = get_target_blocks(project, target_idx)?;
+    let mut next = block_id.clone();
+    let mut stmt_vec: Vec<Stmt> = vec![];
+
+    while let Some(next_block_id) = next {
+        let block = blocks.get(&next_block_id);
+        if block.is_none() {
+            break;
+        }
+        let block = block.unwrap();
+
+        match block {
+            BlockAndTopLevelPrimitive::Block(block) => {
+                let stmt = with_context(
+                    parse_stmt(project, target_idx, block),
+                    format!(
+                        "failed to parse statement block `{next_block_id}` at target index {target_idx}"
+                    ),
+                )?;
+                if debug {
+                    println!("stmt: {:?}", stmt);
+                }
+                next = block.next.clone();
+                stmt_vec.push(stmt);
+            }
+            BlockAndTopLevelPrimitive::TopLevelPrimitive(_) => {
+                return Err(ParserError::UnexpectedTopLevelPrimitive(next_block_id)
+                    .context(format!("while parsing thread at target index {target_idx}")));
+            }
+        }
+    }
+
+    Ok(stmt_vec)
+}
+
+#[allow(unreachable_code)]
+pub fn parse_stmt<'a>(
+    project: &'a ScratchProject,
+    target_idx: usize,
+    block: &'a Block,
+) -> ParseResult<'a, Stmt> {
+    let parsed = match block.opcode.kind() {
+        BlockKind::Motion => parse_motion_stmt(project, target_idx, block).map(Stmt::Motion),
+        BlockKind::Looks => parse_looks_stmt(project, target_idx, block).map(Stmt::Looks),
+        BlockKind::Sound => parse_sound_stmt(project, target_idx, block).map(Stmt::Sound),
+        BlockKind::Event => parse_event_stmt(project, target_idx, block).map(Stmt::Event),
+        BlockKind::Control => parse_control_stmt(project, target_idx, block).map(Stmt::Control),
+        BlockKind::Sensing => parse_sensing_stmt(project, target_idx, block).map(Stmt::Sensing),
+        BlockKind::Operator => parse_operator_stmt(project, target_idx, block).map(Stmt::Operator),
+        BlockKind::Data => parse_data_stmt(project, target_idx, block).map(Stmt::DataStmt),
+        BlockKind::Pen => parse_pen_stmt(project, target_idx, block).map(Stmt::PenStmt),
+        BlockKind::Procedures => {
+            parse_procedures_stmt(project, target_idx, block).map(Stmt::Procedures)
+        }
+        _ => Err(ParserError::NotHandledOp(block.opcode)),
+    };
+
+    with_context(
+        parsed,
+        format!("failed to parse statement opcode `{}`", block.opcode),
+    )
 }
 
 pub fn parse_input<'a>(
@@ -38,12 +154,32 @@ pub fn parse_input<'a>(
     target_idx: usize,
     input: &'a Input,
 ) -> ParseResult<'a, Expr> {
-    let primitive_reference = match input {
-        Input::V2(v) => &v.1,
-        Input::V3(v) => &v.1,
-    };
-    parse_expr(project, target_idx, primitive_reference)
+    let primitive_reference = primary_input_value(input);
+    if primitive_reference.is_some() {
+        parse_expr(project, target_idx, primitive_reference.unwrap())
+    } else {
+        Ok(Expr::Literal(Literal::Null))
+    }
 }
+
+pub fn parse_input_thread<'a>(
+    project: &'a ScratchProject,
+    target_idx: usize,
+    input: &'a Input,
+) -> ParseResult<'a, Vec<Stmt>> {
+    let primitive_reference = primary_input_value(input);
+    if primitive_reference.is_none() {
+        return Ok(Vec::new());
+    }
+    let reference = match primitive_reference.unwrap() {
+        InputPrimitiveOrReference::InputPrimitive(_) => {
+            return Err(ParserError::InvalidValue("only accepted in Reference"));
+        }
+        InputPrimitiveOrReference::Reference(v) => v,
+    };
+    parse_thread_from(project, target_idx, &Some(reference.clone()), false)
+}
+
 pub fn parse_expr<'a>(
     project: &'a ScratchProject,
     target_idx: usize,
@@ -81,103 +217,53 @@ pub fn parse_expr<'a>(
             })),
         },
         InputPrimitiveOrReference::Reference(reference) => {
-            let target = &project.targets[target_idx];
-            let referenced_block = match target {
-                StageOrSprite::Sprite(sprite) => sprite.blocks.get(reference),
-                StageOrSprite::Stage(stage) => stage.blocks.get(reference),
-            };
-            if referenced_block.is_none() {
-                return Err(ParserError::UnknownBlock(reference.clone()));
-            }
-            let referenced_block = referenced_block.unwrap();
+            let blocks = get_target_blocks(project, target_idx)?;
+            let referenced_block = blocks.get(reference).ok_or_else(|| {
+                ParserError::UnknownBlock(reference.clone()).context(format!(
+                    "while parsing expression at target index {target_idx}"
+                ))
+            })?;
             match referenced_block {
-                BlockAndTopLevelPrimitive::Block(block) => {
-                    parse_expr_block(project, target_idx, block)
-                }
-                BlockAndTopLevelPrimitive::TopLevelPrimitive(_) => {
-                    Err(ParserError::UnknownBlock(reference.clone()))
-                }
+                BlockAndTopLevelPrimitive::Block(block) => with_context(
+                    parse_expr_block(project, target_idx, block),
+                    format!(
+                        "failed to parse referenced expression block `{reference}` at target index {target_idx}"
+                    ),
+                ),
+                BlockAndTopLevelPrimitive::TopLevelPrimitive(_) => Err(
+                    ParserError::UnexpectedTopLevelPrimitive(reference.clone()).context(format!(
+                        "while parsing expression at target index {target_idx}"
+                    )),
+                ),
             }
         }
     }
 }
+
 #[allow(unreachable_code, unreachable_patterns)]
 pub fn parse_expr_block<'a>(
     project: &'a ScratchProject,
     target_idx: usize,
     block: &'a Block,
 ) -> ParseResult<'a, Expr> {
-    match block.opcode.kind() {
-        BlockKind::Control => {
-            let parse_result = parse_control_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Control(parse_result.unwrap()))
-        }
-        BlockKind::Data => {
-            let parse_result = parse_data_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Data(parse_result.unwrap()))
-        }
-        BlockKind::Event => {
-            let parse_result = parse_event_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Event(parse_result.unwrap()))
-        }
-        BlockKind::Looks => {
-            let parse_result = parse_looks_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Looks(parse_result.unwrap()))
-        }
-        BlockKind::Motion => {
-            let parse_result = parse_motion_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Motion(parse_result.unwrap()))
-        }
-        BlockKind::Operator => {
-            let parse_result = parse_operator_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Operator(parse_result.unwrap()))
-        }
-        BlockKind::Pen => {
-            let parse_result = parse_pen_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Pen(parse_result.unwrap()))
-        }
+    let parsed = match block.opcode.kind() {
+        BlockKind::Control => parse_control_expr(project, target_idx, block),
+        BlockKind::Data => parse_data_expr(project, target_idx, block),
+        BlockKind::Event => parse_event_expr(project, target_idx, block).map(Expr::Event),
+        BlockKind::Looks => parse_looks_expr(project, target_idx, block),
+        BlockKind::Motion => parse_motion_expr(project, target_idx, block),
+        BlockKind::Operator => parse_operator_expr(project, target_idx, block).map(Expr::Operator),
+        BlockKind::Pen => parse_pen_expr(project, target_idx, block),
         BlockKind::Procedures => {
-            let parse_result = parse_procedures_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Procedures(parse_result.unwrap()))
+            parse_procedures_expr(project, target_idx, block).map(Expr::Procedures)
         }
-        BlockKind::Sensing => {
-            let parse_result = parse_sensing_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(parse_result.unwrap())
-        }
-        BlockKind::Sound => {
-            let parse_result = parse_sound_expr(project, target_idx, block);
-            if parse_result.is_err() {
-                return Err(parse_result.err().unwrap());
-            }
-            Ok(Expr::Sound(parse_result.unwrap()))
-        }
+        BlockKind::Sensing => parse_sensing_expr(project, target_idx, block),
+        BlockKind::Sound => parse_sound_expr(project, target_idx, block),
         _ => Err(ParserError::NotHandledOp(block.opcode)),
-    }
+    };
+
+    with_context(
+        parsed,
+        format!("failed to parse expression opcode `{}`", block.opcode),
+    )
 }
