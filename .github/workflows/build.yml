@@ -13,7 +13,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-13
+          - macos-latest
           - windows-latest
 
     steps:
@@ -23,18 +23,34 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install LLVM 21.1.x
+      - name: Install LLVM 21.1.x (Unix)
+        if: runner.os != 'Windows'
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "21.1"
           directory: ${{ runner.temp }}/llvm
 
-      - name: Export LLVM env
+      - name: Install LLVM 21.1.x (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm --version=21.1.2 -y --no-progress
+
+      - name: Export LLVM env (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           echo "LLVM_SYS_211_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
           echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
           echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
+
+      - name: Export LLVM env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "LLVM_SYS_211_PREFIX=C:\Program Files\LLVM" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=C:\Program Files\LLVM\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Verify LLVM version (Unix)
         if: runner.os != 'Windows'
@@ -46,7 +62,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & "$env:LLVM_PATH\bin\llvm-config.exe" --version
+          & "C:\Program Files\LLVM\bin\llvm-config.exe" --version
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
