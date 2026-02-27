@@ -40,6 +40,9 @@ pub enum HatStmt {
     ProcedureDefinition {
         prototype: ProceduresPrototypeStruct,
     },
+    WhenTouchingObject {
+        object: Expr,
+    },
 }
 
 #[derive(Debug)]
@@ -72,6 +75,9 @@ pub enum MotionStmt {
     SetY { y: Expr },
     IfOnEdgeBounce,
     SetRotationStyle { style: RotationStyle },
+    AlignScene,  // NoOpだから調査サボります。ごめんね
+    ScrollRight, // NoOpだから引数いらない
+    ScrollUp,    // NoOpだから引数いらない
 }
 #[derive(Debug)]
 pub enum LooksEffects {
@@ -145,6 +151,10 @@ pub enum LooksStmt {
     },
     SetStretchTo {
         stretch: Expr,
+    },
+    HideAllSprites,
+    SwitchBackdropToAndWait {
+        backdrop: Expr,
     },
 }
 #[derive(Debug)]
@@ -265,6 +275,10 @@ pub enum PenStmt {
     SetPenColorParamTo { color_param: Expr, value: Expr },
     ChangePenSizeBy { size: Expr },
     SetPenSizeTo { size: Expr },
+    ChangePenHueBy { hue: Expr },
+    ChangePenShadeBy { shade: Expr },
+    SetPenHueTo { hue: Expr },
+    SetPenShadeTo { shade: Expr },
 }
 
 #[derive(Debug)]
@@ -286,6 +300,8 @@ pub enum MotionExpr {
     XPosition,
     YPosition,
     Direction,
+    XScroll,
+    YScroll,
 }
 #[derive(Debug)]
 pub enum CostumeStatueTarget {
@@ -364,6 +380,7 @@ pub enum SensingExpr {
     Username,
     Userid,
     Online,
+    IsLoud,
 }
 #[derive(Debug)]
 pub enum CalcOp {

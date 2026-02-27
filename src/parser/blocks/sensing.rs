@@ -248,6 +248,7 @@ pub fn parse_sensing_expr<'a>(
             };
             Ok(Expr::Sensing(SensingExpr::NowTime { time: time_target }))
         }
+        BlockOpCodes::SensingLoud => Ok(Expr::Sensing(SensingExpr::IsLoud)),
         _ => Err(crate::parser::types::ParserError::NotHandledOp(
             block.opcode,
         )),

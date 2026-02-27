@@ -141,6 +141,15 @@ pub fn parse_data_expr<'a>(
                 target: variable_id.clone(),
             }))
         }
+        BlockOpCodes::DataListContents => {
+            let fields = block.fields.as_ref().ok_or(ParserError::InvalidValue(
+                "missing fields in DataListContents block",
+            ))?;
+            let list_id = get_list_id(fields, "missing VARIABLE field in DataVariable block")?;
+            Ok(Expr::Literal(Literal::List {
+                target: list_id.clone(),
+            }))
+        }
         _ => Err(ParserError::NotHandledOp(block.opcode)),
     }
 }

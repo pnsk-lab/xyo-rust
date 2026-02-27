@@ -166,6 +166,54 @@ pub fn parse_pen_stmt<'a>(
             )?;
             Ok(PenStmt::SetPenSizeTo { size })
         }
+        BlockOpCodes::PenChangePenHueBy => {
+            let inputs = block_inputs(block, "missing inputs in PenChangePenHueBy block")?;
+            let hue = required_expr_input(
+                project,
+                target_idx,
+                inputs,
+                "HUE",
+                "missing HUE input",
+                "failed to parse HUE input in PenChangePenHueBy block",
+            )?;
+            Ok(PenStmt::ChangePenHueBy { hue })
+        }
+        BlockOpCodes::PenSetPenHueToNumber => {
+            let inputs = block_inputs(block, "missing inputs in PenSetPenHueToNumber block")?;
+            let hue = required_expr_input(
+                project,
+                target_idx,
+                inputs,
+                "HUE",
+                "missing HUE input",
+                "failed to parse HUE input in PenSetPenHueToNumber block",
+            )?;
+            Ok(PenStmt::SetPenHueTo { hue })
+        }
+        BlockOpCodes::PenChangePenShadeBy => {
+            let inputs = block_inputs(block, "missing inputs in PenChangePenShadeBy block")?;
+            let shade = required_expr_input(
+                project,
+                target_idx,
+                inputs,
+                "SHADE",
+                "missing SHADE input",
+                "failed to parse SHADE input in PenChangePenShadeBy block",
+            )?;
+            Ok(PenStmt::ChangePenShadeBy { shade })
+        }
+        BlockOpCodes::PenSetPenShadeToNumber => {
+            let inputs = block_inputs(block, "missing inputs in PenSetPenShadeToNumber block")?;
+            let shade = required_expr_input(
+                project,
+                target_idx,
+                inputs,
+                "SHADE",
+                "missing SHADE input",
+                "failed to parse SHADE input in PenSetPenShadeToNumber block",
+            )?;
+            Ok(PenStmt::SetPenShadeTo { shade })
+        }
         _ => Err(ParserError::NotHandledOp(block.opcode)),
     }
 }

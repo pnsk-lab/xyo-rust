@@ -90,6 +90,8 @@ pub fn parse_motion_expr<'a>(
             let operator = field_text(field);
             Ok(Expr::Literal(Literal::String(operator.clone())))
         }
+        BlockOpCodes::MotionXScroll => Ok(Expr::Motion(MotionExpr::XScroll)),
+        BlockOpCodes::MotionYScroll => Ok(Expr::Motion(MotionExpr::YScroll)),
         _ => Err(ParserError::NotHandledOp(block.opcode)),
     }
 }
@@ -304,6 +306,9 @@ pub fn parse_motion_stmt<'a>(
             };
             Ok(MotionStmt::SetRotationStyle { style })
         }
+        BlockOpCodes::MotionAlignScene => Ok(MotionStmt::AlignScene),
+        BlockOpCodes::MotionScrollRight => Ok(MotionStmt::ScrollRight),
+        BlockOpCodes::MotionScrollUp => Ok(MotionStmt::ScrollUp),
         _ => Err(ParserError::NotHandledOp(block.opcode)),
     }
 }

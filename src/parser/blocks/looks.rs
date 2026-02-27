@@ -373,6 +373,22 @@ pub fn parse_looks_stmt<'a>(
             )?;
             Ok(LooksStmt::SetStretchTo { stretch })
         }
+        BlockOpCodes::LooksHideAllSprites => Ok(LooksStmt::HideAllSprites),
+        BlockOpCodes::LooksSwitchBackdropToAndWait => {
+            let inputs = block_inputs(
+                block,
+                "missing inputs in LooksSwitchBackdropToAndWait block",
+            )?;
+            let backdrop = required_expr_input(
+                project,
+                target_idx,
+                inputs,
+                "BACKDROP",
+                "missing BACKDROP input",
+                "failed to parse BACKDROP input in LooksSwitchBackdropToAndWait block",
+            )?;
+            Ok(LooksStmt::SwitchBackdropToAndWait { backdrop })
+        }
         _ => Err(ParserError::NotHandledOp(block.opcode)),
     }
 }

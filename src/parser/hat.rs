@@ -1,3 +1,5 @@
+use std::process::id;
+
 use crate::{
     parser::{
         parser::parse_input,
@@ -17,6 +19,7 @@ pub fn is_hat_block(op: &BlockOpCodes) -> bool {
         BlockOpCodes::EventWhenBroadcastReceived => true,
         BlockOpCodes::ControlStartAsClone => true,
         BlockOpCodes::ProceduresDefinition => true,
+        BlockOpCodes::EventWhenTouchingObject => true,
         _ => false,
     }
 }
@@ -151,6 +154,22 @@ pub fn parse_hat<'a>(
                     "procedures custom_block must be ProceduresPrototype",
                 ))
             }
+        }
+        BlockOpCodes::EventWhenTouchingObject => {
+            let inputs = block.inputs.as_ref().ok_or(ParserError::InvalidValue(
+                "missing inputs in EventWhenTouchingObject block",
+            ))?;
+            let index_input = inputs
+                .get("TOUCHINGOBJECTMENU")
+                .ok_or(ParserError::InvalidValue(
+                    "missing TOUCHINGOBJECTMENU input",
+                ))?;
+            let target = parse_input(project, target_idx, index_input).map_err(|err| {
+                err.context(
+                    "failed to parse TOUCHINGOBJECTMENU input in EventWhenTouchingObject block",
+                )
+            })?;
+            Ok(HatStmt::WhenTouchingObject { object: target })
         }
         _ => Err(ParserError::NotHandledOp(block.opcode)),
     }
