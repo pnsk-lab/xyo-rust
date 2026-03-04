@@ -1,89 +1,101 @@
 name: Build
 
 on:
-  push:
-  workflow_dispatch:
+    push:
+    workflow_dispatch:
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+    build:
+        name: Build (${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os:
+                    - ubuntu-latest
+                    - macos-latest
+                    - windows-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Install LLVM 21.1.x (Unix)
-        if: runner.os != 'Windows'
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "21.1"
-          directory: ${{ runner.temp }}/llvm
+            - name: Install LLVM 21 (macOS via Homebrew)
+              if: runner.os == 'macOS'
+              shell: bash
+              run: |
+                  export HOMEBREW_NO_AUTO_UPDATE=1
+                  brew install llvm@21
 
-      - name: Install LLVM 21.1.x (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          git clone --depth 1 --branch llvmorg-21.1.2 https://github.com/llvm/llvm-project.git $env:RUNNER_TEMP\llvm-project
-          cmake -S $env:RUNNER_TEMP\llvm-project\llvm -B $env:RUNNER_TEMP\llvm-build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="C:\llvm-21.1" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF
-          cmake --build $env:RUNNER_TEMP\llvm-build --config Release --target INSTALL -- /m
+            - name: Install LLVM 21.1.x (Unix)
+              if: runner.os == 'Linux'
+              uses: KyleMayes/install-llvm-action@v2
+              with:
+                  version: "21.1"
+                  directory: ${{ runner.temp }}/llvm
 
-      - name: Export LLVM env (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          echo "LLVM_SYS_211_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
-          echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
-          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
+            - name: Install LLVM 21.1.x (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  git clone --depth 1 --branch llvmorg-21.1.2 https://github.com/llvm/llvm-project.git $env:RUNNER_TEMP\llvm-project
+                  cmake -S $env:RUNNER_TEMP\llvm-project\llvm -B $env:RUNNER_TEMP\llvm-build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="C:\llvm-21.1" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF
+                  cmake --build $env:RUNNER_TEMP\llvm-build --config Release --target INSTALL -- /m
 
-      - name: Export LLVM env (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          "LLVM_SYS_211_PREFIX=C:\llvm-21.1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LLVM_CONFIG_PATH=C:\llvm-21.1\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "C:\llvm-21.1\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            - name: Export LLVM env (Unix)
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  if [ "$RUNNER_OS" = "macOS" ]; then
+                    LLVM_ROOT="$(brew --prefix llvm@21)"
+                  else
+                    LLVM_ROOT="$LLVM_PATH"
+                  fi
+                  echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
+                  echo "LLVM_CONFIG_PATH=$LLVM_ROOT/bin/llvm-config" >> "$GITHUB_ENV"
+                  echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
-      - name: Verify LLVM version (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          "$LLVM_PATH/bin/llvm-config" --version
+            - name: Export LLVM env (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  "LLVM_SYS_211_PREFIX=C:\llvm-21.1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  "LLVM_CONFIG_PATH=C:\llvm-21.1\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  "C:\llvm-21.1\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Verify LLVM version (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          & "C:\llvm-21.1\bin\llvm-config.exe" --version
+            - name: Verify LLVM version (Unix)
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  "$LLVM_CONFIG_PATH" --version
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+            - name: Verify LLVM version (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  & "C:\llvm-21.1\bin\llvm-config.exe" --version
 
-      - name: Build
-        run: cargo build --release
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
 
-      - name: Upload artifact (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: xyo-${{ matrix.os }}
-          path: target/release/xyo
-          if-no-files-found: error
+            - name: Build
+              run: cargo build --release
 
-      - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: xyo-${{ matrix.os }}
-          path: target/release/xyo.exe
-          if-no-files-found: error
+            - name: Upload artifact (Unix)
+              if: runner.os != 'Windows'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: xyo-${{ matrix.os }}
+                  path: target/release/xyo
+                  if-no-files-found: error
+
+            - name: Upload artifact (Windows)
+              if: runner.os == 'Windows'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: xyo-${{ matrix.os }}
+                  path: target/release/xyo.exe
+                  if-no-files-found: error
