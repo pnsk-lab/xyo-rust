@@ -1,5 +1,3 @@
-use std::process::id;
-
 use crate::{
     parser::{
         parser::parse_input,

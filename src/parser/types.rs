@@ -2,14 +2,15 @@ use std::{collections::HashMap, hash::Hash};
 
 use crate::{
     str_enum,
-    types::{BlockOpCodes, RotationStyle, StringOrBool, primitive::StringOrNumber},
+    types::{BlockOpCodes, RotationStyle, primitive::StringOrNumber},
 };
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
 pub struct Thread {
-    hat: HatStmt,
-    stmts: Vec<Stmt>,
+    pub hat: HatStmt,
+    pub stmts: Vec<Stmt>,
+    pub target_idx: usize,
 }
 
 #[derive(Debug)]

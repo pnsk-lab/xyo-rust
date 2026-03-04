@@ -1,0 +1,90 @@
+use std::collections::HashMap;
+
+use inkwell::{
+    AddressSpace, attributes::AttributeLoc, builder::Builder, context::Context, module::Module,
+    types::StructType, values::FunctionValue,
+};
+
+#[repr(C)]
+pub struct SpriteStruct {
+    pub sprite_x: f64,
+    pub sprite_y: f64,
+    pub string_map: &'static HashMap<u64, String>,
+}
+pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
+    context.struct_type(
+        &[
+            context.f64_type().into(),
+            context.f64_type().into(),
+            context.ptr_type(AddressSpace::default()).into(),
+        ],
+        false,
+    )
+}
+
+pub struct Builders<'ctx> {
+    pub context: &'ctx Context,
+    pub module: Module<'ctx>,
+    pub builder: Builder<'ctx>,
+    counter: usize,
+    pub functions: Functions<'ctx>,
+}
+pub struct Functions<'ctx> {
+    pub str_to_num: FunctionValue<'ctx>,
+}
+
+impl<'ctx> Builders<'ctx> {
+    pub fn new(context: &'ctx Context) -> Self {
+        let module = context.create_module("xyojit");
+        let builder = context.create_builder();
+        let ptr_type = context.ptr_type(AddressSpace::default());
+        let f64_type = context.f64_type();
+        let i64_type = context.i64_type();
+        let str_to_num_func_type = f64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+        let functions = Functions {
+            str_to_num: module.add_function("xyo_str_to_num", str_to_num_func_type, None),
+        };
+        Self {
+            context,
+            module,
+            builder,
+            counter: 0,
+            functions,
+        }
+    }
+    pub fn create_function_name(&mut self) -> String {
+        let mut n = self.counter;
+        if n == 0 {
+            self.counter += 1;
+            return "a".to_string();
+        }
+
+        let mut chars = Vec::new();
+
+        while n > 0 {
+            let idx = (n % 26) as u8;
+            chars.push((b'a' + idx) as char);
+            n /= 26;
+        }
+
+        self.counter += 1;
+
+        chars.iter().rev().collect()
+    }
+}
+
+pub enum SpriteKeys {
+    SpriteX,
+    SpriteY,
+    StringMap,
+}
+
+impl From<SpriteKeys> for u32 {
+    fn from(field: SpriteKeys) -> Self {
+        match field {
+            SpriteKeys::SpriteX => 0,
+            SpriteKeys::SpriteY => 1,
+            SpriteKeys::StringMap => 2,
+        }
+    }
+}

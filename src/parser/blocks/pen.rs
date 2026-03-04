@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     parser::{
         parser::parse_input,
-        types::{Expr, Literal, ParseResult, ParserError, PenExpr, PenStmt},
+        types::{Expr, Literal, ParseResult, ParserError, PenStmt},
     },
     types::{Block, BlockOpCodes, Fields, Input, ScratchProject},
 };

@@ -15,7 +15,7 @@ use crate::{
             sound::{parse_sound_expr, parse_sound_stmt},
         },
         hat::{is_hat_block, parse_hat},
-        types::{Expr, Literal, ParseResult, ParserError, Stmt},
+        types::{Expr, Literal, ParseResult, ParserError, Stmt, Thread},
     },
     types::{
         Block, BlockAndTopLevelPrimitive, BlockKind, Input, InputPrimitiveOrReference,
@@ -53,7 +53,8 @@ fn primary_input_value<'a>(input: &'a Input) -> Option<&'a InputPrimitiveOrRefer
     }
 }
 
-pub fn project_parser<'a>(project: &'a ScratchProject) -> ParseResult<'a, ()> {
+pub fn project_parser<'a>(project: &'a ScratchProject) -> ParseResult<'a, Vec<Thread>> {
+    let mut threads: Vec<Thread> = vec![];
     for (idx, sprite) in project.targets.iter().enumerate() {
         let blocks = match sprite {
             StageOrSprite::Stage(v) => &v.blocks,
@@ -67,24 +68,27 @@ pub fn project_parser<'a>(project: &'a ScratchProject) -> ParseResult<'a, ()> {
                     parse_hat(project, idx, block),
                     format!("failed to parse hat block `{block_id}` at target index {idx}"),
                 )?;
-                println!("hat: {:?}", hat);
-                with_context(
-                    parse_thread_from(project, idx, &block.next, true),
+                let stmts = with_context(
+                    parse_thread_from(project, idx, &block.next),
                     format!(
                         "failed to parse thread from hat block `{block_id}` at target index {idx}"
                     ),
                 )?;
+                threads.push(Thread {
+                    hat,
+                    stmts,
+                    target_idx: idx,
+                });
             }
         }
     }
-    Ok(())
+    Ok(threads)
 }
 
 pub fn parse_thread_from<'a>(
     project: &'a ScratchProject,
     target_idx: usize,
     block_id: &Option<String>,
-    debug: bool,
 ) -> ParseResult<'a, Vec<Stmt>> {
     let blocks = get_target_blocks(project, target_idx)?;
     let mut next = block_id.clone();
@@ -105,9 +109,6 @@ pub fn parse_thread_from<'a>(
                         "failed to parse statement block `{next_block_id}` at target index {target_idx}"
                     ),
                 )?;
-                if debug {
-                    println!("stmt: {:?}", stmt);
-                }
                 next = block.next.clone();
                 stmt_vec.push(stmt);
             }
@@ -177,7 +178,7 @@ pub fn parse_input_thread<'a>(
         }
         InputPrimitiveOrReference::Reference(v) => v,
     };
-    parse_thread_from(project, target_idx, &Some(reference.clone()), false)
+    parse_thread_from(project, target_idx, &Some(reference.clone()))
 }
 
 pub fn parse_expr<'a>(

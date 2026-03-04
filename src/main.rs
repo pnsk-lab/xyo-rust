@@ -1,4 +1,5 @@
 mod cli;
+mod compiler;
 mod parser;
 mod sb3;
 mod types;
@@ -8,6 +9,7 @@ use std::process::ExitCode;
 use std::{error::Error, time::Instant};
 
 use crate::cli::{Cli, Command};
+use crate::compiler::compiler::compiler;
 use crate::parser::parser::project_parser;
 
 fn main() -> ExitCode {
@@ -22,7 +24,8 @@ fn run(cli: Cli) -> Result<(), ()> {
     match cli.command {
         Command::Run { path } => {
             let project = handle_error(sb3::read_sb3(&path), "Load error")?;
-            handle_error(project_parser(&project), "Parse error")?;
+            let threads = handle_error(project_parser(&project), "Parse error")?;
+            let ir = compiler(&project, &threads);
         }
         Command::Stats { path } => {
             let s = Instant::now();
