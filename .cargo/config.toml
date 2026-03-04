@@ -16,9 +16,7 @@ rustflags = [
 ]
 
 [target.aarch64-apple-darwin]
-rustflags = [
-  "-C", "link-arg=-Wl,-exported_symbol,_rt_*",
-]
+# macOSではワイルドカード export 指定がリンク失敗の原因になるため設定しない
 
 [target.x86_64-pc-windows-msvc]
 # WindowsにはGNU ld系フラグを入れない
