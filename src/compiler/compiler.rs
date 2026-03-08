@@ -8,7 +8,9 @@ use inkwell::{
 
 use crate::{
     compiler::{
-        blocks::{literal::parse_literal_expr, motion::parse_motion_stmt},
+        blocks::{
+            literal::parse_literal_expr, motion::parse_motion_stmt, operator::parse_operator_expr,
+        },
         types::Builders,
     },
     parser::types::{Expr, Stmt, Thread},
@@ -28,25 +30,39 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
 
     // println!("IR before optimization:\n{}", builders.module.to_string());
 
-    // let target_triple = TargetMachine::get_default_triple();
-    // let target = Target::from_triple(&target_triple).unwrap();
-    // let target_machine = target
-    //     .create_target_machine(
-    //         &target_triple,
-    //         "",
-    //         "",
-    //         OptimizationLevel::None,
-    //         RelocMode::PIC,
-    //         CodeModel::Default,
-    //     )
-    //     .unwrap();
+    let target_triple = TargetMachine::get_default_triple();
+    let cpu = TargetMachine::get_host_cpu_name().to_string();
+    let features = TargetMachine::get_host_cpu_features().to_string();
+    println!("cpu: {cpu}, features: {features}");
+    let target = Target::from_triple(&target_triple).unwrap();
+    let target_machine = target
+        .create_target_machine(
+            &target_triple,
+            &cpu,
+            &features,
+            OptimizationLevel::Aggressive,
+            RelocMode::PIC,
+            CodeModel::Default,
+        )
+        .unwrap();
 
-    // let passes = "default<O3>,loop-vectorize,loop-unroll";
-    // let pass_builder_options = PassBuilderOptions::create();
-    // builders
-    //     .module
-    //     .run_passes(passes, &target_machine, pass_builder_options)
-    //     .unwrap();
+    builders.module.set_triple(&target_triple);
+    builders
+        .module
+        .set_data_layout(&target_machine.get_target_data().get_data_layout());
+
+    let passes = "default<O3>";
+    let pass_builder_options = PassBuilderOptions::create();
+    pass_builder_options.set_loop_interleaving(true);
+    pass_builder_options.set_loop_vectorization(true);
+    pass_builder_options.set_loop_slp_vectorization(true);
+    pass_builder_options.set_loop_unrolling(true);
+    pass_builder_options.set_forget_all_scev_in_loop_unroll(true);
+    pass_builder_options.set_merge_functions(true);
+    builders
+        .module
+        .run_passes(passes, &target_machine, pass_builder_options)
+        .unwrap();
     println!("{}", builders.module.to_string())
 }
 
@@ -74,51 +90,19 @@ pub fn generate_expr_ir<'ctx>(
     expr: &Expr,
     function: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
-) -> FloatValue<'ctx> {
-    let parse_result = match expr {
+) -> ScratchReturnTypes<'ctx> {
+    match expr {
         Expr::Literal(l) => parse_literal_expr(builders, l, function, strings),
+        Expr::Operator(l) => parse_operator_expr(builders, l, function, strings),
         _ => todo!("やる"),
-    };
-    scratch_return_to_number(builders, parse_result, function)
+    }
 }
 
 pub enum ScratchReturnTypes<'ctx> {
     Number(FloatValue<'ctx>),
     String(IntValue<'ctx>),
     Bool(IntValue<'ctx>),
-}
-
-fn scratch_return_to_number<'ctx>(
-    builders: &Builders<'ctx>,
-    from: ScratchReturnTypes<'ctx>,
-    func: &FunctionValue<'ctx>,
-) -> FloatValue<'ctx> {
-    match from {
-        ScratchReturnTypes::Number(v) => v,
-        ScratchReturnTypes::Bool(v) => builders
-            .builder
-            .build_select(
-                v,
-                builders.context.f64_type().const_float(1.0),
-                builders.context.f64_type().const_float(0.0),
-                "num_bool",
-            )
-            .unwrap()
-            .into_float_value(),
-        ScratchReturnTypes::String(v) => {
-            let p = func.get_first_param().unwrap().into_pointer_value();
-            builders
-                .builder
-                .build_call(
-                    builders.functions.str_to_num,
-                    &[p.into(), v.into()],
-                    "xyo_str_to_num",
-                )
-                .unwrap()
-                .try_as_basic_value()
-                .basic()
-                .unwrap()
-                .into_float_value()
-        }
-    }
+    NumberLiteral(f64),
+    StringLiteral((String, IntValue<'ctx>)),
+    BoolLiteral((bool, IntValue<'ctx>)),
 }

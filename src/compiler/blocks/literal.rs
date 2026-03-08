@@ -14,12 +14,13 @@ pub fn parse_literal_expr<'ctx>(
     match expr {
         Literal::Number(v) => {
             strings.push(v.clone());
-            ScratchReturnTypes::String(
+            ScratchReturnTypes::StringLiteral((
+                v.clone(),
                 builders
                     .context
                     .i64_type()
                     .const_int(strings.len() as u64 - 1, false),
-            )
+            ))
         }
         _ => todo!("あとでやる"),
     }
