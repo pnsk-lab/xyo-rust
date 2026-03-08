@@ -1,0 +1,16 @@
+[book]
+title = "xyo-rust Documentation"
+authors = ["Scratch Native Runtime Contributors"]
+language = "ja"
+multilingual = false
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "navy"
+git-repository-url = "https://github.com/pnsk-lab/xyo-rust"
+site-url = "/xyo-rust/"
+edit-url-template = "https://github.com/pnsk-lab/xyo-rust/edit/main/docs/{path}"

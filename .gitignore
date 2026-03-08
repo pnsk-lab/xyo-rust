@@ -4,3 +4,4 @@
 *.ppm
 *.o
 examples/*
+docs/book/
