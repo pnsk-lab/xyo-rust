@@ -1,5 +1,3 @@
-# 共通 rustflags は置かない（OS間衝突を避ける）
-
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
   "-C", "link-arg=-rdynamic",
@@ -16,10 +14,7 @@ rustflags = [
 ]
 
 [target.aarch64-apple-darwin]
-# macOSではワイルドカード export 指定がリンク失敗の原因になるため設定しない
 
 [target.x86_64-pc-windows-msvc]
-# WindowsにはGNU ld系フラグを入れない
 
 [target.aarch64-pc-windows-msvc]
-# WindowsにはGNU ld系フラグを入れない

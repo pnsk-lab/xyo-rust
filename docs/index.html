@@ -1,0 +1,120 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="ja">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <title>xyo-rust Documentation</title>
+        <link rel="stylesheet" type="text/css" href="style.css" />
+    </head>
+    <body>
+        <table class="page" summary="xyo-rust documentation layout">
+            <tr>
+                <td colspan="2" class="banner">
+                    <h1>xyo-rust Documentation</h1>
+                    <p>
+                        Scratch .sb3 を読み込み、解析し、LLVM IR
+                        生成へ接続する実験プロジェクトの手引き
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <td class="menu">
+                    <div class="menu-box">
+                        <h2>CONTENTS</h2>
+                        <ul>
+                            <li><a href="index.html">はじめに</a></li>
+                            <li>
+                                <a href="getting-started.html">セットアップ</a>
+                            </li>
+                            <li><a href="cli.html">CLI</a></li>
+                            <li>
+                                <a href="architecture.html">アーキテクチャ</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="menu-box">
+                        <h2>LINKS</h2>
+                        <ul>
+                            <li><a href="../README.md">README</a></li>
+                            <li>
+                                <a href="https://github.com/pnsk-lab/xyo-rust"
+                                    >GitHub</a
+                                >
+                            </li>
+                        </ul>
+                    </div>
+                </td>
+                <td class="content">
+                    <h2>はじめに</h2>
+                    <p>
+                        <strong>xyo-rust</strong> は、Scratch の
+                        <code>.sb3</code> プロジェクトを Rust
+                        で読み込み、内部表現へ変換し、LLVM IR
+                        生成へ接続するための実験的プロジェクトです。
+                    </p>
+                    <p>
+                        この文書は、順番に読める技術メモとして整理されています。まず全体像をつかみ、必要に応じてセットアップ、CLI、アーキテクチャへ進める構成です。
+                    </p>
+                    <h3>このプロジェクトが目指すこと</h3>
+                    <ul>
+                        <li>
+                            Scratch
+                            プロジェクトを静的に解析できる内部表現へ変換する
+                        </li>
+                        <li>hat block からスレッドを抽出する</li>
+                        <li>
+                            LLVM IR を生成し、将来的なネイティブ実行につなげる
+                        </li>
+                        <li>SB3 解析系の検証用ツールチェーンを整える</li>
+                    </ul>
+                    <h3>現在の実装範囲</h3>
+                    <ol>
+                        <li><code>.sb3</code> を ZIP として開く</li>
+                        <li><code>project.json</code> を取り出す</li>
+                        <li>
+                            <code>serde</code> で Scratch
+                            プロジェクト構造へ変換する
+                        </li>
+                        <li>hat block からスレッドを解析する</li>
+                        <li>
+                            <code>Stmt</code> / <code>Expr</code> に変換する
+                        </li>
+                        <li>一部の式 / 文を LLVM IR へ変換する</li>
+                    </ol>
+                    <div class="note">
+                        <p>
+                            <strong>注意:</strong> 完全な Scratch
+                            実行互換はまだ未実装です。特に <code>run</code>
+                            サブコマンドは実験段階で、入力によっては未実装分岐に到達します。
+                        </p>
+                    </div>
+                    <h3>読み進め方</h3>
+                    <ul>
+                        <li>まず動かしたい: セットアップ</li>
+                        <li>コマンドの違いを知りたい: CLI</li>
+                        <li>内部構造を把握したい: アーキテクチャ</li>
+                    </ul>
+                    <h3>現時点での注意点</h3>
+                    <ul>
+                        <li>Scratch VM との完全互換は未実装です</li>
+                        <li>LLVM 21.1 系を前提にしています</li>
+                        <li>
+                            配布用の
+                            <code>.sb3</code> サンプルは同梱されていません
+                        </li>
+                    </ul>
+                    <p>
+                        続きは
+                        <a href="getting-started.html">セットアップ</a>
+                        を参照してください。
+                    </p>
+                    <div class="footer">
+                        <p>
+                            Best viewed with a simple browser. No script
+                            required.
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>

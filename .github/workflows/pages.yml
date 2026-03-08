@@ -1,15 +1,15 @@
-name: Docs
+name: Publish Docs
 
 on:
     push:
         paths:
             - README.md
             - docs/**
-            - .github/workflows/docs.yml
+            - .github/workflows/pages.yml
+    workflow_dispatch:
     release:
         types:
             - published
-    workflow_dispatch:
 
 permissions:
     contents: read
@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
     build:
-        name: Build docs
+        name: Build Pages Artifact
+        if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
         runs-on: ubuntu-latest
 
         steps:
@@ -32,21 +33,14 @@ jobs:
             - name: Setup Pages
               uses: actions/configure-pages@v5
 
-            - name: Install mdBook
-              uses: peaceiris/actions-mdbook@v2
-              with:
-                  mdbook-version: latest
-
-            - name: Build site
-              run: mdbook build docs
-
-            - name: Upload artifact
+            - name: Upload static docs
               uses: actions/upload-pages-artifact@v3
               with:
-                  path: docs/book
+                  path: docs
 
     deploy:
-        name: Deploy docs
+        name: Deploy to GitHub Pages
+        if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
         needs: build
         runs-on: ubuntu-latest
         environment:
@@ -54,6 +48,6 @@ jobs:
             url: ${{ steps.deployment.outputs.page_url }}
 
         steps:
-            - name: Deploy to GitHub Pages
+            - name: Deploy
               id: deployment
               uses: actions/deploy-pages@v4

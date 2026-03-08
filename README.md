@@ -1,23 +1,25 @@
 # xyo-rust
 
-`xyo-rust` は、Scratch の `.sb3` プロジェクトを読み込み、構文解析し、LLVM を使ってネイティブ実行につなげることを目指す Rust 製ランタイム / コンパイラです。
+`xyo-rust` は、Scratch の `.sb3` プロジェクトを Rust で読み込み、構文解析し、LLVM IR 生成へ接続する実験的なランタイム / コンパイラ基盤です。
 
-現時点では **SB3 の読み込み・JSON 抽出・AST/IR 生成の基盤実装が中心** で、実行系はまだ開発途中です。
+いまの主眼は **SB3 ローダー・パーサー・IR 生成経路の検証** にあります。Scratch VM と同等の完全実行を目指す段階ではなく、まずは「Scratch プロジェクトをどこまで静的に扱えるか」を試すための土台が実装されています。
 
-## できること
+## 現在できること
 
-- `.sb3` ファイルから `project.json` を読み込む
-- Scratch プロジェクトの統計情報を確認する
-- `project.json` をそのまま出力する
-- hat block からスレッドを抽出し、内部表現へ変換する
-- LLVM IR を生成するための基盤コードを試す
+- `.sb3` から `project.json` を取り出す
+- `project.json` をそのまま標準出力へ表示する
+- ブロック数や使用 opcode 一覧などの統計を確認する
+- hat block を起点にスレッドを抽出し、内部表現へ変換する
+- 一部の式・命令を LLVM IR へ落とし込む
+- JSON パース失敗時に、発生位置と周辺コンテキストを表示する
 
 ## まだ開発途中のこと
 
-- Scratch 命令の網羅的な実装
-- ネイティブ実行ランタイムの完成
-- 最適化済みバイナリの生成フロー整備
-- エラーレポートと互換性検証の拡充
+- Scratch opcode の網羅的な実装
+- 実行ランタイムの完成
+- 生成した IR から実行可能ファイルへつなぐフロー
+- 互換性検証とリグレッションテストの拡充
+- `run` サブコマンドの未実装命令に対する安全なフォールバック
 
 ## 必要環境
 
@@ -25,30 +27,41 @@
 - LLVM 21.1 系
 - `llvm-config` が利用可能な環境
 
-`inkwell` を利用しているため、LLVM のバージョン差異には注意してください。CI では LLVM 21.1 系を前提にしています。
+`inkwell` を使っているため、LLVM のメジャー・マイナー差異には注意が必要です。作業前に `llvm-config --version` が `21.1.x` を返すことを確認してください。
 
-## ビルド
+## クイックスタート
+
+### ビルド
 
 ```bash
 cargo build --release
 ```
 
-## テスト
+### テスト
 
 ```bash
 cargo test
 ```
 
+### CLI ヘルプ
+
+```bash
+cargo run -- --help
+```
+
 ## CLI
+
+生成される実行ファイル名は `xyo` です。開発中は `cargo run -- ...` で、そのまま試せます。
 
 ### 統計情報を見る
 
 ```bash
-cargo run -- stats examples/simple.sb3
+cargo run -- stats <path-to-project.sb3>
 ```
 
-出力例:
+出力内容:
 
+- 入力ファイル名
 - 読み込み時間
 - ブロック数
 - 使用されている opcode 一覧
@@ -56,40 +69,34 @@ cargo run -- stats examples/simple.sb3
 ### `project.json` を表示する
 
 ```bash
-cargo run -- json examples/simple.sb3
+cargo run -- json <path-to-project.sb3>
 ```
 
 ### 解析と IR 生成を試す
 
 ```bash
-cargo run -- run examples/simple.sb3
+cargo run -- run <path-to-project.sb3>
 ```
+
+`run` は現状もっとも実験的なコマンドです。LLVM IR 生成の途中に未実装分岐が残っているため、複雑なプロジェクトでは失敗することがあります。まずは `stats` と `json` で入力を確認してから使うのが安全です。
+
+## 入力ファイルについて
+
+このリポジトリには現在、配布用の `.sb3` サンプルは含まれていません。Scratch エディタでプロジェクトを作成し、**「コンピューターに保存する」** で `.sb3` を書き出して入力に使ってください。
 
 ## プロジェクト構成
 
-- `src/main.rs`: CLI エントリポイント
+- `src/main.rs`: CLI エントリポイントとエラー出力
 - `src/cli.rs`: サブコマンド定義
-- `src/sb3.rs`: `.sb3` / `project.json` 読み込み
-- `src/parser/`: Scratch ブロック列を内部表現へ変換
+- `src/sb3.rs`: `.sb3` / `project.json` の読み込みと詳細エラー整形
+- `src/parser/`: Scratch ブロック列を `Stmt` / `Expr` に変換
 - `src/compiler/`: LLVM IR 生成
-- `examples/`: 動作確認用の `.sb3` サンプル
 - `tests/`: CLI テスト
-- `docs/`: GitHub Pages 用ドキュメント
-
-## GitHub Pages ドキュメント
-
-このリポジトリには `mdBook` ベースのドキュメントを追加してあります。GitHub の Pages 設定で **Build and deployment = GitHub Actions** を選ぶと、ドキュメント変更の push 時や GitHub Release の publish 時にドキュメントサイトを自動公開できます。
-
-公開 URL の一般形は次のとおりです。
-
-- `https://<owner>.github.io/<repo>/`
-
-詳しい内容は `docs/` 配下を参照してください。
+- `docs/`: 静的 HTML ドキュメントと原稿
 
 ## CI
 
 - `.github/workflows/build.yml`: GitHub Release 公開時の Rust バイナリのマルチプラットフォームビルド
-- `.github/workflows/docs.yml`: ドキュメント変更時の push または GitHub Release 公開時の GitHub Pages 向けドキュメント生成・配備
 
 ## ライセンス
 

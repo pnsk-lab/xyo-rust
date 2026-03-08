@@ -1,0 +1,135 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="ja">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <title>xyo-rust Documentation - Setup</title>
+        <link rel="stylesheet" type="text/css" href="style.css" />
+    </head>
+    <body>
+        <table class="page" summary="xyo-rust documentation layout">
+            <tr>
+                <td colspan="2" class="banner">
+                    <h1>xyo-rust Documentation</h1>
+                    <p>セットアップ</p>
+                </td>
+            </tr>
+            <tr>
+                <td class="menu">
+                    <div class="menu-box">
+                        <h2>CONTENTS</h2>
+                        <ul>
+                            <li><a href="index.html">はじめに</a></li>
+                            <li>
+                                <a href="getting-started.html">セットアップ</a>
+                            </li>
+                            <li><a href="cli.html">CLI</a></li>
+                            <li>
+                                <a href="architecture.html">アーキテクチャ</a>
+                            </li>
+                        </ul>
+                    </div>
+                </td>
+                <td class="content">
+                    <h2>セットアップ</h2>
+                    <p>
+                        この章では、<code>xyo-rust</code>
+                        をローカルでビルドし、手元の
+                        <code>.sb3</code>
+                        ファイルを入力して確認する最短手順を説明します。
+                    </p>
+                    <h3>前提条件</h3>
+                    <ul>
+                        <li>Rust stable</li>
+                        <li>LLVM 21.1 系</li>
+                        <li><code>llvm-config</code> が PATH 上にあること</li>
+                    </ul>
+                    <p>
+                        まずは次のコマンドでバージョンを確認しておくと安全です。
+                    </p>
+                    <pre>
+rustc --version
+llvm-config --version</pre
+                    >
+                    <p>
+                        <code>llvm-config --version</code> は
+                        <code>21.1.x</code> を想定しています。
+                    </p>
+                    <h3>ビルド</h3>
+                    <pre>cargo build --release</pre>
+                    <p>
+                        ビルド後の実行ファイルは
+                        <code>target/release/xyo</code> です。
+                    </p>
+                    <h3>テスト</h3>
+                    <pre>cargo test</pre>
+                    <p>ヘルプだけ確認したい場合は次でも十分です。</p>
+                    <pre>cargo run -- --help</pre>
+                    <h3><code>.sb3</code> ファイルを用意する</h3>
+                    <p>
+                        このリポジトリには現在、配布用の
+                        <code>.sb3</code> サンプルは含まれていません。Scratch
+                        エディタから自分のプロジェクトを書き出して使います。
+                    </p>
+                    <ol>
+                        <li>Scratch でプロジェクトを開く</li>
+                        <li>「ファイル」→「コンピューターに保存する」を選ぶ</li>
+                        <li>保存された <code>.sb3</code> のパスを控える</li>
+                    </ol>
+                    <p>
+                        以下では、そのファイルを
+                        <code>&lt;path-to-project.sb3&gt;</code> と表記します。
+                    </p>
+                    <h3>最初に試すコマンド</h3>
+                    <h4>構造だけ見たい場合</h4>
+                    <pre>cargo run -- json &lt;path-to-project.sb3&gt;</pre>
+                    <p><code>project.json</code> をそのまま表示します。</p>
+                    <h4>規模を知りたい場合</h4>
+                    <pre>cargo run -- stats &lt;path-to-project.sb3&gt;</pre>
+                    <p>次の情報が得られます。</p>
+                    <ul>
+                        <li>入力ファイル名</li>
+                        <li>読み込み時間</li>
+                        <li>ブロック数</li>
+                        <li>使用 opcode 一覧</li>
+                    </ul>
+                    <h4>IR 生成経路を試したい場合</h4>
+                    <pre>cargo run -- run &lt;path-to-project.sb3&gt;</pre>
+                    <div class="note">
+                        <p>
+                            <strong>補足:</strong> <code>run</code>
+                            はもっとも実験的なコマンドです。入力によっては未実装の
+                            opcode や IR 変換で停止することがあります。
+                        </p>
+                    </div>
+                    <h3>エラーの見方</h3>
+                    <p>
+                        読み込みや JSON
+                        パースに失敗した場合、標準エラー出力には原因チェーンに加えて、可能なら位置情報や周辺コンテキストも表示されます。
+                    </p>
+                    <h3>ドキュメントのローカル確認</h3>
+                    <p>
+                        公開用ファイルはこの
+                        <code>docs/</code> ディレクトリ直下の HTML
+                        です。生成処理は不要で、そのまま Web サーバに置けます。
+                    </p>
+                    <ol>
+                        <li><code>docs/</code> を公開ディレクトリとして扱う</li>
+                        <li><code>index.html</code> から各ページへ移動する</li>
+                        <li>
+                            Apache や nginx などの通常の Web サーバで配信する
+                        </li>
+                    </ol>
+                    <div class="note">
+                        <p>
+                            <strong>補足:</strong> 特別なビルド手順や JavaScript
+                            は不要です。HTML と CSS だけで表示できます。
+                        </p>
+                    </div>
+                    <div class="footer">
+                        <p><a href="index.html">はじめにへ戻る</a></p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>
