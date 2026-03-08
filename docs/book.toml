@@ -2,7 +2,6 @@
 title = "xyo-rust Documentation"
 authors = ["Scratch Native Runtime Contributors"]
 language = "ja"
-multilingual = false
 src = "src"
 
 [build]
