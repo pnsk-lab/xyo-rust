@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!--
+	NOTE!
+	  - Relative path in this config is relative to site/content
+	  - If relative path starts from ./ or ../, it's relative to URL when accessed
+	  - This rule applies to footer's src/href too
+-->
+<skinconfig>
+	<search domain="xyo.jet9.app" />
+	<breadcrumb>
+		<link name="pnsk-lab" href="https://github.com/pnsk-lab" />
+		<link name="xyo-rust" href="index.html" />
+	</breadcrumb>
+	<group>
+		<name>pnsk-lab</name>
+		<description>xyo-rust project documentation</description>
+		<link href="https://github.com/pnsk-lab" />
+		<image src="image/group-logo.png" />
+	</group>
+	<project>
+		<name>xyo-rust</name>
+		<description>Scratch .sb3 parser and LLVM IR experiment</description>
+		<link href="https://github.com/pnsk-lab/xyo-rust" />
+	</project>
+	<nav>
+		<group title="xyo-rust Docs">
+			<link name="はじめに" href="index.html" />
+			<link name="セットアップ" href="getting-started/" />
+			<link name="CLI" href="cli/" />
+			<link name="対応ブロック一覧" href="blocks/" />
+			<link name="アーキテクチャ" href="architecture/" />
+			<link name="GitHub" href="https://github.com/pnsk-lab/xyo-rust" />
+		</group>
+	</nav>
+	<favicon></favicon>
+	<extra-css></extra-css>
+	<skin>classic</skin> <!-- classic or simple -->
+	<copyright>
+		<holder>pnsk-lab</holder>
+		<year>2026</year> <!-- Year when you started this project/whatever copyright holder -->
+		<link href="https://github.com/pnsk-lab/xyo-rust" />
+	</copyright>
+	<footer>
+		<p>Generated from Markdown sources with Taiga.</p>
+	</footer>
+</skinconfig>

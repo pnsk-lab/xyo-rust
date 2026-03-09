@@ -1,0 +1,486 @@
+<?xml version="1.0"?>
+<document>
+	<header>
+		<title>対応ブロック一覧</title>
+	</header>
+	<body>
+		<p><a href="../">はじめに</a> / <a href="../getting-started/">セットアップ</a> / <a href="../cli/">CLI</a> / <a href="../architecture/">アーキテクチャ</a></p>
+		<p>このページは、現時点の <code>xyo-rust</code> がどの Scratch opcode を扱えるかを整理した一覧です。</p>
+		<section id="section-1" title="凡例">
+			<table>
+			<tr>
+			<th>列</th>
+			<th>意味</th>
+			</tr>
+			<tr>
+			<td>Parser</td>
+			<td><code>project.json</code> から内部表現へ変換できる段階</td>
+			</tr>
+			<tr>
+			<td>IR</td>
+			<td>LLVM IR 生成まで現状の実装がある段階</td>
+			</tr>
+			<tr>
+			<td>Hat / Stmt / Expr</td>
+			<td>それぞれ hat block / 文ブロック / 値ブロックを表します</td>
+			</tr>
+			</table>
+			<warning>
+			<p>Parser で通ることと、<code>run</code> サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は移動命令と一部演算に限定されています。</p>
+			</warning>
+		</section>
+		<section id="section-2" title="Hat block">
+			<table>
+			<tr>
+			<th>カテゴリ</th>
+			<th>Scratch での意味</th>
+			<th>opcode</th>
+			<th>Parser</th>
+			<th>IR</th>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td>緑の旗が押されたとき</td>
+			<td><code>EventWhenFlagClicked</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td><code>[キー]</code> キーが押されたとき</td>
+			<td><code>EventWhenKeyPressed</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td>このスプライトが押されたとき</td>
+			<td><code>EventWhenThisSpriteClicked</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td>ステージが押されたとき</td>
+			<td><code>EventWhenStageClicked</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td>背景が切り替わったとき</td>
+			<td><code>EventWhenBackdropSwitchesTo</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td><code>[タイマー / 音量]</code> がしきい値を超えたとき</td>
+			<td><code>EventWhenGreaterThan</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td><code>[メッセージ]</code> を受け取ったとき</td>
+			<td><code>EventWhenBroadcastReceived</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>イベント</td>
+			<td><code>[対象]</code> に触れたとき</td>
+			<td><code>EventWhenTouchingObject</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>制御</td>
+			<td>クローンされたとき</td>
+			<td><code>ControlStartAsClone</code></td>
+			<td>Hat</td>
+			<td>間接対応</td>
+			</tr>
+			<tr>
+			<td>拡張</td>
+			<td>定義</td>
+			<td><code>ProceduresDefinition</code></td>
+			<td>Hat</td>
+			<td>なし</td>
+			</tr>
+			</table>
+		</section>
+		<section id="section-3" title="文ブロック">
+			<h3>動き</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>MotionMoveSteps</code></li>
+			<li><code>MotionTurnRight</code></li>
+			<li><code>MotionTurnLeft</code></li>
+			<li><code>MotionGoTo</code></li>
+			<li><code>MotionGoToXY</code></li>
+			<li><code>MotionGlideTo</code></li>
+			<li><code>MotionGlideSecsToXY</code></li>
+			<li><code>MotionPointInDirection</code></li>
+			<li><code>MotionPointTowards</code></li>
+			<li><code>MotionChangeXBy</code></li>
+			<li><code>MotionSetX</code></li>
+			<li><code>MotionChangeYBy</code></li>
+			<li><code>MotionSetY</code></li>
+			<li><code>MotionIfOnEdgeBounce</code></li>
+			<li><code>MotionSetRotationStyle</code></li>
+			<li><code>MotionAlignScene</code></li>
+			<li><code>MotionScrollRight</code></li>
+			<li><code>MotionScrollUp</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: 一部のみ
+			<ul>
+			<li><code>MotionSetX</code></li>
+			<li><code>MotionChangeXBy</code></li>
+			<li><code>MotionSetY</code></li>
+			<li><code>MotionChangeYBy</code></li>
+			<li><code>MotionGoToXY</code></li>
+			<li><code>MotionTurnRight</code></li>
+			<li><code>MotionTurnLeft</code></li>
+			<li><code>MotionPointInDirection</code></li>
+			</ul></li>
+			<li>備考: IR では位置・向き更新系が中心です</li>
+			</ul>
+			<h3>見た目</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>LooksSayForSecs</code></li>
+			<li><code>LooksSay</code></li>
+			<li><code>LooksThinkForSecs</code></li>
+			<li><code>LooksThink</code></li>
+			<li><code>LooksSwitchCostumeTo</code></li>
+			<li><code>LooksNextCostume</code></li>
+			<li><code>LooksSwitchBackdropTo</code></li>
+			<li><code>LooksNextBackdrop</code></li>
+			<li><code>LooksChangeSizeBy</code></li>
+			<li><code>LooksSetSizeTo</code></li>
+			<li><code>LooksChangeEffectBy</code></li>
+			<li><code>LooksSetEffectTo</code></li>
+			<li><code>LooksClearGraphicEffects</code></li>
+			<li><code>LooksShow</code></li>
+			<li><code>LooksHide</code></li>
+			<li><code>LooksGotoFrontBack</code></li>
+			<li><code>LooksGoForwardBackwardLayers</code></li>
+			<li><code>LooksChangeStretchBy</code></li>
+			<li><code>LooksSetStretchTo</code></li>
+			<li><code>LooksHideAllSprites</code></li>
+			<li><code>LooksSwitchBackdropToAndWait</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: 効果パラメータは列挙値まで解釈します</li>
+			</ul>
+			<h3>音</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>SoundPlayUntilDone</code></li>
+			<li><code>SoundPlay</code></li>
+			<li><code>SoundStopAllSounds</code></li>
+			<li><code>SoundChangeEffectBy</code></li>
+			<li><code>SoundSetEffectTo</code></li>
+			<li><code>SoundClearEffects</code></li>
+			<li><code>SoundChangeVolumeBy</code></li>
+			<li><code>SoundSetVolumeTo</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: <code>PITCH</code> / <code>PAN</code> を解釈します</li>
+			</ul>
+			<h3>イベント</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>EventBroadcast</code></li>
+			<li><code>EventBroadcastAndWait</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: ブロードキャスト入力を式として読み取ります</li>
+			</ul>
+			<h3>制御</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>ControlWait</code></li>
+			<li><code>ControlRepeat</code></li>
+			<li><code>ControlForever</code></li>
+			<li><code>ControlIf</code></li>
+			<li><code>ControlIfElse</code></li>
+			<li><code>ControlWaitUntil</code></li>
+			<li><code>ControlRepeatUntil</code></li>
+			<li><code>ControlWhile</code></li>
+			<li><code>ControlAllAtOnce</code></li>
+			<li><code>ControlCreateCloneOf</code></li>
+			<li><code>ControlDeleteThisClone</code></li>
+			<li><code>ControlStop</code></li>
+			<li><code>ControlForEach</code></li>
+			<li><code>ControlIncrCounter</code></li>
+			<li><code>ControlClearCounter</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: 入れ子 <code>SUBSTACK</code> もたどれます</li>
+			</ul>
+			<h3>調べる</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>SensingAskAndWait</code></li>
+			<li><code>SensingSetDragMode</code></li>
+			<li><code>SensingResetTimer</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: ドラッグ可否は真偽値へ変換します</li>
+			</ul>
+			<h3>データ</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>DataSetVariableTo</code></li>
+			<li><code>DataChangeVariableBy</code></li>
+			<li><code>DataShowVariable</code></li>
+			<li><code>DataHideVariable</code></li>
+			<li><code>DataAddToList</code></li>
+			<li><code>DataDeleteOfList</code></li>
+			<li><code>DataDeleteAllOfList</code></li>
+			<li><code>DataInsertAtList</code></li>
+			<li><code>DataReplaceItemOfList</code></li>
+			<li><code>DataShowList</code></li>
+			<li><code>DataHideList</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: 変数 ID / リスト ID を保持します</li>
+			</ul>
+			<h3>ペン</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>PenClear</code></li>
+			<li><code>PenStamp</code></li>
+			<li><code>PenDown</code></li>
+			<li><code>PenUp</code></li>
+			<li><code>PenSetPenColorToColor</code></li>
+			<li><code>PenChangePenColorParamBy</code></li>
+			<li><code>PenSetPenColorParamTo</code></li>
+			<li><code>PenChangePenSizeBy</code></li>
+			<li><code>PenSetPenSizeTo</code></li>
+			<li><code>PenChangePenHueBy</code></li>
+			<li><code>PenSetPenHueToNumber</code></li>
+			<li><code>PenChangePenShadeBy</code></li>
+			<li><code>PenSetPenShadeToNumber</code></li>
+			</ul></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: 色・サイズ・色相・明るさ変更を含みます</li>
+			</ul>
+			<h3>独自ブロック</h3>
+			<ul>
+			<li>対応 opcode: <code>ProceduresCall</code></li>
+			<li>Parser: <code>Stmt</code></li>
+			<li>IR: なし</li>
+			<li>備考: mutation から引数 ID 一覧を復元します</li>
+			</ul>
+		</section>
+		<section id="section-4" title="値ブロック / メニュー / レポーター">
+			<h3>動き</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>MotionXPosition</code></li>
+			<li><code>MotionYPosition</code></li>
+			<li><code>MotionDirection</code></li>
+			<li><code>MotionGoToMenu</code></li>
+			<li><code>MotionGlideToMenu</code></li>
+			<li><code>MotionPointTowardsMenu</code></li>
+			<li><code>MotionXScroll</code></li>
+			<li><code>MotionYScroll</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: メニュー値は文字列リテラルとして保持します</li>
+			</ul>
+			<h3>見た目</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>LooksCostumeNumberName</code></li>
+			<li><code>LooksBackdropNumberName</code></li>
+			<li><code>LooksSize</code></li>
+			<li><code>LooksCostume</code></li>
+			<li><code>LooksBackdrops</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: 番号 / 名前の区別まで保持します</li>
+			</ul>
+			<h3>音</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>SoundVolume</code></li>
+			<li><code>SoundSoundsMenu</code></li>
+			<li><code>SoundBeatsMenu</code></li>
+			<li><code>SoundEffectsMenu</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: メニュー値は文字列として扱います</li>
+			</ul>
+			<h3>制御</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>ControlCreateCloneOfMenu</code></li>
+			<li><code>ControlGetCounter</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: カウンタ取得は内部式に変換されます</li>
+			</ul>
+			<h3>調べる</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>SensingTouchingObject</code></li>
+			<li><code>SensingTouchingObjectMenu</code></li>
+			<li><code>SensingTouchingColor</code></li>
+			<li><code>SensingColorIsTouchingColor</code></li>
+			<li><code>SensingDistanceTo</code></li>
+			<li><code>SensingDistanceToMenu</code></li>
+			<li><code>SensingAnswer</code></li>
+			<li><code>SensingKeyPressed</code></li>
+			<li><code>SensingKeyOptions</code></li>
+			<li><code>SensingMouseDown</code></li>
+			<li><code>SensingMouseX</code></li>
+			<li><code>SensingMouseY</code></li>
+			<li><code>SensingLoudness</code></li>
+			<li><code>SensingTimer</code></li>
+			<li><code>SensingOf</code></li>
+			<li><code>SensingOfObjectMenu</code></li>
+			<li><code>SensingUsername</code></li>
+			<li><code>SensingUserid</code></li>
+			<li><code>SensingOnline</code></li>
+			<li><code>SensingDaysSince2000</code></li>
+			<li><code>SensingCurrent</code></li>
+			<li><code>SensingLoud</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: 対象プロパティや現在時刻種別を列挙値へ変換します</li>
+			</ul>
+			<h3>演算</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>OperatorAdd</code></li>
+			<li><code>OperatorSubtract</code></li>
+			<li><code>OperatorMultiply</code></li>
+			<li><code>OperatorDivide</code></li>
+			<li><code>OperatorRandom</code></li>
+			<li><code>OperatorGt</code></li>
+			<li><code>OperatorLt</code></li>
+			<li><code>OperatorEquals</code></li>
+			<li><code>OperatorAnd</code></li>
+			<li><code>OperatorOr</code></li>
+			<li><code>OperatorNot</code></li>
+			<li><code>OperatorJoin</code></li>
+			<li><code>OperatorLetterOf</code></li>
+			<li><code>OperatorLength</code></li>
+			<li><code>OperatorContains</code></li>
+			<li><code>OperatorMod</code></li>
+			<li><code>OperatorRound</code></li>
+			<li><code>OperatorMathOp</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: 一部のみ
+			<ul>
+			<li><code>OperatorAdd</code></li>
+			<li><code>OperatorSubtract</code></li>
+			<li><code>OperatorMultiply</code></li>
+			<li><code>OperatorDivide</code></li>
+			<li><code>OperatorRandom</code></li>
+			</ul></li>
+			<li>備考: <code>OperatorMathOp</code> は <code>abs</code>, <code>floor</code>, <code>ceiling</code>, <code>sqrt</code>, <code>sin</code>, <code>cos</code>, <code>tan</code>, <code>asin</code>, <code>acos</code>, <code>atan</code>, <code>ln</code>, <code>log</code>, <code>e ^</code>, <code>10 ^</code> を解釈します</li>
+			</ul>
+			<h3>データ</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>DataItemOfList</code></li>
+			<li><code>DataItemNumOfList</code></li>
+			<li><code>DataLengthOfList</code></li>
+			<li><code>DataListContainsItem</code></li>
+			<li><code>DataVariable</code></li>
+			<li><code>DataListContents</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: 変数 / リスト参照やリスト検索を式化します</li>
+			</ul>
+			<h3>独自ブロック</h3>
+			<ul>
+			<li>対応 opcode:
+			<ul>
+			<li><code>ProceduresPrototype</code></li>
+			<li><code>ArgumentReporterBoolean</code></li>
+			<li><code>ArgumentReporterStringNumber</code></li>
+			</ul></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: mutation を展開して手続きシグネチャを復元します</li>
+			</ul>
+			<h3>ペン</h3>
+			<ul>
+			<li>対応 opcode: <code>PenMenuColorParam</code></li>
+			<li>Parser: <code>Expr</code></li>
+			<li>IR: なし</li>
+			<li>備考: 色パラメータ名を文字列として扱います</li>
+			</ul>
+		</section>
+		<section id="section-5" title="入力プリミティブ">
+			<p>ブロック参照以外に、次の入力プリミティブも内部表現へ変換されます。</p>
+			<ul>
+			<li>数値</li>
+			<li>テキスト</li>
+			<li>ブロードキャスト参照</li>
+			<li>変数参照</li>
+			<li>リスト参照</li>
+			<li>色</li>
+			<li>空入力（<code>Null</code>）</li>
+			</ul>
+		</section>
+		<section id="section-6" title="IR 生成の現状">
+			<p>現在の LLVM IR 生成は、スレッド本体では移動系の一部命令だけを扱います。式側は数値系の一部演算が中心です。</p>
+			<table>
+			<tr>
+			<th>層</th>
+			<th>対応内容</th>
+			</tr>
+			<tr>
+			<td>Stmt</td>
+			<td><code>MotionSetX</code>, <code>MotionChangeXBy</code>, <code>MotionSetY</code>, <code>MotionChangeYBy</code>, <code>MotionGoToXY</code>, <code>MotionTurnRight</code>, <code>MotionTurnLeft</code>, <code>MotionPointInDirection</code></td>
+			</tr>
+			<tr>
+			<td>Expr</td>
+			<td><code>OperatorAdd</code>, <code>OperatorSubtract</code>, <code>OperatorMultiply</code>, <code>OperatorDivide</code>, <code>OperatorRandom</code></td>
+			</tr>
+			<tr>
+			<td>Literal</td>
+			<td>数値入力の変換経路あり</td>
+			</tr>
+			</table>
+			<p>前のページ: <a href="../cli/">CLI</a><br />次のページ: <a href="../architecture/">アーキテクチャ</a></p>
+		</section>
+	</body>
+</document>

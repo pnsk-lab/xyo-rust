@@ -1,4 +1,8 @@
 /target
+/docs/build
+/docs/taiga
+/docs/__pycache__/
+*.pyc
 
 # Generated output files
 *.ppm

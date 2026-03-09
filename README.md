@@ -92,7 +92,7 @@ cargo run -- run <path-to-project.sb3>
 - `src/parser/`: Scratch ブロック列を `Stmt` / `Expr` に変換
 - `src/compiler/`: LLVM IR 生成
 - `tests/`: CLI テスト
-- `docs/`: 静的 HTML ドキュメントと原稿
+- `docs/`: Markdown ソースと Taiga サイト生成ファイル
 
 ## CI
 

@@ -33,10 +33,27 @@ jobs:
             - name: Setup Pages
               uses: actions/configure-pages@v5
 
-            - name: Upload static docs
+            - name: Download Taiga
+              working-directory: docs
+              run: |
+                  curl -L --fail --retry 3 \
+                      -o taiga \
+                      https://j.nishi.boats/job/pyrite-dev/job/taiga/job/master/lastSuccessfulBuild/artifact/taiga-linux64
+                  chmod +x taiga
+
+            - name: Generate Taiga XML from Markdown
+              run: python3 docs/build_taiga_site.py
+
+            - name: Build site with Taiga
+              working-directory: docs
+              run: |
+                  rm -rf build
+                  ./taiga site
+
+            - name: Upload generated site
               uses: actions/upload-pages-artifact@v3
               with:
-                  path: docs
+                  path: docs/build
 
     deploy:
         name: Deploy to GitHub Pages
