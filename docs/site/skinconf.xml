@@ -9,38 +9,31 @@
 	<search domain="xyo.jet9.app" />
 	<breadcrumb>
 		<link name="pnsk-lab" href="https://github.com/pnsk-lab" />
-		<link name="xyo-rust" href="index.html" />
+		<link name="xyo" href="https://xyo.jet9.app" />
 	</breadcrumb>
 	<group>
 		<name>pnsk-lab</name>
-		<description>xyo-rust project documentation</description>
+		<description>(empty)</description>
 		<link href="https://github.com/pnsk-lab" />
 		<image src="image/group-logo.png" />
 	</group>
 	<project>
-		<name>xyo-rust</name>
-		<description>Scratch .sb3 parser and LLVM IR experiment</description>
+		<name>xyo</name>
+		<description>Ultra fast Scratch Runtime</description>
 		<link href="https://github.com/pnsk-lab/xyo-rust" />
 	</project>
 	<nav>
-		<group title="xyo-rust Docs">
-			<link name="はじめに" href="index.html" />
-			<link name="セットアップ" href="getting-started/" />
-			<link name="CLI" href="cli/" />
-			<link name="対応ブロック一覧" href="blocks/" />
-			<link name="アーキテクチャ" href="architecture/" />
-			<link name="GitHub" href="https://github.com/pnsk-lab/xyo-rust" />
+		<group title="xyo">
+			<link name="Home" href="/" />
+			<link name="pnsk-lab" href="https://github.com/pnsk-lab/" />
 		</group>
 	</nav>
 	<favicon></favicon>
 	<extra-css></extra-css>
-	<skin>classic</skin> <!-- classic or simple -->
+	<skin>simple</skin> <!-- classic or simple -->
 	<copyright>
-		<holder>pnsk-lab</holder>
+		<holder>Example Co, Ltd</holder>
 		<year>2026</year> <!-- Year when you started this project/whatever copyright holder -->
-		<link href="https://github.com/pnsk-lab/xyo-rust" />
+		<link href="https://github.com/pnsk-lab/" />
 	</copyright>
-	<footer>
-		<p>Generated from Markdown sources with Taiga.</p>
-	</footer>
 </skinconfig>

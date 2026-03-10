@@ -1,66 +1,204 @@
-<?xml version="1.0"?>
 <document>
 	<header>
 		<title>xyo-rust ドキュメント</title>
 	</header>
 	<body>
-		<p>Scratch の <code>.sb3</code> プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト <code>xyo-rust</code> の手引きです。</p>
-		<p>このディレクトリの Markdown は、Taiga 用 XML に変換して GitHub Pages へ公開します。</p>
-		<section id="section-1" title="目次">
+		<p>
+			Scratch の 
+			<code>
+				.sb3
+			</code>
+			 プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト 
+			<code>
+				xyo-rust
+			</code>
+			 の手引きです。
+		</p>
+		<p>
+			このディレクトリの Markdown は、Taiga 用 XML に変換して GitHub Pages へ公開します。
+		</p>
+		<section title="目次">
 			<ul>
-			<li><a href="index.html">はじめに</a></li>
-			<li><a href="getting-started/">セットアップ</a></li>
-			<li><a href="cli/">CLI</a></li>
-			<li><a href="blocks/">対応ブロック一覧</a></li>
-			<li><a href="architecture/">アーキテクチャ</a></li>
+				<li>
+					<a href="">
+						はじめに
+					</a>
+				</li>
+				<li>
+					<a href="getting-started/">
+						セットアップ
+					</a>
+				</li>
+				<li>
+					<a href="cli/">
+						CLI
+					</a>
+				</li>
+				<li>
+					<a href="blocks/">
+						対応ブロック一覧
+					</a>
+				</li>
+				<li>
+					<a href="architecture/">
+						アーキテクチャ
+					</a>
+				</li>
 			</ul>
 		</section>
-		<section id="section-2" title="このプロジェクトが目指すこと">
+		<section title="このプロジェクトが目指すこと">
 			<ul>
-			<li>Scratch プロジェクトを静的に解析できる内部表現へ変換する</li>
-			<li>hat block からスレッドを抽出する</li>
-			<li>LLVM IR を生成し、将来的なネイティブ実行につなげる</li>
-			<li>SB3 解析系の検証用ツールチェーンを整える</li>
+				<li>
+					Scratch プロジェクトを静的に解析できる内部表現へ変換する
+				</li>
+				<li>
+					hat block からスレッドを抽出する
+				</li>
+				<li>
+					LLVM IR を生成し、将来的なネイティブ実行につなげる
+				</li>
+				<li>
+					SB3 解析系の検証用ツールチェーンを整える
+				</li>
 			</ul>
 		</section>
-		<section id="section-3" title="現在の実装範囲">
+		<section title="現在の実装範囲">
 			<ol>
-			<li><code>.sb3</code> を ZIP として開く</li>
-			<li><code>project.json</code> を取り出す</li>
-			<li><code>serde</code> で Scratch プロジェクト構造へ変換する</li>
-			<li>hat block からスレッドを解析する</li>
-			<li><code>Stmt</code> / <code>Expr</code> に変換する</li>
-			<li>一部の式 / 文を LLVM IR へ変換する</li>
+				<li>
+					<code>
+						.sb3
+					</code>
+					 を ZIP として開く
+				</li>
+				<li>
+					<code>
+						project.json
+					</code>
+					 を取り出す
+				</li>
+				<li>
+					<code>
+						serde
+					</code>
+					 で Scratch プロジェクト構造へ変換する
+				</li>
+				<li>
+					hat block からスレッドを解析する
+				</li>
+				<li>
+					<code>
+						Stmt
+					</code>
+					 / 
+					<code>
+						Expr
+					</code>
+					 に変換する
+				</li>
+				<li>
+					一部の式 / 文を LLVM IR へ変換する
+				</li>
 			</ol>
-			<warning>
-			<p>完全な Scratch 実行互換はまだ未実装です。特に <code>run</code> サブコマンドは実験段階で、入力によっては未実装分岐に到達します。</p>
-			</warning>
+			<blockquote>
+				<p>
+					<strong>
+						注意
+					</strong>
+					完全な Scratch 実行互換はまだ未実装です。特に 
+					<code>
+						run
+					</code>
+					 サブコマンドは実験段階で、入力によっては未実装分岐に到達します。
+				</p>
+			</blockquote>
 		</section>
-		<section id="section-4" title="読み進め方">
+		<section title="読み進め方">
 			<ul>
-			<li>まず動かしたい: <a href="getting-started/">セットアップ</a></li>
-			<li>コマンドの違いを知りたい: <a href="cli/">CLI</a></li>
-			<li>対応済み opcode を確認したい: <a href="blocks/">対応ブロック一覧</a></li>
-			<li>内部構造を把握したい: <a href="architecture/">アーキテクチャ</a></li>
+				<li>
+					まず動かしたい: 
+					<a href="getting-started/">
+						セットアップ
+					</a>
+				</li>
+				<li>
+					コマンドの違いを知りたい: 
+					<a href="cli/">
+						CLI
+					</a>
+				</li>
+				<li>
+					対応済み opcode を確認したい: 
+					<a href="blocks/">
+						対応ブロック一覧
+					</a>
+				</li>
+				<li>
+					内部構造を把握したい: 
+					<a href="architecture/">
+						アーキテクチャ
+					</a>
+				</li>
 			</ul>
 		</section>
-		<section id="section-5" title="現時点での注意点">
+		<section title="現時点での注意点">
 			<ul>
-			<li>Scratch VM との完全互換は未実装です</li>
-			<li>LLVM 21.1 系を前提にしています</li>
-			<li>配布用の <code>.sb3</code> サンプルは同梱されていません</li>
+				<li>
+					Scratch VM との完全互換は未実装です
+				</li>
+				<li>
+					LLVM 21.1 系を前提にしています
+				</li>
+				<li>
+					配布用の 
+					<code>
+						.sb3
+					</code>
+					 サンプルは同梱されていません
+				</li>
 			</ul>
 		</section>
-		<section id="section-6" title="関連リンク">
+		<section title="関連リンク">
 			<ul>
-			<li><a href="https://github.com/pnsk-lab/xyo-rust/blob/main/README.md">リポジトリの README</a></li>
-			<li><a href="https://github.com/pnsk-lab/xyo-rust">GitHub</a></li>
+				<li>
+					<a href="">
+						リポジトリの README
+					</a>
+				</li>
+				<li>
+					<a href="https://github.com/pnsk-lab/xyo-rust">
+						GitHub
+					</a>
+				</li>
 			</ul>
 		</section>
-		<section id="section-7" title="Taiga でのサイト生成">
-			<blockquote><code>python3 build_taiga_site.py<br />rm -rf build<br />./taiga site</code></blockquote>
-			<p>ローカルで <code>taiga</code> バイナリがない場合は、GitHub Pages と同じ URL から取得できます。</p>
-			<p>続きは <a href="getting-started/">セットアップ</a> を参照してください。</p>
+		<section title="Taiga でのサイト生成">
+			<pre>
+				<code>
+					python3 build_taiga_site.py
+					
+
+					rm -rf build
+					
+
+					./taiga site
+					
+
+				</code>
+			</pre>
+			<p>
+				ローカルで 
+				<code>
+					taiga
+				</code>
+				 バイナリがない場合は、GitHub Pages と同じ URL から取得できます。
+			</p>
+			<p>
+				続きは 
+				<a href="getting-started/">
+					セットアップ
+				</a>
+				 を参照してください。
+			</p>
 		</section>
 	</body>
 </document>

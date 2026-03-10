@@ -42,7 +42,8 @@ jobs:
                   chmod +x taiga
 
             - name: Generate Taiga XML from Markdown
-              run: python3 docs/build_taiga_site.py
+              working-directory: docs
+              run: ./taiga markdown-dir
 
             - name: Build site with Taiga
               working-directory: docs

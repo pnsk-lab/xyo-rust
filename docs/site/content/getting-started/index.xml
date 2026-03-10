@@ -1,73 +1,265 @@
-<?xml version="1.0"?>
 <document>
 	<header>
 		<title>セットアップ</title>
 	</header>
 	<body>
-		<p><a href="../">はじめに</a> / <a href="../cli/">CLI</a> / <a href="../blocks/">対応ブロック一覧</a> / <a href="../architecture/">アーキテクチャ</a></p>
-		<p>この章では、<code>xyo-rust</code> をローカルでビルドし、手元の <code>.sb3</code> ファイルを入力して確認する最短手順を説明します。</p>
-		<section id="section-1" title="前提条件">
+		<p>
+			<a href="../">
+				はじめに
+			</a>
+			 / 
+			<a href="../cli/">
+				CLI
+			</a>
+			 / 
+			<a href="../blocks/">
+				対応ブロック一覧
+			</a>
+			 / 
+			<a href="../architecture/">
+				アーキテクチャ
+			</a>
+		</p>
+		<p>
+			この章では、
+			<code>
+				xyo-rust
+			</code>
+			 をローカルでビルドし、手元の 
+			<code>
+				.sb3
+			</code>
+			 ファイルを入力して確認する最短手順を説明します。
+		</p>
+		<section title="前提条件">
 			<ul>
-			<li>Rust stable</li>
-			<li>LLVM 21.1 系</li>
-			<li><code>llvm-config</code> が <code>PATH</code> 上にあること</li>
+				<li>
+					Rust stable
+				</li>
+				<li>
+					LLVM 21.1 系
+				</li>
+				<li>
+					<code>
+						llvm-config
+					</code>
+					 が 
+					<code>
+						PATH
+					</code>
+					 上にあること
+				</li>
 			</ul>
-			<p>まずは次のコマンドでバージョンを確認しておくと安全です。</p>
-			<blockquote><code>rustc --version<br />llvm-config --version</code></blockquote>
-			<p><code>llvm-config --version</code> は <code>21.1.x</code> を想定しています。</p>
+			<p>
+				まずは次のコマンドでバージョンを確認しておくと安全です。
+			</p>
+			<pre>
+				<code>
+					rustc --version
+					
+
+					llvm-config --version
+					
+
+				</code>
+			</pre>
+			<p>
+				<code>
+					llvm-config --version
+				</code>
+				 は 
+				<code>
+					21.1.x
+				</code>
+				 を想定しています。
+			</p>
 		</section>
-		<section id="section-2" title="ビルド">
-			<blockquote><code>cargo build --release</code></blockquote>
-			<p>ビルド後の実行ファイルは <code>target/release/xyo</code> です。</p>
+		<section title="ビルド">
+			<pre>
+				<code>
+					cargo build --release
+					
+
+				</code>
+			</pre>
+			<p>
+				ビルド後の実行ファイルは 
+				<code>
+					target/release/xyo
+				</code>
+				 です。
+			</p>
 		</section>
-		<section id="section-3" title="テスト">
-			<blockquote><code>cargo test</code></blockquote>
-			<p>ヘルプだけ確認したい場合は次でも十分です。</p>
-			<blockquote><code>cargo run -- --help</code></blockquote>
+		<section title="テスト">
+			<pre>
+				<code>
+					cargo test
+					
+
+				</code>
+			</pre>
+			<p>
+				ヘルプだけ確認したい場合は次でも十分です。
+			</p>
+			<pre>
+				<code>
+					cargo run -- --help
+					
+
+				</code>
+			</pre>
+			<code>
+			</code>
 		</section>
-		<section id="section-4" title=".sb3 ファイルを用意する">
-			<p>このリポジトリには現在、配布用の <code>.sb3</code> サンプルは含まれていません。Scratch エディタから自分のプロジェクトを書き出して使います。</p>
+		<section title=".sb3  ファイルを用意する">
+			<p>
+				このリポジトリには現在、配布用の 
+				<code>
+					.sb3
+				</code>
+				 サンプルは含まれていません。Scratch エディタから自分のプロジェクトを書き出して使います。
+			</p>
 			<ol>
-			<li>Scratch でプロジェクトを開く</li>
-			<li>「ファイル」→「コンピューターに保存する」を選ぶ</li>
-			<li>保存された <code>.sb3</code> のパスを控える</li>
+				<li>
+					Scratch でプロジェクトを開く
+				</li>
+				<li>
+					「ファイル」→「コンピューターに保存する」を選ぶ
+				</li>
+				<li>
+					保存された 
+					<code>
+						.sb3
+					</code>
+					 のパスを控える
+				</li>
 			</ol>
-			<p>以下では、そのファイルを <code>&lt;path-to-project.sb3&gt;</code> と表記します。</p>
+			<p>
+				以下では、そのファイルを 
+				<code>
+					&lt;path-to-project.sb3&gt;
+				</code>
+				 と表記します。
+			</p>
 		</section>
-		<section id="section-5" title="最初に試すコマンド">
-			<h3>構造だけ見たい場合</h3>
-			<blockquote><code>cargo run -- json &lt;path-to-project.sb3&gt;</code></blockquote>
-			<p><code>project.json</code> をそのまま表示します。</p>
-			<h3>規模を知りたい場合</h3>
-			<blockquote><code>cargo run -- stats &lt;path-to-project.sb3&gt;</code></blockquote>
-			<p>次の情報が得られます。</p>
+		<section title="最初に試すコマンド">
+			<h3>
+				構造だけ見たい場合
+			</h3>
+			<pre>
+				<code>
+					cargo run -- json &lt;path-to-project.sb3&gt;
+					
+
+				</code>
+			</pre>
+			<p>
+				<code>
+					project.json
+				</code>
+				 をそのまま表示します。
+			</p>
+			<h3>
+				規模を知りたい場合
+			</h3>
+			<pre>
+				<code>
+					cargo run -- stats &lt;path-to-project.sb3&gt;
+					
+
+				</code>
+			</pre>
+			<p>
+				次の情報が得られます。
+			</p>
 			<ul>
-			<li>入力ファイル名</li>
-			<li>読み込み時間</li>
-			<li>ブロック数</li>
-			<li>使用 opcode 一覧</li>
+				<li>
+					入力ファイル名
+				</li>
+				<li>
+					読み込み時間
+				</li>
+				<li>
+					ブロック数
+				</li>
+				<li>
+					使用 opcode 一覧
+				</li>
 			</ul>
-			<h3>IR 生成経路を試したい場合</h3>
-			<blockquote><code>cargo run -- run &lt;path-to-project.sb3&gt;</code></blockquote>
-			<note>
-			<p><code>run</code> はもっとも実験的なコマンドです。入力によっては未実装の opcode や IR 変換で停止することがあります。</p>
-			</note>
+			<h3>
+				IR 生成経路を試したい場合
+			</h3>
+			<pre>
+				<code>
+					cargo run -- run &lt;path-to-project.sb3&gt;
+					
+
+				</code>
+			</pre>
+			<blockquote>
+				<p>
+					<strong>
+						補足
+					</strong>
+					<code>
+						run
+					</code>
+					 はもっとも実験的なコマンドです。入力によっては未実装の opcode や IR 変換で停止することがあります。
+				</p>
+			</blockquote>
 		</section>
-		<section id="section-6" title="エラーの見方">
-			<p>読み込みや JSON パースに失敗した場合、標準エラー出力には原因チェーンに加えて、可能なら位置情報や周辺コンテキストも表示されます。</p>
+		<section title="エラーの見方">
+			<p>
+				読み込みや JSON パースに失敗した場合、標準エラー出力には原因チェーンに加えて、可能なら位置情報や周辺コンテキストも表示されます。
+			</p>
 		</section>
-		<section id="section-7" title="ドキュメントのローカル確認">
-			<p>公開用ドキュメントは Markdown を Taiga 用 XML に変換してからビルドします。</p>
+		<section title="ドキュメントのローカル確認">
+			<p>
+				公開用ドキュメントは Markdown を Taiga 用 XML に変換してからビルドします。
+			</p>
 			<ol>
-			<li><code>docs/</code> で Taiga バイナリを用意する</li>
-			<li><code>python3 build_taiga_site.py</code> で XML を生成する</li>
-			<li><code>rm -rf build &amp;&amp; ./taiga site</code> で <code>docs/build/</code> を生成する</li>
-			<li><code>build/index.html</code> から各ページへ移動する</li>
+				<li>
+					<code>
+						docs/
+					</code>
+					 で Taiga バイナリを用意する
+				</li>
+				<li>
+					<code>
+						python3 build_taiga_site.py
+					</code>
+					 で XML を生成する
+				</li>
+				<li>
+					<code>
+						rm -rf build &amp;&amp; ./taiga site
+					</code>
+					 で 
+					<code>
+						docs/build/
+					</code>
+					 を生成する
+				</li>
+				<li>
+					<code>
+						build/index.html
+					</code>
+					 から各ページへ移動する
+				</li>
 			</ol>
-			<note>
-			<p>GitHub Pages ではワークフローが Taiga バイナリをダウンロードして同じ手順を自動実行します。</p>
-			</note>
-			<p><a href="../">はじめにへ戻る</a></p>
+			<blockquote>
+				<p>
+					<strong>
+						補足
+					</strong>
+					GitHub Pages ではワークフローが Taiga バイナリをダウンロードして同じ手順を自動実行します。
+				</p>
+			</blockquote>
+			<p>
+				<a href="../">
+					はじめにへ戻る
+				</a>
+			</p>
 		</section>
 	</body>
 </document>

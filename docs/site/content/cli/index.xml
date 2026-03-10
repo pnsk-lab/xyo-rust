@@ -1,64 +1,193 @@
-<?xml version="1.0"?>
 <document>
 	<header>
 		<title>CLI</title>
 	</header>
 	<body>
-		<p><a href="../">はじめに</a> / <a href="../getting-started/">セットアップ</a> / <a href="../blocks/">対応ブロック一覧</a> / <a href="../architecture/">アーキテクチャ</a></p>
-		<p>実行ファイル名は <code>xyo</code> です。開発中は <code>cargo run -- ...</code> から呼び出すのが簡単です。</p>
-		<blockquote><code>cargo run -- --help</code></blockquote>
-		<p>現時点のサブコマンドは 3 つです。</p>
-		<section id="section-1" title="json">
-			<blockquote><code>cargo run -- json &lt;path-to-project.sb3&gt;</code></blockquote>
-			<p><code>.sb3</code> に含まれる <code>project.json</code> を標準出力へ表示します。</p>
+		<p>
+			<a href="../">
+				はじめに
+			</a>
+			 / 
+			<a href="../getting-started/">
+				セットアップ
+			</a>
+			 / 
+			<a href="../blocks/">
+				対応ブロック一覧
+			</a>
+			 / 
+			<a href="../architecture/">
+				アーキテクチャ
+			</a>
+		</p>
+		<p>
+			実行ファイル名は 
+			<code>
+				xyo
+			</code>
+			 です。開発中は 
+			<code>
+				cargo run -- ...
+			</code>
+			 から呼び出すのが簡単です。
+		</p>
+		<pre>
+			<code>
+				cargo run -- --help
+				
+
+			</code>
+		</pre>
+		<p>
+			現時点のサブコマンドは 3 つです。
+		</p>
+		<code>
+		</code>
+		<section title="json">
+			<pre>
+				<code>
+					cargo run -- json &lt;path-to-project.sb3&gt;
+					
+
+				</code>
+			</pre>
+			<p>
+				<code>
+					.sb3
+				</code>
+				 に含まれる 
+				<code>
+					project.json
+				</code>
+				 を標準出力へ表示します。
+			</p>
 			<ul>
-			<li>入力ファイルが正しく開けるか確かめたいとき</li>
-			<li>Scratch の生データ構造を確認したいとき</li>
-			<li>パーサー調査前に元 JSON を見たいとき</li>
+				<li>
+					入力ファイルが正しく開けるか確かめたいとき
+				</li>
+				<li>
+					Scratch の生データ構造を確認したいとき
+				</li>
+				<li>
+					パーサー調査前に元 JSON を見たいとき
+				</li>
 			</ul>
+			<code>
+			</code>
 		</section>
-		<section id="section-2" title="stats">
-			<blockquote><code>cargo run -- stats &lt;path-to-project.sb3&gt;</code></blockquote>
+		<section title="stats">
+			<pre>
+				<code>
+					cargo run -- stats &lt;path-to-project.sb3&gt;
+					
+
+				</code>
+			</pre>
 			<table>
-			<tr>
-			<th>項目</th>
-			<th>内容</th>
-			</tr>
-			<tr>
-			<td>ファイル名</td>
-			<td>入力した SB3 ファイル名</td>
-			</tr>
-			<tr>
-			<td>読み込み時間</td>
-			<td>プロジェクト読み込みにかかった時間</td>
-			</tr>
-			<tr>
-			<td>ブロック数</td>
-			<td>Scratch ブロック数</td>
-			</tr>
-			<tr>
-			<td>使用 opcode 一覧</td>
-			<td>含まれている命令種別</td>
-			</tr>
+				<tr>
+					<th>
+						項目
+					</th>
+					<th>
+						内容
+					</th>
+				</tr>
+				<tr>
+					<td>
+						ファイル名
+					</td>
+					<td>
+						入力した SB3 ファイル名
+					</td>
+				</tr>
+				<tr>
+					<td>
+						読み込み時間
+					</td>
+					<td>
+						プロジェクト読み込みにかかった時間
+					</td>
+				</tr>
+				<tr>
+					<td>
+						ブロック数
+					</td>
+					<td>
+						Scratch ブロック数
+					</td>
+				</tr>
+				<tr>
+					<td>
+						使用 opcode 一覧
+					</td>
+					<td>
+						含まれている命令種別
+					</td>
+				</tr>
 			</table>
+			<code>
+			</code>
 		</section>
-		<section id="section-3" title="run">
-			<blockquote><code>cargo run -- run &lt;path-to-project.sb3&gt;</code></blockquote>
-			<p>内部では、読み込み、デシリアライズ、hat block からのスレッド抽出、LLVM IR 生成の順に処理します。</p>
-			<warning>
-			<p><code>run</code> は実行ランタイムではなく、コンパイル経路の検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。</p>
-			</warning>
+		<section title="run">
+			<pre>
+				<code>
+					cargo run -- run &lt;path-to-project.sb3&gt;
+					
+
+				</code>
+			</pre>
+			<p>
+				内部では、読み込み、デシリアライズ、hat block からのスレッド抽出、LLVM IR 生成の順に処理します。
+			</p>
+			<blockquote>
+				<p>
+					<strong>
+						注意
+					</strong>
+					<code>
+						run
+					</code>
+					 は実行ランタイムではなく、コンパイル経路の検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
+				</p>
+			</blockquote>
 		</section>
-		<section id="section-4" title="エラー表示">
-			<p>読み込みや JSON パースに失敗した場合、原因チェーンをたどって詳細が標準エラー出力に表示されます。失敗箇所によっては JSON のパス、行番号、列番号、周辺コンテキストも確認できます。</p>
+		<section title="エラー表示">
+			<p>
+				読み込みや JSON パースに失敗した場合、原因チェーンをたどって詳細が標準エラー出力に表示されます。失敗箇所によっては JSON のパス、行番号、列番号、周辺コンテキストも確認できます。
+			</p>
 		</section>
-		<section id="section-5" title="使い分けの目安">
+		<section title="使い分けの目安">
 			<ul>
-			<li>まず中身を見たい: <code>json</code></li>
-			<li>対応状況をざっと知りたい: <code>stats</code> / <a href="../blocks/">対応ブロック一覧</a></li>
-			<li>IR 生成経路を試したい: <code>run</code></li>
+				<li>
+					まず中身を見たい: 
+					<code>
+						json
+					</code>
+				</li>
+				<li>
+					対応状況をざっと知りたい: 
+					<code>
+						stats
+					</code>
+					 / 
+					<a href="../blocks/">
+						対応ブロック一覧
+					</a>
+				</li>
+				<li>
+					IR 生成経路を試したい: 
+					<code>
+						run
+					</code>
+				</li>
 			</ul>
-			<p>次は <a href="../architecture/">アーキテクチャ</a> を参照してください。</p>
+			<p>
+				次は 
+				<a href="../architecture/">
+					アーキテクチャ
+				</a>
+				 を参照してください。
+			</p>
 		</section>
 	</body>
 </document>
