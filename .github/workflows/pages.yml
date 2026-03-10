@@ -43,7 +43,7 @@ jobs:
 
             - name: Generate Taiga XML from Markdown
               working-directory: docs
-              run: ./taiga markdown-dir
+              run: ./taiga markdown-dir ./markdown
 
             - name: Build site with Taiga
               working-directory: docs
