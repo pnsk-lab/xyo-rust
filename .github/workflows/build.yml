@@ -125,7 +125,7 @@ jobs:
                   path: ./artifacts
 
             - name: Set up GitHub CLI
-              uses: cli/cli@v3
+              uses: actions/setup-gh@v4
 
             - name: Create GitHub Release
               env:
