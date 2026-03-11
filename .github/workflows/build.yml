@@ -1,5 +1,10 @@
 name: Build
 
+env:
+    LLVM_VERSION: 21.1.2
+    LLVM_CACHE_VERSION: v2
+    LLVM_TARGETS: X86;AArch64;WebAssembly
+
 on:
     push:
         tags:
@@ -24,37 +29,59 @@ jobs:
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Install LLVM 21 (macOS via Homebrew)
-              if: runner.os == 'macOS'
+            - name: Cache LLVM 21.1.x
+              id: cache-llvm
+              uses: actions/cache@v4
+              with:
+                  path: .llvm/${{ runner.os }}
+                  key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}-x86-aarch64-wasm-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Build LLVM 21.1.x (Unix)
+              if: runner.os != 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
               shell: bash
               run: |
-                  export HOMEBREW_NO_AUTO_UPDATE=1
-                  brew install llvm@21
+                  set -euxo pipefail
+                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/$RUNNER_OS"
+                  LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
+                  LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
+                  rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
+                  git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
+                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
+                      -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}" \
+                      -DLLVM_INCLUDE_TESTS=OFF \
+                      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+                      -DLLVM_INCLUDE_EXAMPLES=OFF \
+                      -DLLVM_BUILD_LLVM_DYLIB=OFF \
+                      -DBUILD_SHARED_LIBS=OFF
+                  cmake --build "$LLVM_BUILD_DIR" --target install --parallel
 
-            - name: Install LLVM 21.1.x (Unix)
-              if: runner.os == 'Linux'
-              uses: KyleMayes/install-llvm-action@v2
-              with:
-                  version: "21.1"
-                  directory: ${{ runner.temp }}/llvm
-
-            - name: Install LLVM 21.1.x (Windows)
-              if: runner.os == 'Windows'
+            - name: Build LLVM 21.1.x (Windows)
+              if: runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
               shell: pwsh
               run: |
-                  git clone --depth 1 --branch llvmorg-21.1.2 https://github.com/llvm/llvm-project.git $env:RUNNER_TEMP\llvm-project
-                  cmake -S $env:RUNNER_TEMP\llvm-project\llvm -B $env:RUNNER_TEMP\llvm-build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="C:\llvm-21.1" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF
-                  cmake --build $env:RUNNER_TEMP\llvm-build --config Release --target INSTALL -- /m
+                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE '.llvm\Windows'
+                  $llvmSourceDir = Join-Path $env:RUNNER_TEMP 'llvm-project'
+                  $llvmBuildDir = Join-Path $env:RUNNER_TEMP 'llvm-build'
+                  if (Test-Path $llvmInstallDir) {
+                    Remove-Item $llvmInstallDir -Recurse -Force
+                  }
+                  if (Test-Path $llvmSourceDir) {
+                    Remove-Item $llvmSourceDir -Recurse -Force
+                  }
+                  if (Test-Path $llvmBuildDir) {
+                    Remove-Item $llvmBuildDir -Recurse -Force
+                  }
+                  git clone --depth 1 --branch "llvmorg-$env:LLVM_VERSION" https://github.com/llvm/llvm-project.git $llvmSourceDir
+                  cmake -S "$llvmSourceDir\llvm" -B $llvmBuildDir -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$llvmInstallDir" -DLLVM_TARGETS_TO_BUILD="$env:LLVM_TARGETS" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_BUILD_LLVM_DYLIB=OFF -DBUILD_SHARED_LIBS=OFF
+                  cmake --build $llvmBuildDir --config Release --target INSTALL -- /m
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
               shell: bash
               run: |
-                  if [ "$RUNNER_OS" = "macOS" ]; then
-                    LLVM_ROOT="$(brew --prefix llvm@21)"
-                  else
-                    LLVM_ROOT="$LLVM_PATH"
-                  fi
+                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/$RUNNER_OS"
                   echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
                   echo "LLVM_CONFIG_PATH=$LLVM_ROOT/bin/llvm-config" >> "$GITHUB_ENV"
                   echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
@@ -63,9 +90,10 @@ jobs:
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
-                  "LLVM_SYS_211_PREFIX=C:\llvm-21.1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-                  "LLVM_CONFIG_PATH=C:\llvm-21.1\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-                  "C:\llvm-21.1\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+                  $llvmRoot = Join-Path $env:GITHUB_WORKSPACE '.llvm\Windows'
+                  "LLVM_SYS_211_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  "LLVM_CONFIG_PATH=$llvmRoot\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  "$llvmRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
             - name: Verify LLVM version (Unix)
               if: runner.os != 'Windows'
@@ -77,7 +105,7 @@ jobs:
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
-                  & "C:\llvm-21.1\bin\llvm-config.exe" --version
+                  & "$env:LLVM_CONFIG_PATH" --version
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
