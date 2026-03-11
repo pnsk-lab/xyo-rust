@@ -10,6 +10,9 @@ on:
         tags:
             - "*"
 
+permissions:
+    contents: write
+
 jobs:
     build:
         name: Build (${{ matrix.os }})
@@ -151,9 +154,6 @@ jobs:
               with:
                   name: xyo-windows-latest
                   path: ./artifacts
-
-            - name: Set up GitHub CLI
-              uses: actions/setup-gh@v4
 
             - name: Create GitHub Release
               env:

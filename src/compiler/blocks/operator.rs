@@ -1,5 +1,3 @@
-use std::string;
-
 use inkwell::{FloatPredicate, values::FunctionValue};
 
 use crate::{
@@ -243,10 +241,10 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::GreaterThan { left, right } => {
             let parsed_left = &generate_expr_ir(builders, left, function, strings);
             let parsed_right = &generate_expr_ir(builders, right, function, strings);
-            let is_parsed_left_string = matches!(parsed_right, ScratchReturnTypes::String(_))
+            let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
-                || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
+                || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
             let is_string_compare = is_parsed_left_string || is_parsed_right_string;
             if is_string_compare {
                 let left_hand = scratch_return_to_string(builders, parsed_left, function, strings);
@@ -268,11 +266,48 @@ pub fn parse_operator_expr<'ctx>(
                 ScratchReturnTypes::Bool(cmp)
             } else {
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_left, function);
+                let right_hand = scratch_return_to_number(builders, parsed_right, function);
                 ScratchReturnTypes::Bool(
                     builders
                         .builder
                         .build_float_compare(FloatPredicate::OGT, left_hand, right_hand, "gt")
+                        .unwrap(),
+                )
+            }
+        }
+        OperatorExpr::LessThan { left, right } => {
+            let parsed_left = &generate_expr_ir(builders, left, function, strings);
+            let parsed_right = &generate_expr_ir(builders, right, function, strings);
+            let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
+                || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
+            let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
+                || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
+            let is_string_compare = is_parsed_left_string || is_parsed_right_string;
+            if is_string_compare {
+                let left_hand = scratch_return_to_string(builders, parsed_left, function, strings);
+                let right_hand =
+                    scratch_return_to_string(builders, parsed_right, function, strings);
+                let p = function.get_first_param().unwrap().into_pointer_value();
+                let cmp = builders
+                    .builder
+                    .build_call(
+                        builders.functions.str_cmp_lt,
+                        &[p.into(), left_hand.into(), right_hand.into()],
+                        "str_cmp_lt",
+                    )
+                    .unwrap()
+                    .try_as_basic_value()
+                    .basic()
+                    .unwrap()
+                    .into_int_value();
+                ScratchReturnTypes::Bool(cmp)
+            } else {
+                let left_hand = scratch_return_to_number(builders, parsed_left, function);
+                let right_hand = scratch_return_to_number(builders, parsed_right, function);
+                ScratchReturnTypes::Bool(
+                    builders
+                        .builder
+                        .build_float_compare(FloatPredicate::OLT, left_hand, right_hand, "lt")
                         .unwrap(),
                 )
             }

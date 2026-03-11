@@ -57,6 +57,7 @@ pub struct Functions<'ctx> {
     pub num_to_str: FunctionValue<'ctx>,
     pub bool_to_str: FunctionValue<'ctx>,
     pub str_cmp_gt: FunctionValue<'ctx>,
+    pub str_cmp_lt: FunctionValue<'ctx>,
     pub is_num: FunctionValue<'ctx>,
     pub rand: FunctionValue<'ctx>,
 }
@@ -76,12 +77,15 @@ impl<'ctx> Builders<'ctx> {
         let bool_to_str = i64_type.fn_type(&[ptr_type.into(), i1_type.into()], false);
         let str_cmp_gt =
             i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
+        let str_cmp_lt =
+            i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
         let functions = Functions {
             llvm_floor: module.add_function("llvm.floor.f64", llvm_floor, None),
             str_to_num: module.add_function("xyo_str_to_num", str_to_num_func_type, None),
             num_to_str: module.add_function("xyo_num_to_str", num_to_str_func_type, None),
             bool_to_str: module.add_function("xyo_bool_to_str", bool_to_str, None),
             str_cmp_gt: module.add_function("xyo_str_cmp_gt", str_cmp_gt, None),
+            str_cmp_lt: module.add_function("xyo_str_cmp_lt", str_cmp_lt, None),
             is_num: module.add_function("str_is_num", str_is_num_func_type, None),
             rand: build_xor_shift_128_plus(&context, &module),
         };

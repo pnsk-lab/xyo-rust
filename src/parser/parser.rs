@@ -193,8 +193,8 @@ pub fn parse_expr<'a>(
                 StringOrNumber::String(n) => Ok(Expr::Literal(Literal::Number(n.clone()))),
             },
             InputPrimitive::TextPrimitive(num) => match &num.1 {
-                StringOrNumber::Number(n) => Ok(Expr::Literal(Literal::Number(n.to_string()))),
-                StringOrNumber::String(n) => Ok(Expr::Literal(Literal::Number(n.clone()))),
+                StringOrNumber::Number(n) => Ok(Expr::Literal(Literal::String(n.to_string()))),
+                StringOrNumber::String(n) => Ok(Expr::Literal(Literal::String(n.clone()))),
             },
             InputPrimitive::BroadcastPrimitive(broadcast) => {
                 Ok(Expr::Literal(Literal::Broadcast {

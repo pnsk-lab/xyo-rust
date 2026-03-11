@@ -22,6 +22,16 @@ pub fn parse_literal_expr<'ctx>(
                     .const_int(strings.len() as u64 - 1, false),
             ))
         }
+        Literal::String(v) => {
+            strings.push(v.clone());
+            ScratchReturnTypes::StringLiteral((
+                v.clone(),
+                builders
+                    .context
+                    .i64_type()
+                    .const_int(strings.len() as u64 - 1, false),
+            ))
+        }
         _ => todo!("あとでやる"),
     }
 }
