@@ -137,27 +137,36 @@ jobs:
         needs: build
         runs-on: ubuntu-latest
         steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
             - name: Download artifact (Linux)
               uses: actions/download-artifact@v4
               with:
                   name: xyo-ubuntu-latest
-                  path: ./artifacts
+                  path: ./artifacts/linux
 
             - name: Download artifact (macOS)
               uses: actions/download-artifact@v4
               with:
                   name: xyo-macos-latest
-                  path: ./artifacts
+                  path: ./artifacts/macos
 
             - name: Download artifact (Windows)
               uses: actions/download-artifact@v4
               with:
                   name: xyo-windows-latest
-                  path: ./artifacts
+                  path: ./artifacts/windows
+
+            - name: Rename artifacts
+              run: |
+                  mv ./artifacts/linux/xyo ./artifacts/xyo-linux
+                  mv ./artifacts/macos/xyo ./artifacts/xyo-macos
+                  mv ./artifacts/windows/xyo.exe ./artifacts/xyo-windows.exe
 
             - name: Create GitHub Release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   TAG_NAME=${GITHUB_REF#refs/tags/}
-                  gh release create "$TAG_NAME" ./artifacts/* --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
+                  gh release create "$TAG_NAME" ./artifacts/xyo-linux ./artifacts/xyo-macos ./artifacts/xyo-windows.exe --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
