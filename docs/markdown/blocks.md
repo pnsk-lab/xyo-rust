@@ -12,8 +12,9 @@
 | IR                | LLVM IR 生成まで現状の実装がある段階                   |
 | Hat / Stmt / Expr | それぞれ hat block / 文ブロック / 値ブロックを表します |
 
-> **注意**
-> Parser で通ることと、`run` サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は移動命令と一部演算に限定されています。
+```warn
+Parser で通ることと、`run` サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は移動命令と一部演算に限定されています。
+```
 
 ## Hat block
 
@@ -351,7 +352,7 @@
 | 層      | 対応内容                                                                                                                                        |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Stmt    | `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection` |
-| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`                                                       |
+| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorRandom`, `GreaterThan`                      |
 | Literal | 数値入力の変換経路あり                                                                                                                          |
 
 前のページ: [CLI](./cli.md)  

@@ -106,6 +106,53 @@ pub fn scratch_return_to_number<'ctx>(
         }
     }
 }
+pub fn scratch_return_to_string<'ctx>(
+    builders: &Builders<'ctx>,
+    from: &ScratchReturnTypes<'ctx>,
+    func: &FunctionValue<'ctx>,
+    strings: &mut Vec<String>,
+) -> inkwell::values::IntValue<'ctx> {
+    match from {
+        ScratchReturnTypes::Number(v) => builders
+            .builder
+            .build_call(
+                builders.functions.num_to_str,
+                &[func.get_first_param().unwrap().into(), (*v).into()],
+                "xyo_num_to_str",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_int_value(),
+        ScratchReturnTypes::Bool(v) => builders
+            .builder
+            .build_call(
+                builders.functions.bool_to_str,
+                &[func.get_first_param().unwrap().into(), (*v).into()],
+                "xyo_bool_to_str",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_int_value(),
+        ScratchReturnTypes::String(v) => *v,
+        ScratchReturnTypes::NumberLiteral(v) => {
+            let s = v.to_string();
+            let idx = strings.len() as u64;
+            strings.push(s);
+            builders.context.i64_type().const_int(idx, false)
+        }
+        ScratchReturnTypes::StringLiteral(v) => v.1,
+        ScratchReturnTypes::BoolLiteral(v) => {
+            let s = v.0.to_string();
+            let idx = strings.len() as u64;
+            strings.push(s);
+            builders.context.i64_type().const_int(idx, false)
+        }
+    }
+}
 
 pub fn build_xor_shift_128_plus<'ctx>(
     context: &'ctx Context,
