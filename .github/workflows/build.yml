@@ -1,10 +1,9 @@
-
 name: Build
 
 on:
-  push:
-    tags:
-      - '*'
+    push:
+        tags:
+            - "*"
 
 jobs:
     build:
@@ -107,30 +106,30 @@ jobs:
         needs: build
         runs-on: ubuntu-latest
         steps:
-          - name: Download artifact (Linux)
-            uses: actions/download-artifact@v4
-            with:
-              name: xyo-ubuntu-latest
-              path: ./artifacts
+            - name: Download artifact (Linux)
+              uses: actions/download-artifact@v4
+              with:
+                  name: xyo-ubuntu-latest
+                  path: ./artifacts
 
-          - name: Download artifact (macOS)
-            uses: actions/download-artifact@v4
-            with:
-              name: xyo-macos-latest
-              path: ./artifacts
+            - name: Download artifact (macOS)
+              uses: actions/download-artifact@v4
+              with:
+                  name: xyo-macos-latest
+                  path: ./artifacts
 
-          - name: Download artifact (Windows)
-            uses: actions/download-artifact@v4
-            with:
-              name: xyo-windows-latest
-              path: ./artifacts
+            - name: Download artifact (Windows)
+              uses: actions/download-artifact@v4
+              with:
+                  name: xyo-windows-latest
+                  path: ./artifacts
 
-          - name: Set up GitHub CLI
-            uses: cli/cli@v3
+            - name: Set up GitHub CLI
+              uses: cli/cli@v3
 
-          - name: Create GitHub Release
-            env:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            run: |
-              TAG_NAME=${GITHUB_REF#refs/tags/}
-              gh release create "$TAG_NAME" ./artifacts/* --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
+            - name: Create GitHub Release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  TAG_NAME=${GITHUB_REF#refs/tags/}
+                  gh release create "$TAG_NAME" ./artifacts/* --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
