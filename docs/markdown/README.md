@@ -1,8 +1,8 @@
 # xyo-rust ドキュメント
 
-Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト `xyo-rust` の手引きです。
+[![Build](https://github.com/pnsk-lab/xyo-rust/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/build.yml)
 
-このディレクトリの Markdown は、Taiga 用 XML に変換して GitHub Pages へ公開します。
+Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト `xyo-rust` の手引きです。
 
 ## 目次
 
