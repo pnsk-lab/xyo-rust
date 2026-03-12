@@ -50,14 +50,4 @@ Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR 生�
 - [リポジトリの README](../README.md)
 - [GitHub](https://github.com/pnsk-lab/xyo-rust)
 
-## Taiga でのサイト生成
-
-```bash
-python3 build_taiga_site.py
-rm -rf build
-./taiga site
-```
-
-ローカルで `taiga` バイナリがない場合は、GitHub Pages と同じ URL から取得できます。
-
 続きは [セットアップ](./getting-started.md) を参照してください。
