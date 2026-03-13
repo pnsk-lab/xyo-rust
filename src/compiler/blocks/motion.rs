@@ -14,6 +14,7 @@ pub fn parse_motion_stmt<'ctx>(
     stmt: &MotionStmt,
     function: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
+    target_idx: usize,
 ) {
     match stmt {
         MotionStmt::SetX { x } => {
@@ -25,7 +26,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, x, function, strings),
+                &generate_expr_ir(builders, x, function, strings, target_idx),
                 function,
             );
             builders.builder.build_store(field_ptr, val).unwrap();
@@ -39,7 +40,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, dx, function, strings),
+                &generate_expr_ir(builders, dx, function, strings, target_idx),
                 function,
             );
             let old_val = builders
@@ -62,7 +63,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, y, function, strings),
+                &generate_expr_ir(builders, y, function, strings, target_idx),
                 function,
             );
             builders.builder.build_store(field_ptr, val).unwrap();
@@ -76,7 +77,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, dy, function, strings),
+                &generate_expr_ir(builders, dy, function, strings, target_idx),
                 function,
             );
             let old_val = builders
@@ -103,13 +104,13 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, x, function, strings),
+                &generate_expr_ir(builders, x, function, strings, target_idx),
                 function,
             );
             builders.builder.build_store(field_ptr_x, val).unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, y, function, strings),
+                &generate_expr_ir(builders, y, function, strings, target_idx),
                 function,
             );
             builders.builder.build_store(field_ptr_y, val).unwrap();
@@ -123,7 +124,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, degrees, function, strings),
+                &generate_expr_ir(builders, degrees, function, strings, target_idx),
                 function,
             );
             let old_val = builders
@@ -146,7 +147,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, degrees, function, strings),
+                &generate_expr_ir(builders, degrees, function, strings, target_idx),
                 function,
             );
             let old_val = builders
@@ -169,7 +170,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let val = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, direction, function, strings),
+                &generate_expr_ir(builders, direction, function, strings, target_idx),
                 function,
             );
             builders.builder.build_store(field_ptr, val).unwrap();

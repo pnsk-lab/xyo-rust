@@ -10,6 +10,7 @@ pub fn parse_literal_expr<'ctx>(
     expr: &Literal,
     _function: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
+    target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
         Literal::Number(v) => {

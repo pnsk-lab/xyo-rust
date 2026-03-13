@@ -20,15 +20,12 @@ use crate::{
 pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
     Target::initialize_all(&InitializationConfig::default());
     let context = Context::create();
-    let mut builders = Builders::new(&context);
+    let mut builders = Builders::new(&context, project);
     let mut strings: Vec<String> = vec![];
-    let project = project;
 
     threads.iter().for_each(|v| {
         generate_thread_ir(&mut builders, v, &mut strings);
     });
-
-    // println!("IR before optimization:\n{}", builders.module.to_string());
 
     let target_triple = TargetMachine::get_default_triple();
     let cpu = TargetMachine::get_host_cpu_name().to_string();
@@ -58,7 +55,6 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
     pass_builder_options.set_loop_slp_vectorization(true);
     pass_builder_options.set_loop_unrolling(true);
     pass_builder_options.set_forget_all_scev_in_loop_unroll(true);
-    pass_builder_options.set_merge_functions(true);
     builders
         .module
         .run_passes(passes, &target_machine, pass_builder_options)
@@ -78,7 +74,9 @@ pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread, strings: &mu
     builders.builder.position_at_end(entry);
     for block in &thread.stmts {
         match block {
-            Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, strings),
+            Stmt::Motion(v) => {
+                parse_motion_stmt(builders, v, &function, strings, thread.target_idx)
+            }
             _ => todo!("やります"),
         }
     }
@@ -90,10 +88,11 @@ pub fn generate_expr_ir<'ctx>(
     expr: &Expr,
     function: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
+    target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
-        Expr::Literal(l) => parse_literal_expr(builders, l, function, strings),
-        Expr::Operator(l) => parse_operator_expr(builders, l, function, strings),
+        Expr::Literal(l) => parse_literal_expr(builders, l, function, strings, target_idx),
+        Expr::Operator(l) => parse_operator_expr(builders, l, function, strings, target_idx),
         _ => todo!("やる"),
     }
 }

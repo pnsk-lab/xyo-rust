@@ -14,17 +14,18 @@ pub fn parse_operator_expr<'ctx>(
     expr: &OperatorExpr,
     function: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
+    target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
         OperatorExpr::Add { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings),
+                &generate_expr_ir(builders, left, function, strings, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings),
+                &generate_expr_ir(builders, right, function, strings, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -37,12 +38,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Sub { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings),
+                &generate_expr_ir(builders, left, function, strings, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings),
+                &generate_expr_ir(builders, right, function, strings, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -55,12 +56,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Mul { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings),
+                &generate_expr_ir(builders, left, function, strings, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings),
+                &generate_expr_ir(builders, right, function, strings, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -73,12 +74,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Div { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings),
+                &generate_expr_ir(builders, left, function, strings, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings),
+                &generate_expr_ir(builders, right, function, strings, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -89,8 +90,8 @@ pub fn parse_operator_expr<'ctx>(
             )
         }
         OperatorExpr::Random { from, to } => {
-            let parsed_from = generate_expr_ir(builders, from, function, strings);
-            let parsed_to = generate_expr_ir(builders, to, function, strings);
+            let parsed_from = generate_expr_ir(builders, from, function, strings, target_idx);
+            let parsed_to = generate_expr_ir(builders, to, function, strings, target_idx);
             let parsed_from_number = scratch_return_to_number(builders, &parsed_from, function);
             let parsed_to_number = scratch_return_to_number(builders, &parsed_to, function);
             let from_is_num = is_num(builders, parsed_from, function);
@@ -239,8 +240,8 @@ pub fn parse_operator_expr<'ctx>(
             )
         }
         OperatorExpr::GreaterThan { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, strings);
-            let parsed_right = &generate_expr_ir(builders, right, function, strings);
+            let parsed_left = &generate_expr_ir(builders, left, function, strings, target_idx);
+            let parsed_right = &generate_expr_ir(builders, right, function, strings, target_idx);
             let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
@@ -276,8 +277,8 @@ pub fn parse_operator_expr<'ctx>(
             }
         }
         OperatorExpr::LessThan { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, strings);
-            let parsed_right = &generate_expr_ir(builders, right, function, strings);
+            let parsed_left = &generate_expr_ir(builders, left, function, strings, target_idx);
+            let parsed_right = &generate_expr_ir(builders, right, function, strings, target_idx);
             let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
@@ -313,8 +314,8 @@ pub fn parse_operator_expr<'ctx>(
             }
         }
         OperatorExpr::Eq { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, strings);
-            let parsed_right = &generate_expr_ir(builders, right, function, strings);
+            let parsed_left = &generate_expr_ir(builders, left, function, strings, target_idx);
+            let parsed_right = &generate_expr_ir(builders, right, function, strings, target_idx);
             let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
@@ -328,7 +329,7 @@ pub fn parse_operator_expr<'ctx>(
                 let cmp = builders
                     .builder
                     .build_call(
-                        builders.functions.str_cmp_lt,
+                        builders.functions.str_cmp_eq,
                         &[p.into(), left_hand.into(), right_hand.into()],
                         "str_cmp_eq",
                     )
