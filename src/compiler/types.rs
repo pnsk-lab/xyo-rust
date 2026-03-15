@@ -53,17 +53,33 @@ pub struct Builders<'ctx> {
     pub builder: Builder<'ctx>,
     pub global_variables: HashMap<String, usize>,
     pub local_variables: HashMap<usize, HashMap<String, usize>>,
+    local_variables_increments: HashMap<usize, usize>,
+    global_variable_increment: usize,
     counter: usize,
     pub functions: Functions<'ctx>,
 }
 pub struct Functions<'ctx> {
+    pub llvm_abs: FunctionValue<'ctx>,
     pub llvm_floor: FunctionValue<'ctx>,
+    pub llvm_ceil: FunctionValue<'ctx>,
+    pub llvm_sqrt: FunctionValue<'ctx>,
+    pub llvm_sin: FunctionValue<'ctx>,
+    pub llvm_cos: FunctionValue<'ctx>,
+    pub llvm_tan: FunctionValue<'ctx>,
+    pub llvm_asin: FunctionValue<'ctx>,
+    pub llvm_acos: FunctionValue<'ctx>,
+    pub llvm_atan: FunctionValue<'ctx>,
+    pub llvm_loge: FunctionValue<'ctx>,
+    pub llvm_log10: FunctionValue<'ctx>,
+    pub llvm_exp: FunctionValue<'ctx>,
+    pub llvm_pow10: FunctionValue<'ctx>,
     pub str_to_num: FunctionValue<'ctx>,
     pub num_to_str: FunctionValue<'ctx>,
     pub bool_to_str: FunctionValue<'ctx>,
     pub str_cmp_gt: FunctionValue<'ctx>,
     pub str_cmp_lt: FunctionValue<'ctx>,
     pub str_cmp_eq: FunctionValue<'ctx>,
+    pub str_to_bool: FunctionValue<'ctx>,
     pub is_num: FunctionValue<'ctx>,
     pub rand: FunctionValue<'ctx>,
 }
@@ -91,18 +107,38 @@ impl<'ctx> Builders<'ctx> {
             i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
         let str_cmp_eq =
             i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
+        let str_to_bool = i1_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
         let functions = Functions {
             llvm_floor: module.add_function("llvm.floor.f64", llvm_floor, None),
+            llvm_abs: module.add_function("llvm.fabs.f64", llvm_floor, None),
+            llvm_ceil: module.add_function("llvm.ceil.f64", llvm_floor, None),
+            llvm_sqrt: module.add_function("llvm.sqrt.f64", llvm_floor, None),
+            llvm_sin: module.add_function("llvm.sin.f64", llvm_floor, None),
+            llvm_cos: module.add_function("llvm.cos.f64", llvm_floor, None),
+            llvm_tan: module.add_function("llvm.tan.f64", llvm_floor, None),
+            llvm_asin: module.add_function("llvm.asin.f64", llvm_floor, None),
+            llvm_acos: module.add_function("llvm.acos.f64", llvm_floor, None),
+            llvm_atan: module.add_function("llvm.atan.f64", llvm_floor, None),
+            llvm_loge: module.add_function("llvm.log.f64", llvm_floor, None),
+            llvm_log10: module.add_function("llvm.log10.f64", llvm_floor, None),
+            llvm_exp: module.add_function("llvm.exp.f64", llvm_floor, None),
+            llvm_pow10: module.add_function("llvm.exp10.f64", llvm_floor, None),
             str_to_num: module.add_function("xyo_str_to_num", str_to_num_func_type, None),
             num_to_str: module.add_function("xyo_num_to_str", num_to_str_func_type, None),
             bool_to_str: module.add_function("xyo_bool_to_str", bool_to_str, None),
             str_cmp_gt: module.add_function("xyo_str_cmp_gt", str_cmp_gt, None),
             str_cmp_lt: module.add_function("xyo_str_cmp_lt", str_cmp_lt, None),
-            str_cmp_eq: module.add_function("xyo_str_cmp_eq", str_cmp_lt, None),
+            str_cmp_eq: module.add_function("xyo_str_cmp_eq", str_cmp_eq, None),
             is_num: module.add_function("str_is_num", str_is_num_func_type, None),
+            str_to_bool: module.add_function("str_to_bool", str_to_bool, None),
             rand: build_xor_shift_128_plus(&context, &module),
         };
-        let (global_variables, local_variables) = Self::create_variable_map(project);
+        let (
+            global_variables,
+            local_variables,
+            global_variable_increment,
+            local_variables_increments,
+        ) = Self::create_variable_map(project);
         Self {
             context,
             module,
@@ -111,6 +147,8 @@ impl<'ctx> Builders<'ctx> {
             functions,
             global_variables,
             local_variables,
+            global_variable_increment,
+            local_variables_increments,
         }
     }
     fn create_variable_map(
@@ -118,17 +156,20 @@ impl<'ctx> Builders<'ctx> {
     ) -> (
         HashMap<String, usize>,
         HashMap<usize, HashMap<String, usize>>,
+        usize,
+        HashMap<usize, usize>,
     ) {
         let targets = &project.targets;
         let mut local_variable: HashMap<usize, HashMap<String, usize>> = HashMap::new();
         let mut global_variable: HashMap<String, usize> = HashMap::new();
-        let mut global_variable_counter: usize = 0;
+        let mut global_variables_increment: usize = 0;
+        let mut local_variables_increments: HashMap<usize, usize> = HashMap::new();
         for (target_idx, target) in targets.iter().enumerate() {
             match target {
                 StageOrSprite::Stage(v) => {
                     for i in &v.variables {
-                        global_variable.insert(i.0.clone(), global_variable_counter);
-                        global_variable_counter += 1;
+                        global_variable.insert(i.0.clone(), global_variables_increment);
+                        global_variables_increment += 1;
                     }
                 }
                 StageOrSprite::Sprite(v) => {
@@ -139,10 +180,16 @@ impl<'ctx> Builders<'ctx> {
                         counter += 1;
                     }
                     local_variable.insert(target_idx, local_variable_temp);
+                    local_variables_increments.insert(target_idx, counter);
                 }
             }
         }
-        (global_variable, local_variable)
+        (
+            global_variable,
+            local_variable,
+            global_variables_increment,
+            local_variables_increments,
+        )
     }
     pub fn get_variable(&self, target_idx: usize, variable_id: &str) -> Option<VariableInfo> {
         if let Some(idx) = self.global_variables.get(variable_id) {

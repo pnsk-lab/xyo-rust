@@ -4,9 +4,11 @@ use crate::{
     compiler::{
         compiler::{ScratchReturnTypes, generate_expr_ir},
         types::Builders,
-        utils::{is_num, scratch_return_to_number, scratch_return_to_string},
+        utils::{
+            is_num, scratch_return_to_bool, scratch_return_to_number, scratch_return_to_string,
+        },
     },
-    parser::types::OperatorExpr,
+    parser::types::{CalcOp, OperatorExpr},
 };
 
 pub fn parse_operator_expr<'ctx>(
@@ -349,6 +351,210 @@ pub fn parse_operator_expr<'ctx>(
                         .unwrap(),
                 )
             }
+        }
+        OperatorExpr::And { left, right } => {
+            if let Some(left_expr) = left
+                && let Some(right_expr) = right
+            {
+                let left_parsed =
+                    generate_expr_ir(builders, left_expr, function, strings, target_idx);
+                let right_parsed =
+                    generate_expr_ir(builders, right_expr, function, strings, target_idx);
+                let left_bool = scratch_return_to_bool(builders, &left_parsed, function, strings);
+                let right_bool = scratch_return_to_bool(builders, &right_parsed, function, strings);
+                ScratchReturnTypes::Bool(
+                    builders
+                        .builder
+                        .build_and(left_bool, right_bool, "and")
+                        .unwrap(),
+                )
+            } else {
+                ScratchReturnTypes::BoolLiteral((
+                    false,
+                    builders.context.bool_type().const_int(0, false),
+                ))
+            }
+        }
+        OperatorExpr::Or { left, right } => {
+            if left.is_some() || right.is_some() {
+                let left_parsed = if let Some(left_some) = left {
+                    scratch_return_to_bool(
+                        builders,
+                        &generate_expr_ir(builders, left_some, function, strings, target_idx),
+                        function,
+                        strings,
+                    )
+                } else {
+                    builders.context.bool_type().const_int(0, false)
+                };
+                let right_parsed = if let Some(right_some) = left {
+                    scratch_return_to_bool(
+                        builders,
+                        &generate_expr_ir(builders, right_some, function, strings, target_idx),
+                        function,
+                        strings,
+                    )
+                } else {
+                    builders.context.bool_type().const_int(0, false)
+                };
+                ScratchReturnTypes::Bool(
+                    builders
+                        .builder
+                        .build_and(left_parsed, right_parsed, "or")
+                        .unwrap(),
+                )
+            } else {
+                ScratchReturnTypes::BoolLiteral((
+                    false,
+                    builders.context.bool_type().const_int(0, false),
+                ))
+            }
+        }
+        OperatorExpr::Not { target } => {
+            if let Some(target_some) = target {
+                let target_parsed = scratch_return_to_bool(
+                    builders,
+                    &generate_expr_ir(builders, target_some, function, strings, target_idx),
+                    function,
+                    strings,
+                );
+                ScratchReturnTypes::Bool(builders.builder.build_not(target_parsed, "not").unwrap())
+            } else {
+                ScratchReturnTypes::BoolLiteral((
+                    true,
+                    builders.context.bool_type().const_int(1, false),
+                ))
+            }
+        }
+        OperatorExpr::Mod { left, right } => {
+            let parsed_left = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, left, function, strings, target_idx),
+                function,
+            );
+            let parsed_right = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, right, function, strings, target_idx),
+                function,
+            );
+            ScratchReturnTypes::Number(
+                builders
+                    .builder
+                    .build_float_rem(parsed_left, parsed_right, "mod")
+                    .unwrap(),
+            )
+        }
+        OperatorExpr::Round { target } => {
+            let parsed_target = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, target, function, strings, target_idx),
+                function,
+            );
+            ScratchReturnTypes::Number(
+                builders
+                    .builder
+                    .build_select(
+                        builders
+                            .builder
+                            .build_or(
+                                builders
+                                    .builder
+                                    .build_float_compare(
+                                        FloatPredicate::OEQ,
+                                        parsed_target,
+                                        builders.context.f64_type().const_float(-0.0),
+                                        "is_minus_zero",
+                                    )
+                                    .unwrap(),
+                                builders
+                                    .builder
+                                    .build_and(
+                                        builders
+                                            .builder
+                                            .build_float_compare(
+                                                FloatPredicate::OGE,
+                                                parsed_target,
+                                                builders.context.f64_type().const_float(-0.5),
+                                                "ge_half",
+                                            )
+                                            .unwrap(),
+                                        builders
+                                            .builder
+                                            .build_float_compare(
+                                                FloatPredicate::OLT,
+                                                parsed_target,
+                                                builders.context.f64_type().const_float(0.0),
+                                                "lt_zero",
+                                            )
+                                            .unwrap(),
+                                        "gt_half",
+                                    )
+                                    .unwrap(),
+                                "or_or_or",
+                            )
+                            .unwrap(),
+                        builders.context.f64_type().const_float(-0.0),
+                        builders
+                            .builder
+                            .build_call(
+                                builders.functions.llvm_floor,
+                                &[builders
+                                    .builder
+                                    .build_float_add(
+                                        parsed_target,
+                                        builders.context.f64_type().const_float(0.5),
+                                        "plus_half",
+                                    )
+                                    .unwrap()
+                                    .into()],
+                                "round_select",
+                            )
+                            .unwrap()
+                            .try_as_basic_value()
+                            .basic()
+                            .unwrap()
+                            .into_float_value(),
+                        "round",
+                    )
+                    .unwrap()
+                    .into_float_value(),
+            )
+        }
+        OperatorExpr::Calc { target, op } => {
+            let parsed_target = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, target, function, strings, target_idx),
+                function,
+            );
+            ScratchReturnTypes::Number(
+                builders
+                    .builder
+                    .build_call(
+                        match op {
+                            CalcOp::Abs => builders.functions.llvm_abs,
+                            CalcOp::Floor => builders.functions.llvm_floor,
+                            CalcOp::Ceil => builders.functions.llvm_ceil,
+                            CalcOp::Sqrt => builders.functions.llvm_sqrt,
+                            CalcOp::Sin => builders.functions.llvm_sin,
+                            CalcOp::Cos => builders.functions.llvm_cos,
+                            CalcOp::Tan => builders.functions.llvm_tan,
+                            CalcOp::Asin => builders.functions.llvm_asin,
+                            CalcOp::Acos => builders.functions.llvm_acos,
+                            CalcOp::Atan => builders.functions.llvm_atan,
+                            CalcOp::LogE => builders.functions.llvm_loge,
+                            CalcOp::Log10 => builders.functions.llvm_log10,
+                            CalcOp::PowE => builders.functions.llvm_exp,
+                            CalcOp::Pow10 => builders.functions.llvm_pow10,
+                        },
+                        &[parsed_target.into()],
+                        "float_calc",
+                    )
+                    .unwrap()
+                    .try_as_basic_value()
+                    .basic()
+                    .unwrap()
+                    .into_float_value(),
+            )
         }
         _ => todo!("あとでやる"),
     }

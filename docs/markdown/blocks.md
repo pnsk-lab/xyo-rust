@@ -349,11 +349,11 @@ Parser で通ることと、`run` サブコマンドで最後まで通ること�
 
 現在の LLVM IR 生成は、スレッド本体では移動系の一部命令だけを扱います。式側は数値系の一部演算が中心です。
 
-| 層      | 対応内容                                                                                                                                                             |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stmt    | `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`                      |
-| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq` |
-| Literal | 数値入力の変換経路あり                                                                                                                                               |
+| 層      | 対応内容                                                                                                                                                                                                                                                         |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stmt    | `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`                                                                                                                  |
+| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc` |
+| Literal | 数値入力の変換経路あり                                                                                                                                                                                                                                           |
 
 前のページ: [CLI](./cli.md)  
 次のページ: [アーキテクチャ](./architecture.md)

@@ -154,6 +154,64 @@ pub fn scratch_return_to_string<'ctx>(
     }
 }
 
+pub fn scratch_return_to_bool<'ctx>(
+    builders: &Builders<'ctx>,
+    from: &ScratchReturnTypes<'ctx>,
+    func: &FunctionValue<'ctx>,
+    _: &mut Vec<String>,
+) -> inkwell::values::IntValue<'ctx> {
+    match from {
+        ScratchReturnTypes::Number(v) => builders
+            .builder
+            .build_select(
+                builders
+                    .builder
+                    .build_float_compare(
+                        FloatPredicate::OEQ,
+                        *v,
+                        builders.context.f64_type().const_float(0.0),
+                        "is_zero",
+                    )
+                    .unwrap(),
+                builders.context.bool_type().const_int(0, false),
+                builders.context.bool_type().const_int(1, false),
+                "number_to_bool",
+            )
+            .unwrap()
+            .into_int_value(),
+        ScratchReturnTypes::Bool(v) => *v,
+        ScratchReturnTypes::String(v) => builders
+            .builder
+            .build_call(
+                builders.functions.str_to_bool,
+                &[func.get_first_param().unwrap().into(), (*v).into()],
+                "str_to_bool",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_int_value(),
+        ScratchReturnTypes::NumberLiteral(v) => builders
+            .context
+            .bool_type()
+            .const_int((*v != 0.0) as u64, false),
+        ScratchReturnTypes::StringLiteral(v) => {
+            let string_bool = match v.0.to_ascii_lowercase().as_str() {
+                "" => false,
+                "0" => false,
+                "false" => false,
+                _ => true,
+            };
+            builders
+                .context
+                .bool_type()
+                .const_int(string_bool as u64, false)
+        }
+        ScratchReturnTypes::BoolLiteral(v) => v.1,
+    }
+}
+
 pub fn build_xor_shift_128_plus<'ctx>(
     context: &'ctx Context,
     module: &Module<'ctx>,
