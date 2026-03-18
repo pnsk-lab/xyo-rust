@@ -429,7 +429,7 @@ pub fn parse_operator_expr<'ctx>(
                 } else {
                     builders.context.bool_type().const_int(0, false)
                 };
-                let right_parsed = if let Some(right_some) = left {
+                let right_parsed = if let Some(right_some) = right {
                     scratch_return_to_bool(
                         builders,
                         &generate_expr_ir(builders, right_some, function, strings, target_idx),
