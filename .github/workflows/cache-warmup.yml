@@ -1,0 +1,100 @@
+name: Cache Warmup
+
+env:
+    LLVM_VERSION: 21.1.2
+    LLVM_CACHE_VERSION: v2
+    LLVM_TARGETS: X86;AArch64;WebAssembly
+
+on:
+    schedule:
+        - cron: "0 0 */5 * *"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    warm-cache:
+        name: Warm Cache (${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os:
+                    - ubuntu-latest
+                    - macos-latest
+                    - windows-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache LLVM 21.1.x
+              id: cache-llvm
+              uses: actions/cache@v4
+              with:
+                  path: .llvm/${{ runner.os }}
+                  key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}-x86-aarch64-wasm-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Build LLVM 21.1.x (Unix)
+              if: runner.os != 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
+              shell: bash
+              run: |
+                  set -euxo pipefail
+                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/$RUNNER_OS"
+                  LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
+                  LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
+                  rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
+                  git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
+                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
+                      -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}" \
+                      -DLLVM_INCLUDE_TESTS=OFF \
+                      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+                      -DLLVM_INCLUDE_EXAMPLES=OFF \
+                      -DLLVM_BUILD_LLVM_DYLIB=OFF \
+                      -DBUILD_SHARED_LIBS=OFF
+                  cmake --build "$LLVM_BUILD_DIR" --target install --parallel
+
+            - name: Build LLVM 21.1.x (Windows)
+              if: runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
+              shell: pwsh
+              run: |
+                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE '.llvm\Windows'
+                  $llvmSourceDir = Join-Path $env:RUNNER_TEMP 'llvm-project'
+                  $llvmBuildDir = Join-Path $env:RUNNER_TEMP 'llvm-build'
+                  if (Test-Path $llvmInstallDir) {
+                    Remove-Item $llvmInstallDir -Recurse -Force
+                  }
+                  if (Test-Path $llvmSourceDir) {
+                    Remove-Item $llvmSourceDir -Recurse -Force
+                  }
+                  if (Test-Path $llvmBuildDir) {
+                    Remove-Item $llvmBuildDir -Recurse -Force
+                  }
+                  git clone --depth 1 --branch "llvmorg-$env:LLVM_VERSION" https://github.com/llvm/llvm-project.git $llvmSourceDir
+                  cmake -S "$llvmSourceDir\llvm" -B $llvmBuildDir -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$llvmInstallDir" -DLLVM_TARGETS_TO_BUILD="$env:LLVM_TARGETS" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_BUILD_LLVM_DYLIB=OFF -DBUILD_SHARED_LIBS=OFF
+                  cmake --build $llvmBuildDir --config Release --target INSTALL -- /m
+
+            - name: Export LLVM env (Unix)
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/$RUNNER_OS"
+                  echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
+                  echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+
+            - name: Export LLVM env (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  $llvmRoot = Join-Path $env:GITHUB_WORKSPACE '.llvm\Windows'
+                  "LLVM_SYS_211_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  "$llvmRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
