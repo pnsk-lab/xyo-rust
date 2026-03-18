@@ -1,6 +1,9 @@
 use core::f64;
 
-use inkwell::{FloatPredicate, values::FunctionValue};
+use inkwell::{
+    FloatPredicate,
+    values::{FloatValue, FunctionValue},
+};
 
 use crate::{
     compiler::{
@@ -12,6 +15,43 @@ use crate::{
     },
     parser::types::{CalcOp, OperatorExpr},
 };
+
+fn build_rem<'ctx>(
+    builders: &Builders<'ctx>,
+    left: FloatValue<'ctx>,
+    right: FloatValue<'ctx>,
+) -> FloatValue<'ctx> {
+    let rem = builders
+        .builder
+        .build_float_rem(left, right, "aaaa")
+        .unwrap();
+    let rem = builders
+        .builder
+        .build_float_add(
+            rem,
+            builders
+                .builder
+                .build_select(
+                    builders
+                        .builder
+                        .build_float_compare(
+                            FloatPredicate::OLT,
+                            rem,
+                            builders.context.f64_type().const_float(0.0),
+                            "aaaa",
+                        )
+                        .unwrap(),
+                    right,
+                    builders.context.f64_type().const_float(0.0),
+                    "name",
+                )
+                .unwrap()
+                .into_float_value(),
+            "rem",
+        )
+        .unwrap();
+    return rem;
+}
 
 pub fn parse_operator_expr<'ctx>(
     builders: &Builders<'ctx>,
@@ -439,12 +479,7 @@ pub fn parse_operator_expr<'ctx>(
                 &generate_expr_ir(builders, right, function, strings, target_idx),
                 function,
             );
-            ScratchReturnTypes::Number(
-                builders
-                    .builder
-                    .build_float_rem(parsed_left, parsed_right, "mod")
-                    .unwrap(),
-            )
+            ScratchReturnTypes::Number(build_rem(builders, parsed_left, parsed_right))
         }
         OperatorExpr::Round { target } => {
             let parsed_target = scratch_return_to_number(
@@ -586,14 +621,11 @@ pub fn parse_operator_expr<'ctx>(
                                 .builder
                                 .build_float_compare(
                                     FloatPredicate::OEQ,
-                                    builders
-                                        .builder
-                                        .build_float_rem(
-                                            *parsed_target_old,
-                                            builders.context.f64_type().const_float(360.0),
-                                            "name_darui",
-                                        )
-                                        .unwrap(),
+                                    build_rem(
+                                        builders,
+                                        *parsed_target_old,
+                                        builders.context.f64_type().const_float(360.0),
+                                    ),
                                     builders.context.f64_type().const_float(90.0),
                                     "tan_inf",
                                 )
@@ -606,14 +638,11 @@ pub fn parse_operator_expr<'ctx>(
                                         .builder
                                         .build_float_compare(
                                             FloatPredicate::OEQ,
-                                            builders
-                                                .builder
-                                                .build_float_rem(
-                                                    *parsed_target_old,
-                                                    builders.context.f64_type().const_float(360.0),
-                                                    "name_darui",
-                                                )
-                                                .unwrap(),
+                                            build_rem(
+                                                builders,
+                                                *parsed_target_old,
+                                                builders.context.f64_type().const_float(360.0),
+                                            ),
                                             builders.context.f64_type().const_float(270.0),
                                             "tan_inf",
                                         )
