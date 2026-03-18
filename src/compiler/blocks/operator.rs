@@ -1,3 +1,5 @@
+use core::f64;
+
 use inkwell::{FloatPredicate, values::FunctionValue};
 
 use crate::{
@@ -526,35 +528,165 @@ pub fn parse_operator_expr<'ctx>(
                 &generate_expr_ir(builders, target, function, strings, target_idx),
                 function,
             );
-            ScratchReturnTypes::Number(
+            let parsed_target_old = &parsed_target;
+            let parsed_target = if matches!(op, CalcOp::Sin)
+                || matches!(op, CalcOp::Cos)
+                || matches!(op, CalcOp::Tan)
+            {
                 builders
                     .builder
-                    .build_call(
-                        match op {
-                            CalcOp::Abs => builders.functions.llvm_abs,
-                            CalcOp::Floor => builders.functions.llvm_floor,
-                            CalcOp::Ceil => builders.functions.llvm_ceil,
-                            CalcOp::Sqrt => builders.functions.llvm_sqrt,
-                            CalcOp::Sin => builders.functions.llvm_sin,
-                            CalcOp::Cos => builders.functions.llvm_cos,
-                            CalcOp::Tan => builders.functions.llvm_tan,
-                            CalcOp::Asin => builders.functions.llvm_asin,
-                            CalcOp::Acos => builders.functions.llvm_acos,
-                            CalcOp::Atan => builders.functions.llvm_atan,
-                            CalcOp::LogE => builders.functions.llvm_loge,
-                            CalcOp::Log10 => builders.functions.llvm_log10,
-                            CalcOp::PowE => builders.functions.llvm_exp,
-                            CalcOp::Pow10 => builders.functions.llvm_pow10,
-                        },
-                        &[parsed_target.into()],
-                        "float_calc",
+                    .build_float_mul(
+                        parsed_target,
+                        builders
+                            .context
+                            .f64_type()
+                            .const_float(f64::consts::PI / 180.0),
+                        "degrees_to_rad",
                     )
                     .unwrap()
-                    .try_as_basic_value()
-                    .basic()
+            } else {
+                parsed_target
+            };
+            let ret_val = builders
+                .builder
+                .build_call(
+                    match op {
+                        CalcOp::Abs => builders.functions.llvm_abs,
+                        CalcOp::Floor => builders.functions.llvm_floor,
+                        CalcOp::Ceil => builders.functions.llvm_ceil,
+                        CalcOp::Sqrt => builders.functions.llvm_sqrt,
+                        CalcOp::Sin => builders.functions.llvm_sin,
+                        CalcOp::Cos => builders.functions.llvm_cos,
+                        CalcOp::Tan => builders.functions.llvm_tan,
+                        CalcOp::Asin => builders.functions.llvm_asin,
+                        CalcOp::Acos => builders.functions.llvm_acos,
+                        CalcOp::Atan => builders.functions.llvm_atan,
+                        CalcOp::LogE => builders.functions.llvm_loge,
+                        CalcOp::Log10 => builders.functions.llvm_log10,
+                        CalcOp::PowE => builders.functions.llvm_exp,
+                        CalcOp::Pow10 => builders.functions.llvm_pow10,
+                    },
+                    &[parsed_target.into()],
+                    "float_calc",
+                )
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_float_value();
+            let ret_val = if matches!(op, CalcOp::Sin)
+                || matches!(op, CalcOp::Cos)
+                || matches!(op, CalcOp::Tan)
+            {
+                let tm = if matches!(op, CalcOp::Tan) {
+                    builders
+                        .builder
+                        .build_select(
+                            builders
+                                .builder
+                                .build_float_compare(
+                                    FloatPredicate::OEQ,
+                                    builders
+                                        .builder
+                                        .build_float_rem(
+                                            *parsed_target_old,
+                                            builders.context.f64_type().const_float(360.0),
+                                            "name_darui",
+                                        )
+                                        .unwrap(),
+                                    builders.context.f64_type().const_float(90.0),
+                                    "tan_inf",
+                                )
+                                .unwrap(),
+                            builders.context.f64_type().const_float(f64::INFINITY),
+                            builders
+                                .builder
+                                .build_select(
+                                    builders
+                                        .builder
+                                        .build_float_compare(
+                                            FloatPredicate::OEQ,
+                                            builders
+                                                .builder
+                                                .build_float_rem(
+                                                    *parsed_target_old,
+                                                    builders.context.f64_type().const_float(360.0),
+                                                    "name_darui",
+                                                )
+                                                .unwrap(),
+                                            builders.context.f64_type().const_float(270.0),
+                                            "tan_inf",
+                                        )
+                                        .unwrap(),
+                                    builders.context.f64_type().const_float(-f64::INFINITY),
+                                    ret_val,
+                                    "inf",
+                                )
+                                .unwrap()
+                                .into_float_value(),
+                            "inf",
+                        )
+                        .unwrap()
+                        .into_float_value()
+                } else {
+                    ret_val
+                };
+                builders
+                    .builder
+                    .build_float_mul(
+                        builders
+                            .builder
+                            .build_call(
+                                builders.functions.llvm_floor,
+                                &[builders
+                                    .builder
+                                    .build_float_add(
+                                        builders
+                                            .builder
+                                            .build_float_mul(
+                                                tm,
+                                                builders
+                                                    .context
+                                                    .f64_type()
+                                                    .const_float(10.0_f64.powi(10)),
+                                                "mul_10_000_000_000",
+                                            )
+                                            .unwrap(),
+                                        builders.context.f64_type().const_float(0.5),
+                                        "round_hosei",
+                                    )
+                                    .unwrap()
+                                    .into()],
+                                "round_round",
+                            )
+                            .unwrap()
+                            .try_as_basic_value()
+                            .basic()
+                            .unwrap()
+                            .into_float_value(),
+                        builders.context.f64_type().const_float(10.0_f64.powi(-10)),
+                        "aaaa",
+                    )
                     .unwrap()
-                    .into_float_value(),
-            )
+            } else if matches!(op, CalcOp::Asin)
+                || matches!(op, CalcOp::Acos)
+                || matches!(op, CalcOp::Atan)
+            {
+                builders
+                    .builder
+                    .build_float_mul(
+                        ret_val,
+                        builders
+                            .context
+                            .f64_type()
+                            .const_float(180.0 / f64::consts::PI),
+                        "rad_to_degrees",
+                    )
+                    .unwrap()
+            } else {
+                ret_val
+            };
+            ScratchReturnTypes::Number(ret_val)
         }
         _ => todo!("あとでやる"),
     }
