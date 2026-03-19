@@ -3,7 +3,6 @@ name: Cache Warmup
 env:
     LLVM_VERSION: 21.1.8
     LLVM_CACHE_VERSION: v2
-    LLVM_TARGETS: X86;AArch64;WebAssembly
 
 on:
     schedule:
@@ -15,15 +14,30 @@ permissions:
 
 jobs:
     warm-cache:
-        name: Warm Cache (${{ matrix.os }})
+        name: Warm Cache (${{ matrix.label }})
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
             matrix:
-                os:
-                    - ubuntu-latest
-                    - macos-latest
-                    - windows-latest
+                include:
+                    - os: ubuntu-latest
+                      label: ubuntu-latest
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                    - os: macos-latest
+                      label: macos-latest
+                      llvm_targets: X86;AArch64;WebAssembly
+                      llvm_cache_targets: x86-aarch64-wasm
+                    - os: windows-latest
+                      label: windows-latest-x64
+                      cmake_arch: x64
+                      llvm_targets: X86;AArch64;WebAssembly
+                      llvm_cache_targets: x86-aarch64-wasm
+                    - os: windows-11-arm
+                      label: windows-11-arm64
+                      cmake_arch: ARM64
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
 
         steps:
             - name: Checkout
@@ -36,15 +50,15 @@ jobs:
               id: cache-llvm
               uses: actions/cache@v4
               with:
-                  path: .llvm/${{ runner.os }}
-                  key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}-x86-aarch64-wasm-${{ env.LLVM_CACHE_VERSION }}
+                  path: .llvm/${{ runner.os }}-${{ runner.arch }}
+                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
 
             - name: Build LLVM 21.1.x (Unix)
               if: runner.os != 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
               shell: bash
               run: |
                   set -euxo pipefail
-                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/$RUNNER_OS"
+                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
                   LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
                   LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
                   rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
@@ -52,7 +66,7 @@ jobs:
                   cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
                       -DCMAKE_BUILD_TYPE=Release \
                       -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
-                      -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}" \
+                      -DLLVM_TARGETS_TO_BUILD="${{ matrix.llvm_targets }}" \
                       -DLLVM_INCLUDE_TESTS=OFF \
                       -DLLVM_INCLUDE_BENCHMARKS=OFF \
                       -DLLVM_INCLUDE_EXAMPLES=OFF \
@@ -64,7 +78,7 @@ jobs:
               if: runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
               shell: pwsh
               run: |
-                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE '.llvm\Windows'
+                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)"
                   $llvmSourceDir = Join-Path $env:RUNNER_TEMP 'llvm-project'
                   $llvmBuildDir = Join-Path $env:RUNNER_TEMP 'llvm-build'
                   if (Test-Path $llvmInstallDir) {
@@ -77,14 +91,14 @@ jobs:
                     Remove-Item $llvmBuildDir -Recurse -Force
                   }
                   git clone --depth 1 --branch "llvmorg-$env:LLVM_VERSION" https://github.com/llvm/llvm-project.git $llvmSourceDir
-                  cmake -S "$llvmSourceDir\llvm" -B $llvmBuildDir -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$llvmInstallDir" -DLLVM_TARGETS_TO_BUILD="$env:LLVM_TARGETS" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_BUILD_LLVM_DYLIB=OFF -DBUILD_SHARED_LIBS=OFF
+                  cmake -S "$llvmSourceDir\llvm" -B $llvmBuildDir -G "Visual Studio 17 2022" -A "${{ matrix.cmake_arch }}" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$llvmInstallDir" -DLLVM_TARGETS_TO_BUILD="${{ matrix.llvm_targets }}" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_BUILD_LLVM_DYLIB=OFF -DBUILD_SHARED_LIBS=OFF
                   cmake --build $llvmBuildDir --config Release --target INSTALL -- /m
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
               shell: bash
               run: |
-                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/$RUNNER_OS"
+                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
                   echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
                   echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
@@ -92,7 +106,7 @@ jobs:
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
-                  $llvmRoot = Join-Path $env:GITHUB_WORKSPACE '.llvm\Windows'
+                  $llvmRoot = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)"
                   "LLVM_SYS_211_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
                   "$llvmRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
