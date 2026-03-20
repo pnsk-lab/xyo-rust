@@ -2,6 +2,7 @@
 name = "xyo-rust"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 authors = ["Scratch Native Runtime Contributors"]
 description = "A native Scratch project runtime that compiles .sb3 files to native code via LLVM"
 license = "MIT"

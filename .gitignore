@@ -9,3 +9,6 @@
 *.o
 examples/*
 docs/book/
+
+bitcodes/bc
+bitcodes/ll

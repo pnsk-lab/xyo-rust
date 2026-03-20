@@ -26,6 +26,7 @@
 - Rust stable
 - LLVM 21.1 系
 - `llvm-config` が利用可能な環境
+- `clang` が利用可能な環境
 
 `inkwell` を使っているため、LLVM のメジャー・マイナー差異には注意が必要です。作業前に `llvm-config --version` が `21.1.x` を返すことを確認してください。
 
@@ -36,6 +37,8 @@
 ```bash
 cargo build --release
 ```
+
+`cargo build` は `build.rs` を通じて `bitcodes/` 配下の C コードも再生成します。
 
 ### テスト
 
@@ -97,6 +100,19 @@ cargo run -- run <path-to-project.sb3>
 ## CI
 
 - `.github/workflows/build.yml`: GitHub Release 公開時の Rust バイナリのマルチプラットフォームビルド
+- `.github/workflows/bitcodes.yml`: `bitcodes/` 配下の C ソースから `.bc` / `.ll` を自動生成
+
+## Bitcodes
+
+`bitcodes/` には LLVM bitcode と LLVM IR の生成元 C コードがあります。`cargo build` 時に `bitcodes/bc/` と `bitcodes/ll/` が更新され、Git には含めません。
+
+ローカルで再生成するには次を使います。
+
+```bash
+./bitcodes/build.sh
+```
+
+古い出力を消して作り直す場合は `--clean`、全部強制再生成する場合は `--force` を付けます。
 
 ## ライセンス
 
