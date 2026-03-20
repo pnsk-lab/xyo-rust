@@ -111,7 +111,7 @@ pub fn scratch_return_to_string<'ctx>(
     from: &ScratchReturnTypes<'ctx>,
     func: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
-) -> inkwell::values::IntValue<'ctx> {
+) -> inkwell::values::PointerValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => builders
             .builder
@@ -137,7 +137,7 @@ pub fn scratch_return_to_string<'ctx>(
             .basic()
             .unwrap()
             .into_int_value(),
-        ScratchReturnTypes::String(v) => *v,
+        ScratchReturnTypes::String(v) => v,
         ScratchReturnTypes::NumberLiteral(v) => {
             let s = v.to_string();
             let idx = strings.len() as u64;
@@ -287,4 +287,95 @@ pub fn build_xor_shift_128_plus<'ctx>(
     builder.build_return(Some(&ret)).unwrap();
 
     function
+}
+
+fn mod_pow(mut base: u128, mut exp: u128, modu: u128) -> u128 {
+    let mut result = 1u128;
+    base %= modu;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = (result * base) % modu;
+        }
+        base = (base * base) % modu;
+        exp >>= 1;
+    }
+    result
+}
+
+fn is_prime(n: u64) -> bool {
+    const SMALL_PRIMES: [u64; 12] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
+
+    if n < 2 {
+        return false;
+    }
+    for &p in &SMALL_PRIMES {
+        if n == p {
+            return true;
+        }
+        if n % p == 0 {
+            return false;
+        }
+    }
+
+    let mut d = n - 1;
+    let mut s = 0;
+    while d % 2 == 0 {
+        d /= 2;
+        s += 1;
+    }
+
+    const BASES: [u64; 7] = [2, 325, 9375, 28178, 450775, 9780504, 1795265022];
+
+    'outer: for &a in &BASES {
+        let a = a % n;
+        if a == 0 {
+            continue;
+        }
+        let mut x = mod_pow(a as u128, d as u128, n as u128) as u64;
+        if x == 1 || x == n - 1 {
+            continue;
+        }
+        for _ in 0..(s - 1) {
+            x = ((x as u128 * x as u128) % n as u128) as u64;
+            if x == n - 1 {
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+    true
+}
+pub fn gen_nbit_prime(n: usize) -> u64 {
+    if n < 2 || n > 64 {
+        panic!("n must be between 2 and 64");
+    }
+    loop {
+        let mut rng = rand::rng();
+        let num = rng.next_u64() | (1 << (n - 1)) | 1;
+        if n == 64 {
+            if is_prime(num) {
+                return num;
+            }
+            continue;
+        }
+        let n = num % (1 << n);
+
+        if is_prime(n) {
+            return n;
+        }
+    }
+}
+pub fn calc_rolling_hash<'ctx>(s: &str, builders: &Builders<'ctx>) -> (u64, u64) {
+    let base1 = builders.rolling_hash_base_1;
+    let base2 = builders.rolling_hash_base_2;
+    let mod1 = builders.rolling_hash_seed_1;
+    let mod2 = builders.rolling_hash_seed_2;
+    let mut hash1 = 0u64;
+    let mut hash2 = 0u64;
+    let utf16_str: Vec<u16> = s.encode_utf16().collect();
+    for &c in &utf16_str {
+        hash1 = (hash1.wrapping_mul(base1).wrapping_add(c as u64)) % mod1;
+        hash2 = (hash2.wrapping_mul(base2).wrapping_add(c as u64)) % mod2;
+    }
+    (hash1, hash2)
 }

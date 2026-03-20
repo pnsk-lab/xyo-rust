@@ -1,18 +1,57 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    AddressSpace, attributes::AttributeLoc, builder::Builder, context::Context, module::Module,
-    types::StructType, values::FunctionValue,
+    AddressSpace,
+    attributes::AttributeLoc,
+    builder::Builder,
+    context::Context,
+    module::Module,
+    types::StructType,
+    values::{FunctionValue, IntValue},
 };
 
 use crate::{
-    compiler::utils::build_xor_shift_128_plus,
+    compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
     types::{ScratchProject, StageOrSprite},
 };
 
 #[repr(C)]
+pub struct StringStruct {
+    pub container: *mut u16,
+    pub length: u64,
+    pub hash1: u64,
+    pub hash2: u64,
+}
+pub fn create_string_struct_type<'a>(context: &'a Context) -> StructType<'a> {
+    context.struct_type(
+        &[
+            context.ptr_type(AddressSpace::default()).into(),
+            context.i64_type().into(),
+            context.i64_type().into(),
+            context.i64_type().into(),
+        ],
+        false,
+    )
+}
+pub enum StringKeys {
+    Container,
+    Length,
+    Hash1,
+    Hash2,
+}
+impl From<StringKeys> for u32 {
+    fn from(field: StringKeys) -> Self {
+        match field {
+            StringKeys::Container => 0,
+            StringKeys::Length => 1,
+            StringKeys::Hash1 => 2,
+            StringKeys::Hash2 => 3,
+        }
+    }
+}
+
+#[repr(C)]
 pub struct SpriteStruct {
-    pub string_map: &'static HashMap<u64, String>,
     pub sprite_x: f64,
     pub sprite_y: f64,
     pub sprite_rotate: f64,
@@ -20,7 +59,6 @@ pub struct SpriteStruct {
 pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
     context.struct_type(
         &[
-            context.ptr_type(AddressSpace::default()).into(),
             context.f64_type().into(),
             context.f64_type().into(),
             context.f64_type().into(),
@@ -28,21 +66,17 @@ pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
         false,
     )
 }
-
 pub enum SpriteKeys {
-    StringMap,
     SpriteX,
     SpriteY,
     SpriteRotate,
 }
-
 impl From<SpriteKeys> for u32 {
     fn from(field: SpriteKeys) -> Self {
         match field {
-            SpriteKeys::StringMap => 0,
-            SpriteKeys::SpriteX => 1,
-            SpriteKeys::SpriteY => 2,
-            SpriteKeys::SpriteRotate => 3,
+            SpriteKeys::SpriteX => 0,
+            SpriteKeys::SpriteY => 1,
+            SpriteKeys::SpriteRotate => 2,
         }
     }
 }
@@ -57,6 +91,10 @@ pub struct Builders<'ctx> {
     global_variable_increment: usize,
     counter: usize,
     pub functions: Functions<'ctx>,
+    pub rolling_hash_seed_1: u64,
+    pub rolling_hash_seed_2: u64,
+    pub rolling_hash_base_1: u64,
+    pub rolling_hash_base_2: u64,
 }
 pub struct Functions<'ctx> {
     pub llvm_abs: FunctionValue<'ctx>,
@@ -133,6 +171,10 @@ impl<'ctx> Builders<'ctx> {
             str_to_bool: module.add_function("str_to_bool", str_to_bool, None),
             rand: build_xor_shift_128_plus(&context, &module),
         };
+        let hash_seed_1 = gen_nbit_prime(64);
+        let hash_seed_2 = gen_nbit_prime(64);
+        let hash_base_1 = gen_nbit_prime(17);
+        let hash_base_2 = gen_nbit_prime(17);
         let (
             global_variables,
             local_variables,
@@ -149,6 +191,10 @@ impl<'ctx> Builders<'ctx> {
             local_variables,
             global_variable_increment,
             local_variables_increments,
+            rolling_hash_seed_1: hash_seed_1,
+            rolling_hash_seed_2: hash_seed_2,
+            rolling_hash_base_1: hash_base_1,
+            rolling_hash_base_2: hash_base_2,
         }
     }
     fn create_variable_map(

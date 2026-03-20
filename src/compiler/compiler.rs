@@ -3,7 +3,8 @@ use inkwell::{
     context::Context,
     passes::PassBuilderOptions,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
-    values::{FloatValue, FunctionValue, IntValue},
+    types::StructType,
+    values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
 
 use crate::{
@@ -99,9 +100,9 @@ pub fn generate_expr_ir<'ctx>(
 
 pub enum ScratchReturnTypes<'ctx> {
     Number(FloatValue<'ctx>),
-    String(IntValue<'ctx>),
+    String(PointerValue<'ctx>),
     Bool(IntValue<'ctx>),
     NumberLiteral(f64),
-    StringLiteral((String, IntValue<'ctx>)),
+    StringLiteral((String, PointerValue<'ctx>)),
     BoolLiteral((bool, IntValue<'ctx>)),
 }
