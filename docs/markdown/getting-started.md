@@ -90,7 +90,7 @@ cargo run -- run <path-to-project.sb3>
 公開用ドキュメントは Markdown を Taiga 用 XML に変換してからビルドします。
 
 1. `docs/` で Taiga バイナリを用意する
-2. `python3 build_taiga_site.py` で XML を生成する
+2. `./taiga markdown-dir ./markdown` で Taiga 用 XML を生成する
 3. `rm -rf build && ./taiga site` で `docs/build/` を生成する
 4. `build/index.html` から各ページへ移動する
 

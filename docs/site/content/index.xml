@@ -174,7 +174,7 @@
 		<section title="Taiga でのサイト生成">
 			<pre>
 				<code>
-					python3 build_taiga_site.py
+					./taiga markdown-dir ./markdown
 					
 
 					rm -rf build
