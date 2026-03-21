@@ -226,9 +226,9 @@
 				</li>
 				<li>
 					<code>
-						python3 build_taiga_site.py
+						./taiga markdown-dir ./markdown
 					</code>
-					 で XML を生成する
+					 で Taiga 用 XML を生成する
 				</li>
 				<li>
 					<code>
