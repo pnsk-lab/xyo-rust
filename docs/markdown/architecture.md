@@ -442,9 +442,9 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 
 ビルドスクリプトは次の手順で動作します:
 
-1. `llvm-config` から LLVM のインストールパスを取得する（または `LLVM_CONFIG_PATH` 環境変数を参照）
-2. `clang` を使って C ファイルを bitcode に変換する
-3. `llvm-dis` を使って bitcode を可読な LLVM IR に変換する
+1. `clang` の実行パスを解決する（`CLANG` → `PATH` 上の `clang` → `llvm-config --bindir` / `LLVM_CONFIG_PATH` の順）
+2. `clang -emit-llvm -c` で C ファイルを bitcode に変換する
+3. `clang -S -emit-llvm` で可読な LLVM IR (`.ll`) を生成する
 4. 出力を `bitcodes/bc/` と `bitcodes/ll/` に保存する
 
 ## 制約と今後の方針

@@ -70,7 +70,8 @@ brew install llvm@21
 
 # 環境変数を設定（.zshrc や .bashrc に追記する）
 export PATH="$(brew --prefix llvm@21)/bin:$PATH"
-export LLVM_CONFIG="$(brew --prefix llvm@21)/bin/llvm-config"
+export LLVM_CONFIG_PATH="$(brew --prefix llvm@21)/bin/llvm-config"
+export CLANG="$(brew --prefix llvm@21)/bin/clang"
 
 # 確認
 llvm-config --version
@@ -252,10 +253,10 @@ Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
 
 LLVM がインストールされていないか、`PATH` に含まれていません。上記の LLVM インストール手順を参照してください。
 
-macOS で Homebrew を使った場合は、`LLVM_CONFIG` 環境変数を設定する方法も有効です。
+macOS で Homebrew を使った場合は、`LLVM_CONFIG_PATH` 環境変数を設定する方法も有効です。
 
 ```bash
-export LLVM_CONFIG="$(brew --prefix llvm@21)/bin/llvm-config"
+export LLVM_CONFIG_PATH="$(brew --prefix llvm@21)/bin/llvm-config"
 cargo build
 ```
 
@@ -282,10 +283,10 @@ which clang
 clang --version
 ```
 
-環境変数 `CC` または `LLVM_CONFIG_PATH` を設定してビルドスクリプトにヒントを与えることもできます。
+環境変数 `CLANG` または `LLVM_CONFIG_PATH` を設定してビルドスクリプトにヒントを与えることもできます。
 
 ```bash
-CC=clang-21 cargo build
+CLANG=clang-21 cargo build
 ```
 
 ## ドキュメントのローカル確認
