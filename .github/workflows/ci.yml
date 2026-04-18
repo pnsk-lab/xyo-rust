@@ -66,7 +66,8 @@ jobs:
 
             - name: Verify LLVM version
               shell: bash
-              run: "$LLVM_CONFIG_PATH" --version
+              run: |
+                  "$LLVM_CONFIG_PATH" --version
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
