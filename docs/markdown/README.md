@@ -1,7 +1,6 @@
 # xyo-rust ドキュメント
 
-[![Build](https://github.com/pnsk-lab/xyo-rust/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/build.yml)
-
+[![CI](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml)
 [latest release](https://github.com/pnsk-lab/xyo-rust/releases/latest)
 
 Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト `xyo-rust` の手引きです。
