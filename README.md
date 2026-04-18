@@ -1,5 +1,7 @@
 # xyo-rust
 
+[![CI](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml)
+
 `xyo-rust` は、Scratch の `.sb3` プロジェクトを Rust で読み込み、構文解析し、LLVM IR 生成へ接続する実験的なランタイム / コンパイラ基盤です。
 
 いまの主眼は **SB3 ローダー・パーサー・IR 生成経路の検証** にあります。Scratch VM と同等の完全実行を目指す段階ではなく、まずは「Scratch プロジェクトをどこまで静的に扱えるか」を試すための土台が実装されています。
@@ -158,9 +160,9 @@ xyo-rust/
 
 | ワークフロー | トリガー | 内容 |
 | ------------ | -------- | ---- |
-| `build.yml` | GitHub Release 公開時 | Rust バイナリのマルチプラットフォームビルド |
-| `bitcodes.yml` | push / PR | `bitcodes/` 配下の C ソースから `.bc` / `.ll` を自動生成 |
-| `pages.yml` | push to main | ドキュメントを GitHub Pages へデプロイ |
+| `ci.yml` | `push` / `pull_request` / `workflow_dispatch` | Ubuntu 上で `cargo test` を回す通常 CI |
+| `build.yml` | GitHub Release 用の tag push | Rust バイナリのマルチプラットフォームビルド |
+| `pages.yml` | ドキュメント更新時の push | ドキュメントを GitHub Pages へデプロイ |
 
 ## Bitcodes
 

@@ -1,0 +1,75 @@
+name: CI
+
+env:
+    LLVM_VERSION: 21.1.8
+    LLVM_CACHE_VERSION: v2
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        name: Test (ubuntu-latest)
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache LLVM 21.1.x
+              id: cache-llvm
+              uses: actions/cache@v4
+              with:
+                  path: .llvm/${{ runner.os }}-${{ runner.arch }}
+                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-x86-aarch64-riscv-wasm-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Build LLVM 21.1.x
+              if: steps.cache-llvm.outputs.cache-hit != 'true'
+              shell: bash
+              run: |
+                  set -euxo pipefail
+                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
+                  LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
+                  LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
+                  rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
+                  git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
+                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
+                      -DLLVM_TARGETS_TO_BUILD="X86;AArch64;RISCV;WebAssembly" \
+                      -DLLVM_INCLUDE_TESTS=OFF \
+                      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+                      -DLLVM_INCLUDE_EXAMPLES=OFF \
+                      -DLLVM_BUILD_LLVM_DYLIB=OFF \
+                      -DBUILD_SHARED_LIBS=OFF
+                  cmake --build "$LLVM_BUILD_DIR" --target install --parallel
+
+            - name: Export LLVM env
+              shell: bash
+              run: |
+                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
+                  echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
+                  echo "LLVM_CONFIG_PATH=$LLVM_ROOT/bin/llvm-config" >> "$GITHUB_ENV"
+                  echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+
+            - name: Verify LLVM version
+              shell: bash
+              run: "$LLVM_CONFIG_PATH" --version
+
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+
+            - name: Test
+              run: cargo test --locked

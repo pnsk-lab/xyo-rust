@@ -3,7 +3,8 @@ use std::process::Command;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
+        .join("tests")
+        .join("fixtures")
         .join(name)
 }
 
@@ -18,7 +19,7 @@ fn help_command_works() {
 }
 
 #[test]
-fn json_command_with_example_file_works() {
+fn json_command_with_fixture_works() {
     let output = Command::new(env!("CARGO_BIN_EXE_xyo"))
         .arg("json")
         .arg(fixture("simple.sb3"))
@@ -34,14 +35,39 @@ fn json_command_with_example_file_works() {
 }
 
 #[test]
-fn template_failure_case() {
+fn stats_command_with_fixture_works() {
     let output = Command::new(env!("CARGO_BIN_EXE_xyo"))
-        // TODO: replace with the scenario you want to validate.
+        .arg("stats")
+        .arg(fixture("simple.sb3"))
+        .output()
+        .expect("failed to run `xyo stats`");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Block Number: 0"),
+        "unexpected output: {stdout}"
+    );
+}
+
+#[test]
+fn run_command_with_fixture_works() {
+    let output = Command::new(env!("CARGO_BIN_EXE_xyo"))
+        .arg("run")
+        .arg(fixture("simple.sb3"))
+        .output()
+        .expect("failed to run `xyo run`");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn missing_fixture_is_rejected() {
+    let output = Command::new(env!("CARGO_BIN_EXE_xyo"))
         .arg("run")
         .arg(fixture("does-not-exist.sb3"))
         .output()
         .expect("failed to run `xyo run`");
 
-    // TODO: customize expected exit code and stderr/stdout assertions.
     assert!(!output.status.success());
 }

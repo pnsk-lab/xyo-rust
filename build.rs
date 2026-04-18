@@ -21,13 +21,7 @@ fn main() {
     fs::create_dir_all(&output_ll_dir).unwrap();
 
     for source in top_level_sources(&input_dir) {
-        compile_source(
-            &clang,
-            &input_dir,
-            &output_bc_dir,
-            &output_ll_dir,
-            &source,
-        );
+        compile_source(&clang, &input_dir, &output_bc_dir, &output_ll_dir, &source);
     }
 }
 
@@ -86,10 +80,7 @@ fn llvm_bindir() -> Option<PathBuf> {
         return path.parent().map(Path::to_path_buf);
     }
 
-    let output = Command::new("llvm-config")
-        .arg("--bindir")
-        .output()
-        .ok()?;
+    let output = Command::new("llvm-config").arg("--bindir").output().ok()?;
 
     if !output.status.success() {
         return None;
