@@ -111,7 +111,7 @@ pub fn scratch_return_to_string<'ctx>(
     from: &ScratchReturnTypes<'ctx>,
     func: &FunctionValue<'ctx>,
     strings: &mut Vec<String>,
-) -> inkwell::values::PointerValue<'ctx> {
+) -> inkwell::values::IntValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => builders
             .builder
@@ -137,7 +137,7 @@ pub fn scratch_return_to_string<'ctx>(
             .basic()
             .unwrap()
             .into_int_value(),
-        ScratchReturnTypes::String(v) => v,
+        ScratchReturnTypes::String(v) => *v,
         ScratchReturnTypes::NumberLiteral(v) => {
             let s = v.to_string();
             let idx = strings.len() as u64;

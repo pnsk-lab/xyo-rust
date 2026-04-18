@@ -100,9 +100,9 @@ pub fn generate_expr_ir<'ctx>(
 
 pub enum ScratchReturnTypes<'ctx> {
     Number(FloatValue<'ctx>),
-    String(PointerValue<'ctx>),
+    String(IntValue<'ctx>),
     Bool(IntValue<'ctx>),
     NumberLiteral(f64),
-    StringLiteral((String, PointerValue<'ctx>)),
+    StringLiteral((String, IntValue<'ctx>)),
     BoolLiteral((bool, IntValue<'ctx>)),
 }

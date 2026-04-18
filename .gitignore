@@ -12,3 +12,6 @@ docs/book/
 
 bitcodes/bc
 bitcodes/ll
+playground/worker/node_modules/
+playground/worker/.wrangler/
+playground/worker/.dev.vars

@@ -1,6 +1,6 @@
 #include "./lib/dtoa.c"
 
-char* dtoa(double n){
+char* xyo_dtoa(double n){
     char buf[1024];
     JSDTOATempMem mem_dtoa;
     JSATODTempMem mem_atod;
