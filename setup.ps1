@@ -58,7 +58,7 @@ function Ensure-Vcpkg {
     }
 
     if (-not (Test-Path $Root)) {
-        git clone --depth 1 https://github.com/microsoft/vcpkg $Root
+        git clone --depth 1 https://github.com/microsoft/vcpkg $Root | Out-Host
     }
 
     $bootstrap = Join-Path $Root 'bootstrap-vcpkg.bat'
@@ -66,13 +66,13 @@ function Ensure-Vcpkg {
         throw "vcpkg bootstrap script not found: $bootstrap"
     }
 
-    & $bootstrap -disableMetrics
+    & $bootstrap -disableMetrics | Out-Host
 
     if (-not (Test-Path $vcpkgExe)) {
         throw "vcpkg executable not found after bootstrap: $vcpkgExe"
     }
 
-    return $vcpkgExe
+    return [string]$vcpkgExe
 }
 
 $triplet = Get-DefaultTriplet -RunnerArch $env:RUNNER_ARCH -ExplicitTriplet $VcpkgTriplet
@@ -112,10 +112,6 @@ try {
 }
 finally {
     Pop-Location
-}
-
-if (-not $SkipCheck) {
-    Write-Host 'Native to_lower check is currently only implemented for Unix; skipping on Windows.'
 }
 
 Write-Host 'setup completed'

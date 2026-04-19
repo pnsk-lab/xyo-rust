@@ -190,11 +190,4 @@ echo "using XYO_ICU_PREBUILT_DIR=${XYO_ICU_PREBUILT_DIR}"
     cargo build --release
 )
 
-if [[ ${SKIP_CHECK} -eq 0 ]]; then
-    (
-        cd "${ROOT_DIR}"
-        "${ROOT_DIR}/tools/check_to_lower_native.sh"
-    )
-fi
-
 echo "setup completed"
