@@ -54,8 +54,7 @@ fn main() {
 
 fn discover_icu_vendor(input_dir: &Path) -> Option<IcuVendor> {
     let root = resolve_icu_root(input_dir)?;
-    let source_root = root.join("source");
-    if !source_root.exists() || !icu_vendor_header_path(&root).is_file() {
+    if !icu_source_headers_available(&root) {
         return None;
     }
 
@@ -332,6 +331,12 @@ fn to_lower_include_dirs(input_dir: &Path, icu_vendor: Option<&IcuVendor>) -> Ve
         return icu_include_dirs(&vendor.root);
     }
 
+    if let Some(root) =
+        resolve_icu_root(input_dir).filter(|root| icu_source_headers_available(root))
+    {
+        return icu_include_dirs(&root);
+    }
+
     let prebuilt_root = env::var_os("XYO_ICU_PREBUILT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| input_dir.join("lib").join("icu-prebuilt"));
@@ -455,6 +460,10 @@ fn icu_vendor_header_path(root: &Path) -> PathBuf {
         .join("common")
         .join("unicode")
         .join("ucasemap.h")
+}
+
+fn icu_source_headers_available(root: &Path) -> bool {
+    root.join("source").is_dir() && icu_vendor_header_path(root).is_file()
 }
 
 fn icu_prebuilt_header_path(root: &Path) -> PathBuf {

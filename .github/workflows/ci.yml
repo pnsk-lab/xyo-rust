@@ -28,6 +28,14 @@ jobs:
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
 
+            - name: Install ICU headers
+              shell: bash
+              run: |
+                  set -euxo pipefail
+                  sudo apt-get update
+                  sudo apt-get install -y libicu-dev
+                  echo "XYO_ICU_PREBUILT_DIR=/usr" >> "$GITHUB_ENV"
+
             - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
