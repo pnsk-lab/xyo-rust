@@ -55,11 +55,14 @@ fn main() {
 fn discover_icu_vendor(input_dir: &Path) -> Option<IcuVendor> {
     let root = resolve_icu_root(input_dir)?;
     let source_root = root.join("source");
-    if !source_root.exists() {
+    if !source_root.exists() || !icu_vendor_header_path(&root).is_file() {
         return None;
     }
 
     let manifest = root.join("xyo-icu-sources.txt");
+    if !manifest.is_file() {
+        return None;
+    }
     println!("cargo:rerun-if-changed={}", manifest.display());
 
     let contents = fs::read_to_string(&manifest).unwrap_or_else(|err| {
@@ -252,7 +255,15 @@ fn compile_source(
     let ll_output = output_ll_dir.join(format!("{stem}.ll"));
 
     if stem == "to_lower" {
-        compile_to_lower(tools, input_dir, scratch_dir, icu_vendor, source, &bc_output, &ll_output);
+        compile_to_lower(
+            tools,
+            input_dir,
+            scratch_dir,
+            icu_vendor,
+            source,
+            &bc_output,
+            &ll_output,
+        );
         return;
     }
 
@@ -325,11 +336,24 @@ fn to_lower_include_dirs(input_dir: &Path, icu_vendor: Option<&IcuVendor>) -> Ve
         .map(PathBuf::from)
         .unwrap_or_else(|| input_dir.join("lib").join("icu-prebuilt"));
     let include_root = prebuilt_root.join("include");
-    if include_root.exists() {
+    if icu_prebuilt_header_path(&prebuilt_root).is_file() {
         return vec![include_root];
     }
 
-    Vec::new()
+    if let Some(root) = resolve_icu_root(input_dir) {
+        println!(
+            "cargo:warning=ignoring incomplete ICU source tree at {}; expected {}",
+            root.display(),
+            icu_vendor_header_path(&root).display()
+        );
+    }
+
+    panic!(
+        "ICU headers for bitcodes/c/to_lower.c were not found. \
+set XYO_ICU_ROOT to a full ICU source tree, or build/install prebuilt ICU headers under {} \
+(for example with ./tools/build_icu_prebuilt.sh or ./setup.sh).",
+        include_root.display()
+    );
 }
 
 fn compile_plain_source(
@@ -424,6 +448,17 @@ fn icu_include_dirs(root: &Path) -> Vec<PathBuf> {
         root.join("source").join("common"),
         root.join("source").join("i18n"),
     ]
+}
+
+fn icu_vendor_header_path(root: &Path) -> PathBuf {
+    root.join("source")
+        .join("common")
+        .join("unicode")
+        .join("ucasemap.h")
+}
+
+fn icu_prebuilt_header_path(root: &Path) -> PathBuf {
+    root.join("include").join("unicode").join("ucasemap.h")
 }
 
 fn icu_macro_for_source(relative_source: &Path) -> Option<&'static str> {

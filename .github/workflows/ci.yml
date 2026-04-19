@@ -76,7 +76,8 @@ jobs:
               id: icu
               shell: bash
               run: |
-                  if [[ -d "${GITHUB_WORKSPACE}/bitcodes/c/lib/icu/source" ]]; then
+                  ICU_ROOT="${GITHUB_WORKSPACE}/bitcodes/c/lib/icu"
+                  if [[ -f "${ICU_ROOT}/source/common/unicode/ucasemap.h" && -f "${ICU_ROOT}/xyo-icu-sources.txt" ]]; then
                       echo "has_vendored_icu=true" >> "$GITHUB_OUTPUT"
                   else
                       echo "has_vendored_icu=false" >> "$GITHUB_OUTPUT"
