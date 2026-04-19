@@ -28,14 +28,6 @@ jobs:
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Install ICU headers
-              shell: bash
-              run: |
-                  set -euxo pipefail
-                  sudo apt-get update
-                  sudo apt-get install -y libicu-dev
-                  echo "XYO_ICU_PREBUILT_DIR=/usr" >> "$GITHUB_ENV"
-
             - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
@@ -80,19 +72,7 @@ jobs:
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
 
-            - name: Detect vendored ICU
-              id: icu
-              shell: bash
-              run: |
-                  ICU_ROOT="${GITHUB_WORKSPACE}/bitcodes/c/lib/icu"
-                  if [[ -f "${ICU_ROOT}/source/common/unicode/ucasemap.h" && -f "${ICU_ROOT}/xyo-icu-sources.txt" ]]; then
-                      echo "has_vendored_icu=true" >> "$GITHUB_OUTPUT"
-                  else
-                      echo "has_vendored_icu=false" >> "$GITHUB_OUTPUT"
-                  fi
-
-            - name: Setup and verify prebuilt ICU route
-              if: steps.icu.outputs.has_vendored_icu == 'true'
+            - name: Setup and build
               shell: bash
               run: |
                   ./setup.sh --clean-icu

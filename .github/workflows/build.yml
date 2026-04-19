@@ -46,37 +46,6 @@ jobs:
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Install ICU headers (Linux)
-              if: runner.os == 'Linux'
-              shell: bash
-              run: |
-                  set -euxo pipefail
-                  sudo apt-get update
-                  sudo apt-get install -y libicu-dev
-                  echo "XYO_ICU_PREBUILT_DIR=/usr" >> "$GITHUB_ENV"
-
-            - name: Install ICU headers (macOS)
-              if: runner.os == 'macOS'
-              shell: bash
-              run: |
-                  set -euxo pipefail
-                  brew install icu4c
-                  echo "XYO_ICU_PREBUILT_DIR=$(brew --prefix icu4c)" >> "$GITHUB_ENV"
-
-            - name: Install ICU headers (Windows)
-              if: runner.os == 'Windows'
-              shell: pwsh
-              run: |
-                  $triplet = if ("${{ matrix.cmake_arch }}" -eq "ARM64") { "arm64-windows" } else { "x64-windows" }
-                  $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
-                  if (Test-Path $vcpkgRoot) {
-                    Remove-Item $vcpkgRoot -Recurse -Force
-                  }
-                  git clone --depth 1 https://github.com/microsoft/vcpkg $vcpkgRoot
-                  & "$vcpkgRoot\bootstrap-vcpkg.bat" -disableMetrics
-                  & "$vcpkgRoot\vcpkg.exe" install "icu:$triplet"
-                  "XYO_ICU_PREBUILT_DIR=$(Join-Path $vcpkgRoot "installed\$triplet")" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
             - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
@@ -158,31 +127,17 @@ jobs:
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
 
-            - name: Detect vendored ICU (Unix)
+            - name: Setup and build (Unix)
               if: runner.os != 'Windows'
-              id: icu
-              shell: bash
-              run: |
-                  ICU_ROOT="${GITHUB_WORKSPACE}/bitcodes/c/lib/icu"
-                  if [[ -f "${ICU_ROOT}/source/common/unicode/ucasemap.h" && -f "${ICU_ROOT}/xyo-icu-sources.txt" ]]; then
-                      echo "has_vendored_icu=true" >> "$GITHUB_OUTPUT"
-                  else
-                      echo "has_vendored_icu=false" >> "$GITHUB_OUTPUT"
-                  fi
-
-            - name: Build and verify prebuilt ICU route (Unix)
-              if: runner.os != 'Windows' && steps.icu.outputs.has_vendored_icu == 'true'
               shell: bash
               run: |
                   ./setup.sh --clean-icu
 
-            - name: Build (Unix fallback)
-              if: runner.os != 'Windows' && steps.icu.outputs.has_vendored_icu != 'true'
-              run: cargo build --release
-
-            - name: Build (Windows)
+            - name: Setup and build (Windows)
               if: runner.os == 'Windows'
-              run: cargo build --release
+              shell: pwsh
+              run: |
+                  ./setup.ps1 -CleanIcu -SkipCheck
 
             - name: Upload artifact (Unix)
               if: runner.os != 'Windows'
