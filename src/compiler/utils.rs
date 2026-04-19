@@ -1,12 +1,17 @@
 use inkwell::{
-    AddressSpace, FloatPredicate,
+    AddressSpace, FloatPredicate, IntPredicate,
     context::Context,
     module::Module,
-    values::{FloatValue, FunctionValue, IntValue},
+    values::{BasicValue, FloatValue, FunctionValue, IntValue, PointerValue},
 };
 use rand::Rng;
+use ryu_js::Buffer;
+use serde::de::value;
 
-use crate::compiler::{compiler::ScratchReturnTypes, types::Builders};
+use crate::compiler::{
+    compiler::ScratchReturnTypes,
+    types::{Builders, create_string_struct_type},
+};
 
 // 整数か判定する
 pub fn is_num<'ctx>(
@@ -87,7 +92,7 @@ pub fn scratch_return_to_number<'ctx>(
                 .builder
                 .build_call(
                     builders.functions.str_to_num,
-                    &[p.into(), (*v).into()],
+                    &[(*v).into()],
                     "xyo_str_to_num",
                 )
                 .unwrap()
@@ -106,12 +111,15 @@ pub fn scratch_return_to_number<'ctx>(
         }
     }
 }
+pub fn js_number_to_string(x: f64) -> String {
+    let mut buf = Buffer::new();
+    buf.format(x).to_owned()
+}
 pub fn scratch_return_to_string<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
     func: &FunctionValue<'ctx>,
-    strings: &mut Vec<String>,
-) -> inkwell::values::IntValue<'ctx> {
+) -> PointerValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => builders
             .builder
@@ -124,33 +132,31 @@ pub fn scratch_return_to_string<'ctx>(
             .try_as_basic_value()
             .basic()
             .unwrap()
-            .into_int_value(),
+            .into_pointer_value(),
         ScratchReturnTypes::Bool(v) => builders
             .builder
-            .build_call(
-                builders.functions.bool_to_str,
-                &[func.get_first_param().unwrap().into(), (*v).into()],
-                "xyo_bool_to_str",
+            .build_select(
+                builders
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        *v,
+                        builders.context.bool_type().const_int(1, false),
+                        "is_true",
+                    )
+                    .unwrap(),
+                create_string_struct(builders, "true"),
+                create_string_struct(builders, "false"),
+                "bool_to_str",
             )
             .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap()
-            .into_int_value(),
+            .into_pointer_value(),
         ScratchReturnTypes::String(v) => *v,
         ScratchReturnTypes::NumberLiteral(v) => {
-            let s = v.to_string();
-            let idx = strings.len() as u64;
-            strings.push(s);
-            builders.context.i64_type().const_int(idx, false)
+            create_string_struct(builders, &js_number_to_string(*v))
         }
         ScratchReturnTypes::StringLiteral(v) => v.1,
-        ScratchReturnTypes::BoolLiteral(v) => {
-            let s = v.0.to_string();
-            let idx = strings.len() as u64;
-            strings.push(s);
-            builders.context.i64_type().const_int(idx, false)
-        }
+        ScratchReturnTypes::BoolLiteral(v) => create_string_struct(builders, &v.0.to_string()),
     }
 }
 
@@ -158,7 +164,6 @@ pub fn scratch_return_to_bool<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
     func: &FunctionValue<'ctx>,
-    _: &mut Vec<String>,
 ) -> inkwell::values::IntValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => builders
@@ -197,7 +202,7 @@ pub fn scratch_return_to_bool<'ctx>(
             .bool_type()
             .const_int((*v != 0.0) as u64, false),
         ScratchReturnTypes::StringLiteral(v) => {
-            let string_bool = match v.0.to_ascii_lowercase().as_str() {
+            let string_bool = match v.0.to_lowercase().as_str() {
                 "" => false,
                 "0" => false,
                 "false" => false,
@@ -378,4 +383,38 @@ pub fn calc_rolling_hash<'ctx>(s: &str, builders: &Builders<'ctx>) -> (u64, u64)
         hash2 = (hash2.wrapping_mul(base2).wrapping_add(c as u64)) % mod2;
     }
     (hash1, hash2)
+}
+pub fn create_string_struct<'ctx>(builders: &Builders<'ctx>, s: &str) -> PointerValue<'ctx> {
+    if let Some(p) = builders.string_literals.get(&s.to_string()) {
+        return *p;
+    }
+    let utf16_str: Vec<u16> = s.encode_utf16().collect();
+    let length = utf16_str.len() as u64;
+    let (hash1, hash2) = calc_rolling_hash(s, builders);
+    let string_struct_type = create_string_struct_type(builders.context);
+    let global = builders.module.add_global(
+        string_struct_type,
+        Some(AddressSpace::default()),
+        "string_struct",
+    );
+    let data_global = builders.module.add_global(
+        builders.context.i16_type().array_type(length as u32),
+        Some(AddressSpace::default()),
+        "string_data",
+    );
+    let i16_type = builders.context.i16_type();
+
+    let values: Vec<_> = utf16_str
+        .iter()
+        .map(|&v| i16_type.const_int(v as u64, false).into())
+        .collect();
+
+    data_global.set_initializer(&i16_type.const_array(&values));
+    global.set_initializer(&string_struct_type.const_named_struct(&[
+        builders.context.i64_type().const_int(length, false).into(),
+        data_global.as_pointer_value().into(),
+        builders.context.i64_type().const_int(hash1, false).into(),
+        builders.context.i64_type().const_int(hash2, false).into(),
+    ]));
+    global.as_pointer_value()
 }

@@ -12,6 +12,9 @@ docs/book/
 
 bitcodes/bc
 bitcodes/ll
+bitcodes/c/lib/icu-prebuilt
 playground/worker/node_modules/
 playground/worker/.wrangler/
 playground/worker/.dev.vars
+
+bitcodes/c/lib/icu/

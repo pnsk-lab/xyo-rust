@@ -57,19 +57,18 @@ pub fn parse_operator_expr<'ctx>(
     builders: &Builders<'ctx>,
     expr: &OperatorExpr,
     function: &FunctionValue<'ctx>,
-    strings: &mut Vec<String>,
     target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
         OperatorExpr::Add { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings, target_idx),
+                &generate_expr_ir(builders, left, function, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings, target_idx),
+                &generate_expr_ir(builders, right, function, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -82,12 +81,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Sub { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings, target_idx),
+                &generate_expr_ir(builders, left, function, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings, target_idx),
+                &generate_expr_ir(builders, right, function, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -100,12 +99,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Mul { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings, target_idx),
+                &generate_expr_ir(builders, left, function, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings, target_idx),
+                &generate_expr_ir(builders, right, function, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -118,12 +117,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Div { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings, target_idx),
+                &generate_expr_ir(builders, left, function, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings, target_idx),
+                &generate_expr_ir(builders, right, function, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -134,8 +133,8 @@ pub fn parse_operator_expr<'ctx>(
             )
         }
         OperatorExpr::Random { from, to } => {
-            let parsed_from = generate_expr_ir(builders, from, function, strings, target_idx);
-            let parsed_to = generate_expr_ir(builders, to, function, strings, target_idx);
+            let parsed_from = generate_expr_ir(builders, from, function, target_idx);
+            let parsed_to = generate_expr_ir(builders, to, function, target_idx);
             let parsed_from_number = scratch_return_to_number(builders, &parsed_from, function);
             let parsed_to_number = scratch_return_to_number(builders, &parsed_to, function);
             let from_is_num = is_num(builders, parsed_from, function);
@@ -284,17 +283,16 @@ pub fn parse_operator_expr<'ctx>(
             )
         }
         OperatorExpr::GreaterThan { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, strings, target_idx);
-            let parsed_right = &generate_expr_ir(builders, right, function, strings, target_idx);
+            let parsed_left = &generate_expr_ir(builders, left, function, target_idx);
+            let parsed_right = &generate_expr_ir(builders, right, function, target_idx);
             let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
                 || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
             let is_string_compare = is_parsed_left_string || is_parsed_right_string;
             if is_string_compare {
-                let left_hand = scratch_return_to_string(builders, parsed_left, function, strings);
-                let right_hand =
-                    scratch_return_to_string(builders, parsed_right, function, strings);
+                let left_hand = scratch_return_to_string(builders, parsed_left, function);
+                let right_hand = scratch_return_to_string(builders, parsed_right, function);
                 let p = function.get_first_param().unwrap().into_pointer_value();
                 let cmp = builders
                     .builder
@@ -321,17 +319,16 @@ pub fn parse_operator_expr<'ctx>(
             }
         }
         OperatorExpr::LessThan { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, strings, target_idx);
-            let parsed_right = &generate_expr_ir(builders, right, function, strings, target_idx);
+            let parsed_left = &generate_expr_ir(builders, left, function, target_idx);
+            let parsed_right = &generate_expr_ir(builders, right, function, target_idx);
             let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
                 || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
             let is_string_compare = is_parsed_left_string || is_parsed_right_string;
             if is_string_compare {
-                let left_hand = scratch_return_to_string(builders, parsed_left, function, strings);
-                let right_hand =
-                    scratch_return_to_string(builders, parsed_right, function, strings);
+                let left_hand = scratch_return_to_string(builders, parsed_left, function);
+                let right_hand = scratch_return_to_string(builders, parsed_right, function);
                 let p = function.get_first_param().unwrap().into_pointer_value();
                 let cmp = builders
                     .builder
@@ -358,17 +355,16 @@ pub fn parse_operator_expr<'ctx>(
             }
         }
         OperatorExpr::Eq { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, strings, target_idx);
-            let parsed_right = &generate_expr_ir(builders, right, function, strings, target_idx);
+            let parsed_left = &generate_expr_ir(builders, left, function, target_idx);
+            let parsed_right = &generate_expr_ir(builders, right, function, target_idx);
             let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
                 || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
             let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
                 || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
             let is_string_compare = is_parsed_left_string || is_parsed_right_string;
             if is_string_compare {
-                let left_hand = scratch_return_to_string(builders, parsed_left, function, strings);
-                let right_hand =
-                    scratch_return_to_string(builders, parsed_right, function, strings);
+                let left_hand = scratch_return_to_string(builders, parsed_left, function);
+                let right_hand = scratch_return_to_string(builders, parsed_right, function);
                 let p = function.get_first_param().unwrap().into_pointer_value();
                 let cmp = builders
                     .builder
@@ -398,12 +394,10 @@ pub fn parse_operator_expr<'ctx>(
             if let Some(left_expr) = left
                 && let Some(right_expr) = right
             {
-                let left_parsed =
-                    generate_expr_ir(builders, left_expr, function, strings, target_idx);
-                let right_parsed =
-                    generate_expr_ir(builders, right_expr, function, strings, target_idx);
-                let left_bool = scratch_return_to_bool(builders, &left_parsed, function, strings);
-                let right_bool = scratch_return_to_bool(builders, &right_parsed, function, strings);
+                let left_parsed = generate_expr_ir(builders, left_expr, function, target_idx);
+                let right_parsed = generate_expr_ir(builders, right_expr, function, target_idx);
+                let left_bool = scratch_return_to_bool(builders, &left_parsed, function);
+                let right_bool = scratch_return_to_bool(builders, &right_parsed, function);
                 ScratchReturnTypes::Bool(
                     builders
                         .builder
@@ -422,9 +416,8 @@ pub fn parse_operator_expr<'ctx>(
                 let left_parsed = if let Some(left_some) = left {
                     scratch_return_to_bool(
                         builders,
-                        &generate_expr_ir(builders, left_some, function, strings, target_idx),
+                        &generate_expr_ir(builders, left_some, function, target_idx),
                         function,
-                        strings,
                     )
                 } else {
                     builders.context.bool_type().const_int(0, false)
@@ -432,9 +425,8 @@ pub fn parse_operator_expr<'ctx>(
                 let right_parsed = if let Some(right_some) = right {
                     scratch_return_to_bool(
                         builders,
-                        &generate_expr_ir(builders, right_some, function, strings, target_idx),
+                        &generate_expr_ir(builders, right_some, function, target_idx),
                         function,
-                        strings,
                     )
                 } else {
                     builders.context.bool_type().const_int(0, false)
@@ -456,9 +448,8 @@ pub fn parse_operator_expr<'ctx>(
             if let Some(target_some) = target {
                 let target_parsed = scratch_return_to_bool(
                     builders,
-                    &generate_expr_ir(builders, target_some, function, strings, target_idx),
+                    &generate_expr_ir(builders, target_some, function, target_idx),
                     function,
-                    strings,
                 );
                 ScratchReturnTypes::Bool(builders.builder.build_not(target_parsed, "not").unwrap())
             } else {
@@ -471,12 +462,12 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Mod { left, right } => {
             let parsed_left = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, left, function, strings, target_idx),
+                &generate_expr_ir(builders, left, function, target_idx),
                 function,
             );
             let parsed_right = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, right, function, strings, target_idx),
+                &generate_expr_ir(builders, right, function, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(build_rem(builders, parsed_left, parsed_right))
@@ -484,7 +475,7 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Round { target } => {
             let parsed_target = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, target, function, strings, target_idx),
+                &generate_expr_ir(builders, target, function, target_idx),
                 function,
             );
             ScratchReturnTypes::Number(
@@ -560,7 +551,7 @@ pub fn parse_operator_expr<'ctx>(
         OperatorExpr::Calc { target, op } => {
             let parsed_target = scratch_return_to_number(
                 builders,
-                &generate_expr_ir(builders, target, function, strings, target_idx),
+                &generate_expr_ir(builders, target, function, target_idx),
                 function,
             );
             let parsed_target_old = &parsed_target;

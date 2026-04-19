@@ -166,7 +166,27 @@ xyo-rust/
 
 ## Bitcodes
 
-`bitcodes/` には LLVM bitcode と LLVM IR の生成元 C コードがあります。`cargo build` 時に `bitcodes/bc/` と `bitcodes/ll/` が更新され、Git には含めません。
+`bitcodes/` には LLVM bitcode と LLVM IR の生成元 C コードがあります。`bitcodes/c/` 配下のトップレベル `.c` ファイルが `cargo build` 時にまとめて再生成され、対応する出力が `bitcodes/bc/` と `bitcodes/ll/` に書き出されます。Git には生成物を含めません。
+
+現在は `dtoa.c`、`atod.c`、`to_lower.c` が対象です。`to_lower.c` は、`XYO_ICU_ROOT` で指定した ICU source tree、または [`bitcodes/c/lib/icu-prebuilt`](/home/kicky/dev/xyo-rust/bitcodes/c/lib/icu-prebuilt) の `include/` を使って bitcode / IR を生成します。日常運用では、同じ ICU から生成した prebuilt static archive をネイティブ動作確認に使うルートを正式扱いにしています。ICU ソースごと `to_lower.bc` に埋め込む重い自己完結ビルドは、`XYO_EMBED_ICU_BITCODE=1` を付けたときだけ有効です。
+
+セットアップ全体を流すには次を使います。
+
+```bash
+CLANG=clang-23 \
+CLANGXX=clang++-23 \
+./setup.sh
+```
+
+`setup.sh` は prebuilt ICU 構築、`cargo build --release`、`to_lower.ll` の native check までを順に実行します。
+
+通常の `cargo build` を軽く保つため、`build.rs` はデフォルトでは ICU ソース全体の bitcode 化を行いません。自己完結な `to_lower.bc` を試したいときだけ、次のように明示 opt-in します。
+
+```bash
+XYO_EMBED_ICU_BITCODE=1 cargo build --release
+```
+
+ICU source tree が既定位置に無い場合は、`XYO_ICU_ROOT=/path/to/icu` を付けて `setup.sh` や `cargo build` を実行できます。prebuilt archive の配置先を変えたい場合は `XYO_ICU_PREBUILT_DIR=/path/to/prebuilt` を使います。
 
 ローカルで再生成するには次を使います。
 
@@ -175,6 +195,28 @@ xyo-rust/
 ```
 
 古い出力を消して作り直す場合は `--clean`、全部強制再生成する場合は `--force` を付けます。
+
+`to_lower.ll` をネイティブ実行で確認したい場合は、事前に構築した ICU の static archive を使って次を実行できます。
+
+まず vendored ICU から prebuilt archive だけを作る場合は次を使います。
+
+```bash
+CLANG=clang-23 \
+CLANGXX=clang++-23 \
+./tools/build_icu_prebuilt.sh
+```
+
+生成先は [`bitcodes/c/lib/icu-prebuilt`](/home/kicky/dev/xyo-rust/bitcodes/c/lib/icu-prebuilt) です。`--clean` を付けると configure 結果から作り直します。
+
+```bash
+XYO_ICU_PREBUILT_DIR=/path/to/icu \
+CLANG=clang-23 \
+CLANGXX=clang++-23 \
+./tools/check_to_lower_native.sh
+```
+
+このスクリプトは [`tools/to_lower_harness.c`](/home/kicky/dev/xyo-rust/tools/to_lower_harness.c) を使って [`bitcodes/ll/to_lower.ll`](/home/kicky/dev/xyo-rust/bitcodes/ll/to_lower.ll) をネイティブリンクし、`""`, `"0"`, `"false"`, `"FALSE"`, `"true"` などの基本ケースを確認します。
+`XYO_ICU_PREBUILT_DIR` を省略した場合は [`bitcodes/c/lib/icu-prebuilt`](/home/kicky/dev/xyo-rust/bitcodes/c/lib/icu-prebuilt) を自動で見に行きます。既存の `XYO_ICU_NATIVE_LIB_DIR` も後方互換として使えます。
 
 ## ドキュメント
 

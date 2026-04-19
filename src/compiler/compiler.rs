@@ -13,6 +13,7 @@ use crate::{
             literal::parse_literal_expr, motion::parse_motion_stmt, operator::parse_operator_expr,
         },
         types::Builders,
+        utils::create_string_struct,
     },
     parser::types::{Expr, Stmt, Thread},
     types::ScratchProject,
@@ -22,10 +23,9 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
     Target::initialize_all(&InitializationConfig::default());
     let context = Context::create();
     let mut builders = Builders::new(&context, project);
-    let mut strings: Vec<String> = vec![];
 
     threads.iter().for_each(|v| {
-        generate_thread_ir(&mut builders, v, &mut strings);
+        generate_thread_ir(&mut builders, v);
     });
 
     let target_triple = TargetMachine::get_default_triple();
@@ -49,6 +49,8 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
         .module
         .set_data_layout(&target_machine.get_target_data().get_data_layout());
 
+    create_string_struct(&builders, "123.45");
+
     let passes = "default<O3>";
     let pass_builder_options = PassBuilderOptions::create();
     pass_builder_options.set_loop_interleaving(true);
@@ -63,7 +65,7 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
     println!("{}", builders.module.to_string())
 }
 
-pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread, strings: &mut Vec<String>) {
+pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread) {
     let ptr_type = builders.context.ptr_type(AddressSpace::default());
     let fn_type = builders
         .context
@@ -75,9 +77,7 @@ pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread, strings: &mu
     builders.builder.position_at_end(entry);
     for block in &thread.stmts {
         match block {
-            Stmt::Motion(v) => {
-                parse_motion_stmt(builders, v, &function, strings, thread.target_idx)
-            }
+            Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
             _ => todo!("やります"),
         }
     }
@@ -88,21 +88,20 @@ pub fn generate_expr_ir<'ctx>(
     builders: &Builders<'ctx>,
     expr: &Expr,
     function: &FunctionValue<'ctx>,
-    strings: &mut Vec<String>,
     target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
-        Expr::Literal(l) => parse_literal_expr(builders, l, function, strings, target_idx),
-        Expr::Operator(l) => parse_operator_expr(builders, l, function, strings, target_idx),
+        Expr::Literal(l) => parse_literal_expr(builders, l, function, target_idx),
+        Expr::Operator(l) => parse_operator_expr(builders, l, function, target_idx),
         _ => todo!("やる"),
     }
 }
 
 pub enum ScratchReturnTypes<'ctx> {
     Number(FloatValue<'ctx>),
-    String(IntValue<'ctx>),
+    String(PointerValue<'ctx>),
     Bool(IntValue<'ctx>),
     NumberLiteral(f64),
-    StringLiteral((String, IntValue<'ctx>)),
+    StringLiteral((String, PointerValue<'ctx>)),
     BoolLiteral((bool, IntValue<'ctx>)),
 }

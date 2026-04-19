@@ -72,5 +72,21 @@ jobs:
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
 
+            - name: Detect vendored ICU
+              id: icu
+              shell: bash
+              run: |
+                  if [[ -d "${GITHUB_WORKSPACE}/bitcodes/c/lib/icu/source" ]]; then
+                      echo "has_vendored_icu=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "has_vendored_icu=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - name: Setup and verify prebuilt ICU route
+              if: steps.icu.outputs.has_vendored_icu == 'true'
+              shell: bash
+              run: |
+                  ./setup.sh --clean-icu
+
             - name: Test
               run: cargo test --locked

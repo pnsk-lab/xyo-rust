@@ -14,6 +14,7 @@
 | LLVM | 21.1.x | IR 生成バックエンド |
 | `llvm-config` | PATH 上に必要 | ビルドスクリプトが LLVM の設定を取得するため |
 | `clang` | PATH 上に必要 | `bitcodes/c/` の C ソースを bitcode へ変換するため |
+| `llvm-link` / `llvm-dis` | PATH 上にあると便利 | `XYO_EMBED_ICU_BITCODE=1` で vendored ICU を `to_lower.bc` に埋め込むときに使う |
 
 まずは次のコマンドでバージョンを確認しておくと安全です。
 
@@ -100,9 +101,15 @@ cargo build --release
 
 `cargo build` を実行すると、次の処理が順に行われます。
 
-1. **`build.rs` の実行**: `clang` を使って `bitcodes/c/dtoa.c` を LLVM bitcode (`bitcodes/bc/`) と LLVM IR (`bitcodes/ll/`) に変換します
+1. **`build.rs` の実行**: `clang` を使って `bitcodes/c/` 配下のトップレベル `.c` ファイルを LLVM bitcode (`bitcodes/bc/`) と LLVM IR (`bitcodes/ll/`) に変換します
 2. **Rust コードのコンパイル**: `inkwell` 経由で LLVM ライブラリとリンクしながら Rust コードをコンパイルします
 3. **バイナリ生成**: `target/release/xyo` (リリースビルド) または `target/debug/xyo` (デバッグビルド) が生成されます
+
+通常運用では、`to_lower.c` は vendored ICU のヘッダだけを使って軽量に再生成します。ICU ソース全体を bitcode 化して `to_lower.bc` に埋め込む重い経路はデフォルトでは無効です。
+
+```bash
+XYO_EMBED_ICU_BITCODE=1 cargo build --release
+```
 
 ### 開発時のビルド
 
@@ -274,7 +281,7 @@ error[E0433]: failed to resolve: use of undeclared crate or module `llvm_sys`
 
 `Cargo.toml` の `inkwell` の feature でバージョンを確認してください。LLVM 21.1 を使う場合は `llvm21-1` feature が必要です。
 
-### `bitcodes/c/dtoa.c` のコンパイルが失敗する
+### `bitcodes/c/` 配下のコンパイルが失敗する
 
 `clang` が PATH に存在するか確認します。
 
@@ -287,6 +294,29 @@ clang --version
 
 ```bash
 CLANG=clang-21 cargo build
+```
+
+`cargo build` は `bitcodes/c/` 配下の補助 C コードもあわせて LLVM bitcode に変換します。`to_lower.c` は通常は vendored ICU ヘッダだけを使って軽量に生成し、実際の動作確認は prebuilt ICU static archive を併用するルートを標準にしています。ICU 付き自己完結 bitcode が必要な場合だけ `XYO_EMBED_ICU_BITCODE=1` を付けてください。
+
+既定の ICU source tree が `bitcodes/c/lib/icu/` に無い場合は、`XYO_ICU_ROOT=/path/to/icu` を付けてください。prebuilt archive の配置先を変える場合は `XYO_ICU_PREBUILT_DIR=/path/to/prebuilt` を使えます。
+
+通常は次の 1 コマンドで十分です。
+
+```bash
+CLANG=clang-21 CLANGXX=clang++-21 ./setup.sh
+```
+
+このコマンドは次をまとめて実行します。
+
+1. `bitcodes/c/lib/icu/` から prebuilt ICU static archive を生成する
+2. `cargo build --release` を実行する
+3. `tools/check_to_lower_native.sh` で `to_lower.ll` の native check を行う
+
+個別に実行する場合は次を使います。
+
+```bash
+./tools/build_icu_prebuilt.sh
+./tools/check_to_lower_native.sh
 ```
 
 ## ドキュメントのローカル確認

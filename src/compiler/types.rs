@@ -7,8 +7,9 @@ use inkwell::{
     context::Context,
     module::Module,
     types::StructType,
-    values::{FunctionValue, IntValue},
+    values::{FunctionValue, IntValue, PointerValue},
 };
+use rand::distr::Map;
 
 use crate::{
     compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
@@ -17,16 +18,16 @@ use crate::{
 
 #[repr(C)]
 pub struct StringStruct {
-    pub container: *mut u16,
     pub length: u64,
+    pub container: *mut u16,
     pub hash1: u64,
     pub hash2: u64,
 }
 pub fn create_string_struct_type<'a>(context: &'a Context) -> StructType<'a> {
     context.struct_type(
         &[
-            context.ptr_type(AddressSpace::default()).into(),
             context.i64_type().into(),
+            context.ptr_type(AddressSpace::default()).into(),
             context.i64_type().into(),
             context.i64_type().into(),
         ],
@@ -42,8 +43,8 @@ pub enum StringKeys {
 impl From<StringKeys> for u32 {
     fn from(field: StringKeys) -> Self {
         match field {
-            StringKeys::Container => 0,
-            StringKeys::Length => 1,
+            StringKeys::Length => 0,
+            StringKeys::Container => 1,
             StringKeys::Hash1 => 2,
             StringKeys::Hash2 => 3,
         }
@@ -95,6 +96,7 @@ pub struct Builders<'ctx> {
     pub rolling_hash_seed_2: u64,
     pub rolling_hash_base_1: u64,
     pub rolling_hash_base_2: u64,
+    pub string_literals: HashMap<String, PointerValue<'ctx>>,
 }
 pub struct Functions<'ctx> {
     pub llvm_abs: FunctionValue<'ctx>,
@@ -135,9 +137,18 @@ impl<'ctx> Builders<'ctx> {
         let i64_type = context.i64_type();
         let i1_type = context.bool_type();
         let llvm_floor = f64_type.fn_type(&[f64_type.into()], false);
-        let str_to_num_func_type = f64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+        let str_to_num_func_type = f64_type.fn_type(&[ptr_type.into()], false);
         let str_is_num_func_type = i1_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
-        let num_to_str_func_type = i64_type.fn_type(&[ptr_type.into(), f64_type.into()], false);
+        let num_to_str_func_type = ptr_type.fn_type(
+            &[
+                f64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        );
         let bool_to_str = i64_type.fn_type(&[ptr_type.into(), i1_type.into()], false);
         let str_cmp_gt =
             i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
@@ -162,7 +173,7 @@ impl<'ctx> Builders<'ctx> {
             llvm_exp: module.add_function("llvm.exp.f64", llvm_floor, None),
             llvm_pow10: module.add_function("llvm.exp10.f64", llvm_floor, None),
             str_to_num: module.add_function("xyo_str_to_num", str_to_num_func_type, None),
-            num_to_str: module.add_function("xyo_num_to_str", num_to_str_func_type, None),
+            num_to_str: module.add_function("xyo_dtoa", num_to_str_func_type, None),
             bool_to_str: module.add_function("xyo_bool_to_str", bool_to_str, None),
             str_cmp_gt: module.add_function("xyo_str_cmp_gt", str_cmp_gt, None),
             str_cmp_lt: module.add_function("xyo_str_cmp_lt", str_cmp_lt, None),
@@ -195,6 +206,7 @@ impl<'ctx> Builders<'ctx> {
             rolling_hash_seed_2: hash_seed_2,
             rolling_hash_base_1: hash_base_1,
             rolling_hash_base_2: hash_base_2,
+            string_literals: HashMap::new(),
         }
     }
     fn create_variable_map(

@@ -25,3 +25,4 @@ serde_repr = "0.1.20"
 zip = "8.1.0"
 inkwell = { version = "0.8.0", default-features = false, features = ["llvm21-1"] }
 num-bigint = { version = "0.4.6", features = ["rand"] }
+ryu-js = "1.0.2"

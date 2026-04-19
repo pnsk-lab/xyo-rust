@@ -127,7 +127,29 @@ jobs:
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
 
-            - name: Build
+            - name: Detect vendored ICU (Unix)
+              if: runner.os != 'Windows'
+              id: icu
+              shell: bash
+              run: |
+                  if [[ -d "${GITHUB_WORKSPACE}/bitcodes/c/lib/icu/source" ]]; then
+                      echo "has_vendored_icu=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "has_vendored_icu=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - name: Build and verify prebuilt ICU route (Unix)
+              if: runner.os != 'Windows' && steps.icu.outputs.has_vendored_icu == 'true'
+              shell: bash
+              run: |
+                  ./setup.sh --clean-icu
+
+            - name: Build (Unix fallback)
+              if: runner.os != 'Windows' && steps.icu.outputs.has_vendored_icu != 'true'
+              run: cargo build --release
+
+            - name: Build (Windows)
+              if: runner.os == 'Windows'
               run: cargo build --release
 
             - name: Upload artifact (Unix)
