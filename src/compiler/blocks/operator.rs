@@ -2,7 +2,8 @@ use core::f64;
 
 use inkwell::{
     FloatPredicate,
-    values::{FloatValue, FunctionValue},
+    llvm_sys::core::LLVMBuildFreeze,
+    values::{AsValueRef, FloatValue, FunctionValue},
 };
 
 use crate::{
@@ -239,7 +240,7 @@ pub fn parse_operator_expr<'ctx>(
 
                 let floor = builders
                     .builder
-                    .build_call(builders.functions.llvm_floor, &[scaled.into()], "floor")
+                    .build_call(builders.functions.llvm_floor, &[scaled.into()], "floor_res")
                     .unwrap()
                     .try_as_basic_value()
                     .basic()
@@ -706,6 +707,7 @@ pub fn parse_operator_expr<'ctx>(
             } else {
                 ret_val
             };
+            println!("{}", ret_val);
             ScratchReturnTypes::Number(ret_val)
         }
         _ => todo!("あとでやる"),

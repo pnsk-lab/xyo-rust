@@ -93,7 +93,7 @@ pub fn scratch_return_to_number<'ctx>(
                 .build_call(
                     builders.functions.str_to_num,
                     &[(*v).into()],
-                    "xyo_str_to_num",
+                    "xyo_atod",
                 )
                 .unwrap()
                 .try_as_basic_value()

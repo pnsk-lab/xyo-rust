@@ -13,7 +13,7 @@ struct xyo_string_struct
     uint64_t hash_2;
 };
 
-bool string_to_bool(const struct xyo_string_struct *input)
+bool str_to_bool(const struct xyo_string_struct *input)
 {
     UErrorCode status = U_ZERO_ERROR;
     UCaseMap *csm = ucasemap_open("", 0, &status);

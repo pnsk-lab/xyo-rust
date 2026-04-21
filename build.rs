@@ -21,7 +21,8 @@ fn main() {
     let input_dir = bitcodes_dir.join("c");
     let output_bc_dir = bitcodes_dir.join("bc");
     let output_ll_dir = bitcodes_dir.join("ll");
-    let scratch_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("bitcode-build");
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let scratch_dir = out_dir.join("bitcode-build");
     let icu_dir = input_dir.join("lib").join("icu");
 
     println!("cargo:rerun-if-env-changed=CLANG");
@@ -50,6 +51,8 @@ fn main() {
             &source,
         );
     }
+
+    write_embedded_bitcodes_rs(&output_bc_dir, &out_dir.join("embedded_bitcodes.rs"));
 }
 
 fn discover_icu_vendor(input_dir: &Path) -> Option<IcuVendor> {
@@ -116,6 +119,34 @@ fn top_level_sources(dir: &Path) -> Vec<PathBuf> {
 
     sources.sort();
     sources
+}
+
+fn write_embedded_bitcodes_rs(output_bc_dir: &Path, destination: &Path) {
+    let mut bitcode_paths = fs::read_dir(output_bc_dir)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", output_bc_dir.display()))
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            (path.extension() == Some(OsStr::new("bc"))).then_some(path)
+        })
+        .collect::<Vec<_>>();
+
+    bitcode_paths.sort();
+
+    let mut contents = String::from("pub static EMBEDDED_BITCODES: &[(&str, &[u8])] = &[\n");
+    for path in bitcode_paths {
+        let name = path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or_else(|| panic!("invalid bitcode file name: {}", path.display()));
+        let escaped = path.display().to_string().replace('\\', "\\\\");
+        contents.push_str(&format!(
+            "    ({name:?}, include_bytes!(r\"{escaped}\")),\n"
+        ));
+    }
+    contents.push_str("];\n");
+
+    fs::write(destination, contents)
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", destination.display()));
 }
 
 fn resolve_build_tools() -> BuildTools {
@@ -266,7 +297,16 @@ fn compile_source(
         return;
     }
 
-    compile_plain_source(tools, input_dir, source, &bc_output, &ll_output, false, &[]);
+    compile_plain_source(
+        tools,
+        input_dir,
+        source,
+        &bc_output,
+        &ll_output,
+        false,
+        &[],
+        &[],
+    );
 }
 
 fn compile_to_lower(
@@ -290,6 +330,7 @@ fn compile_to_lower(
             ll_output,
             true,
             &include_dirs,
+            &[],
         );
 
         let icu_bc_dir = scratch_dir.join("icu");
@@ -312,6 +353,7 @@ fn compile_to_lower(
             ll_output,
             false,
             &include_dirs,
+            &[],
         );
     }
 }
@@ -369,6 +411,7 @@ fn compile_plain_source(
     ll_output: &Path,
     embed_icu: bool,
     extra_include_dirs: &[PathBuf],
+    extra_clang_args: &[&str],
 ) {
     let include_dir = input_dir.join("lib");
 
@@ -381,6 +424,7 @@ fn compile_plain_source(
             true,
             embed_icu,
             extra_include_dirs,
+            extra_clang_args,
         ),
     );
 
@@ -393,6 +437,7 @@ fn compile_plain_source(
             false,
             embed_icu,
             extra_include_dirs,
+            extra_clang_args,
         ),
     );
 }
@@ -524,6 +569,7 @@ fn clang_args(
     emit_bc: bool,
     embed_icu: bool,
     extra_include_dirs: &[PathBuf],
+    extra_clang_args: &[&str],
 ) -> Vec<OsString> {
     let mut args = vec![OsString::from("-emit-llvm")];
 
@@ -545,7 +591,9 @@ fn clang_args(
     if embed_icu {
         args.push(OsString::from("-DXYO_EMBED_ICU"));
     }
-
+    for extra_clang_arg in extra_clang_args {
+        args.push(OsString::from(extra_clang_arg));
+    }
     args.push(source.as_os_str().to_os_string());
     args.push(OsString::from("-o"));
     args.push(output.as_os_str().to_os_string());

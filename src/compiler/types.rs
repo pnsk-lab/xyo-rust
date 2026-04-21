@@ -2,19 +2,21 @@ use std::collections::HashMap;
 
 use inkwell::{
     AddressSpace,
-    attributes::AttributeLoc,
     builder::Builder,
     context::Context,
+    intrinsics::Intrinsic,
+    memory_buffer::MemoryBuffer,
     module::Module,
     types::StructType,
-    values::{FunctionValue, IntValue, PointerValue},
+    values::{BasicValue, FunctionValue, PointerValue},
 };
-use rand::distr::Map;
 
 use crate::{
     compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
     types::{ScratchProject, StageOrSprite},
 };
+
+include!(concat!(env!("OUT_DIR"), "/embedded_bitcodes.rs"));
 
 #[repr(C)]
 pub struct StringStruct {
@@ -128,15 +130,40 @@ pub struct VariableInfo {
     variable_idx: usize,
 }
 
+fn get_runtime_f64_to_f64<'a>(
+    module: &Module<'a>,
+    context: &'a Context,
+    name: &str,
+) -> FunctionValue<'a> {
+    let fn_type = context
+        .f64_type()
+        .fn_type(&[context.f64_type().into()], false);
+    module
+        .get_function(name)
+        .unwrap_or_else(|| module.add_function(name, fn_type, None))
+}
+
+fn get_intrinsic_f64_to_f64<'a>(
+    module: &Module<'a>,
+    context: &'a Context,
+    name: &str,
+) -> FunctionValue<'a> {
+    let intrinsic = Intrinsic::find(name)
+        .unwrap_or_else(|| panic!("failed to find LLVM intrinsic declaration for {name}"));
+    intrinsic
+        .get_declaration(module, &[context.f64_type().into()])
+        .unwrap_or_else(|| panic!("failed to declare LLVM intrinsic {name} for f64"))
+}
+
 impl<'ctx> Builders<'ctx> {
     pub fn new(context: &'ctx Context, project: &ScratchProject) -> Self {
         let module = context.create_module("xyojit");
+        Self::link_generated_bitcodes(&module, context, &["numeric.bc", "tick.bc"]);
         let builder = context.create_builder();
         let ptr_type = context.ptr_type(AddressSpace::default());
         let f64_type = context.f64_type();
         let i64_type = context.i64_type();
         let i1_type = context.bool_type();
-        let llvm_floor = f64_type.fn_type(&[f64_type.into()], false);
         let str_to_num_func_type = f64_type.fn_type(&[ptr_type.into()], false);
         let str_is_num_func_type = i1_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
         let num_to_str_func_type = ptr_type.fn_type(
@@ -158,21 +185,21 @@ impl<'ctx> Builders<'ctx> {
             i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
         let str_to_bool = i1_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
         let functions = Functions {
-            llvm_floor: module.add_function("llvm.floor.f64", llvm_floor, None),
-            llvm_abs: module.add_function("llvm.fabs.f64", llvm_floor, None),
-            llvm_ceil: module.add_function("llvm.ceil.f64", llvm_floor, None),
-            llvm_sqrt: module.add_function("llvm.sqrt.f64", llvm_floor, None),
-            llvm_sin: module.add_function("llvm.sin.f64", llvm_floor, None),
-            llvm_cos: module.add_function("llvm.cos.f64", llvm_floor, None),
-            llvm_tan: module.add_function("llvm.tan.f64", llvm_floor, None),
-            llvm_asin: module.add_function("llvm.asin.f64", llvm_floor, None),
-            llvm_acos: module.add_function("llvm.acos.f64", llvm_floor, None),
-            llvm_atan: module.add_function("llvm.atan.f64", llvm_floor, None),
-            llvm_loge: module.add_function("llvm.log.f64", llvm_floor, None),
-            llvm_log10: module.add_function("llvm.log10.f64", llvm_floor, None),
-            llvm_exp: module.add_function("llvm.exp.f64", llvm_floor, None),
-            llvm_pow10: module.add_function("llvm.exp10.f64", llvm_floor, None),
-            str_to_num: module.add_function("xyo_str_to_num", str_to_num_func_type, None),
+            llvm_floor: get_intrinsic_f64_to_f64(&module, &context, "llvm.floor"),
+            llvm_abs: get_intrinsic_f64_to_f64(&module, &context, "llvm.fabs"),
+            llvm_ceil: get_intrinsic_f64_to_f64(&module, &context, "llvm.ceil"),
+            llvm_sqrt: get_intrinsic_f64_to_f64(&module, &context, "llvm.sqrt"),
+            llvm_sin: get_intrinsic_f64_to_f64(&module, &context, "llvm.sin"),
+            llvm_cos: get_intrinsic_f64_to_f64(&module, &context, "llvm.cos"),
+            llvm_tan: get_intrinsic_f64_to_f64(&module, &context, "llvm.tan"),
+            llvm_asin: get_intrinsic_f64_to_f64(&module, &context, "llvm.asin"),
+            llvm_acos: get_intrinsic_f64_to_f64(&module, &context, "llvm.acos"),
+            llvm_atan: get_intrinsic_f64_to_f64(&module, &context, "llvm.atan"),
+            llvm_loge: get_intrinsic_f64_to_f64(&module, &context, "llvm.log"),
+            llvm_log10: get_intrinsic_f64_to_f64(&module, &context, "llvm.log10"),
+            llvm_exp: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp"),
+            llvm_pow10: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp10"),
+            str_to_num: module.add_function("xyo_atod", str_to_num_func_type, None),
             num_to_str: module.add_function("xyo_dtoa", num_to_str_func_type, None),
             bool_to_str: module.add_function("xyo_bool_to_str", bool_to_str, None),
             str_cmp_gt: module.add_function("xyo_str_cmp_gt", str_cmp_gt, None),
@@ -207,6 +234,19 @@ impl<'ctx> Builders<'ctx> {
             rolling_hash_base_1: hash_base_1,
             rolling_hash_base_2: hash_base_2,
             string_literals: HashMap::new(),
+        }
+    }
+    fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context, names: &[&str]) {
+        for (name, bytes) in EMBEDDED_BITCODES {
+            if !names.iter().any(|candidate| candidate == name) {
+                continue;
+            }
+            let buffer = MemoryBuffer::create_from_memory_range_copy(bytes, name);
+            let bitcode_module = Module::parse_bitcode_from_buffer(&buffer, context)
+                .unwrap_or_else(|err| panic!("failed to parse embedded {name}: {err}"));
+            module
+                .link_in_module(bitcode_module)
+                .unwrap_or_else(|err| panic!("failed to link embedded {name}: {err}"));
         }
     }
     fn create_variable_map(
