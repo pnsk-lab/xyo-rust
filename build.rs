@@ -284,12 +284,14 @@ fn compile_source(
     let bc_output = output_bc_dir.join(format!("{stem}.bc"));
     let ll_output = output_ll_dir.join(format!("{stem}.ll"));
 
-    if stem == "to_lower" {
+    if stem == "str" {
+        let include_dirs = to_lower_include_dirs(input_dir, icu_vendor);
         compile_to_lower(
             tools,
             input_dir,
             scratch_dir,
             icu_vendor,
+            &include_dirs,
             source,
             &bc_output,
             &ll_output,
@@ -314,12 +316,11 @@ fn compile_to_lower(
     input_dir: &Path,
     scratch_dir: &Path,
     icu_vendor: Option<&IcuVendor>,
+    include_dirs: &[PathBuf],
     source: &Path,
     bc_output: &Path,
     ll_output: &Path,
 ) {
-    let include_dirs = to_lower_include_dirs(input_dir, icu_vendor);
-
     if let Some(icu_vendor) = icu_vendor.filter(|_| should_embed_icu_bitcode()) {
         let raw_bc = scratch_dir.join("to_lower.raw.bc");
         compile_plain_source(
@@ -396,7 +397,7 @@ fn to_lower_include_dirs(input_dir: &Path, icu_vendor: Option<&IcuVendor>) -> Ve
     }
 
     panic!(
-        "ICU headers for bitcodes/c/to_lower.c were not found. \
+        "ICU headers for bitcodes/c/str.c were not found. \
 set XYO_ICU_ROOT to a full ICU source tree, or build/install prebuilt ICU headers under {} \
 (for example with ./tools/build_icu_prebuilt.sh or ./setup.sh).",
         include_root.display()
