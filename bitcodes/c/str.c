@@ -1,0 +1,102 @@
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+#include <unicode/ucasemap.h>
+#include <unicode/uchar.h>
+#include <unicode/utf16.h>
+#include <unicode/ustring.h>
+
+struct xyo_string_struct
+{
+    uint64_t length;
+    uint16_t *data;
+    uint64_t hash_1;
+    uint64_t hash_2;
+};
+
+bool str_to_bool(const struct xyo_string_struct *state, const struct xyo_string_struct *input)
+{
+    (void)state;
+
+    UErrorCode status = U_ZERO_ERROR;
+    UCaseMap *csm = ucasemap_open("", 0, &status);
+
+    const UChar *src = (const UChar *)input->data;
+    UChar dest[32];
+    int32_t len = u_strToLower(
+        dest,
+        32,
+        src,
+        input->length,
+        NULL,
+        &status);
+
+    ucasemap_close(csm);
+
+    if (U_FAILURE(status))
+        return true;
+
+    char out[64];
+    u_austrcpy(out, dest);
+    out[len] = '\0';
+
+    if (out[0] == '\0')
+        return false;
+    if (strcmp(out, "0") == 0)
+        return false;
+    if (strcmp(out, "false") == 0)
+        return false;
+
+    return true;
+}
+
+static int32_t str_cmp_lowered(const struct xyo_string_struct *a, const struct xyo_string_struct *b)
+{
+    const UChar *a_data = (const UChar *)a->data;
+    const UChar *b_data = (const UChar *)b->data;
+    int32_t a_index = 0;
+    int32_t b_index = 0;
+    int32_t a_length = (int32_t)a->length;
+    int32_t b_length = (int32_t)b->length;
+
+    while (a_index < a_length && b_index < b_length)
+    {
+        UChar32 a_cp;
+        UChar32 b_cp;
+
+        U16_NEXT(a_data, a_index, a_length, a_cp);
+        U16_NEXT(b_data, b_index, b_length, b_cp);
+
+        a_cp = u_tolower(a_cp);
+        b_cp = u_tolower(b_cp);
+
+        if (a_cp < b_cp)
+            return -1;
+        if (a_cp > b_cp)
+            return 1;
+    }
+
+    if (a_index < a_length)
+        return 1;
+    if (b_index < b_length)
+        return -1;
+
+    return 0;
+}
+
+bool str_cmp_gt(const struct xyo_string_struct *a, const struct xyo_string_struct *b)
+{
+    return str_cmp_lowered(a, b) > 0;
+}
+
+bool str_cmp_lt(const struct xyo_string_struct *a, const struct xyo_string_struct *b)
+{
+    return str_cmp_lowered(a, b) < 0;
+}
+
+bool str_cmp_eq(const struct xyo_string_struct *a, const struct xyo_string_struct *b)
+{
+    return str_cmp_lowered(a, b) == 0;
+}

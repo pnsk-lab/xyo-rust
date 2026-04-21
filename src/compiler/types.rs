@@ -117,7 +117,6 @@ pub struct Functions<'ctx> {
     pub llvm_pow10: FunctionValue<'ctx>,
     pub str_to_num: FunctionValue<'ctx>,
     pub num_to_str: FunctionValue<'ctx>,
-    pub bool_to_str: FunctionValue<'ctx>,
     pub str_cmp_gt: FunctionValue<'ctx>,
     pub str_cmp_lt: FunctionValue<'ctx>,
     pub str_cmp_eq: FunctionValue<'ctx>,
@@ -130,19 +129,6 @@ pub struct VariableInfo {
     variable_idx: usize,
 }
 
-fn get_runtime_f64_to_f64<'a>(
-    module: &Module<'a>,
-    context: &'a Context,
-    name: &str,
-) -> FunctionValue<'a> {
-    let fn_type = context
-        .f64_type()
-        .fn_type(&[context.f64_type().into()], false);
-    module
-        .get_function(name)
-        .unwrap_or_else(|| module.add_function(name, fn_type, None))
-}
-
 fn get_intrinsic_f64_to_f64<'a>(
     module: &Module<'a>,
     context: &'a Context,
@@ -150,15 +136,15 @@ fn get_intrinsic_f64_to_f64<'a>(
 ) -> FunctionValue<'a> {
     let intrinsic = Intrinsic::find(name)
         .unwrap_or_else(|| panic!("failed to find LLVM intrinsic declaration for {name}"));
-    intrinsic
+    let intrisic_func = intrinsic
         .get_declaration(module, &[context.f64_type().into()])
-        .unwrap_or_else(|| panic!("failed to declare LLVM intrinsic {name} for f64"))
+        .unwrap_or_else(|| panic!("failed to declare LLVM intrinsic {name} for f64"));
+    intrisic_func
 }
 
 impl<'ctx> Builders<'ctx> {
     pub fn new(context: &'ctx Context, project: &ScratchProject) -> Self {
         let module = context.create_module("xyojit");
-        Self::link_generated_bitcodes(&module, context, &["numeric.bc", "tick.bc"]);
         let builder = context.create_builder();
         let ptr_type = context.ptr_type(AddressSpace::default());
         let f64_type = context.f64_type();
@@ -176,14 +162,10 @@ impl<'ctx> Builders<'ctx> {
             ],
             false,
         );
-        let bool_to_str = i64_type.fn_type(&[ptr_type.into(), i1_type.into()], false);
-        let str_cmp_gt =
-            i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
-        let str_cmp_lt =
-            i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
-        let str_cmp_eq =
-            i1_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
-        let str_to_bool = i1_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+        let str_cmp_gt = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let str_cmp_lt = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let str_cmp_eq = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let str_to_bool = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let functions = Functions {
             llvm_floor: get_intrinsic_f64_to_f64(&module, &context, "llvm.floor"),
             llvm_abs: get_intrinsic_f64_to_f64(&module, &context, "llvm.fabs"),
@@ -201,7 +183,6 @@ impl<'ctx> Builders<'ctx> {
             llvm_pow10: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp10"),
             str_to_num: module.add_function("xyo_atod", str_to_num_func_type, None),
             num_to_str: module.add_function("xyo_dtoa", num_to_str_func_type, None),
-            bool_to_str: module.add_function("xyo_bool_to_str", bool_to_str, None),
             str_cmp_gt: module.add_function("xyo_str_cmp_gt", str_cmp_gt, None),
             str_cmp_lt: module.add_function("xyo_str_cmp_lt", str_cmp_lt, None),
             str_cmp_eq: module.add_function("xyo_str_cmp_eq", str_cmp_eq, None),
@@ -219,6 +200,7 @@ impl<'ctx> Builders<'ctx> {
             global_variable_increment,
             local_variables_increments,
         ) = Self::create_variable_map(project);
+        Self::link_generated_bitcodes(&module, context);
         Self {
             context,
             module,
@@ -236,11 +218,8 @@ impl<'ctx> Builders<'ctx> {
             string_literals: HashMap::new(),
         }
     }
-    fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context, names: &[&str]) {
+    fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context) {
         for (name, bytes) in EMBEDDED_BITCODES {
-            if !names.iter().any(|candidate| candidate == name) {
-                continue;
-            }
             let buffer = MemoryBuffer::create_from_memory_range_copy(bytes, name);
             let bitcode_module = Module::parse_bitcode_from_buffer(&buffer, context)
                 .unwrap_or_else(|err| panic!("failed to parse embedded {name}: {err}"));

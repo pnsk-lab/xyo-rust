@@ -2,14 +2,15 @@
 
 [はじめに](./README.md) / [セットアップ](./getting-started.md) / [CLI](./cli.md) / [対応ブロック一覧](./blocks.md)
 
-`xyo-rust` の処理は、大きく分けると 4 段階です。
+`xyo-rust` の処理は、大きく分けると 5 段階です。
 
 1. `.sb3` から `project.json` を取り出す
 2. Scratch プロジェクト全体を Rust の構造体へ変換する
 3. hat block を起点にスレッド単位の中間表現へ変換する
 4. 一部のスレッドを LLVM IR へ変換する
+5. 生成した IR を JIT で 1 回実行して状態を表示する
 
-実行ランタイムはまだ完成していないため、現在の中心は解析と変換のパイプラインです。
+Scratch VM 相当の完全な実行ランタイムはまだ完成していないため、現在の中心は解析・変換・JIT 実行のパイプラインです。
 
 ## モジュール概要
 
@@ -18,7 +19,7 @@
 | `src/sb3.rs`    | ZIP アーカイブとして `.sb3` を開き、`project.json` を読み込む。失敗時には位置情報付きのエラー整形も担当する |
 | `src/types/`    | Scratch の JSON 構造を受ける型定義を提供する                                                                |
 | `src/parser/`   | Scratch ブロックを `Stmt` / `Expr` に変換し、hat block からスレッド単位に解析する                           |
-| `src/compiler/` | `inkwell` を使って LLVM IR を生成し、最適化パスを適用する                                                   |
+| `src/compiler/` | `inkwell` を使って LLVM IR を生成し、最適化パスと JIT 実行を担当する                                           |
 
 ## データフロー詳細
 
@@ -52,14 +53,17 @@
         │ compiler()
         ▼
    LLVM Module
-   ├── グローバル変数 (スプライトの X/Y/方向など)
+   ├── 実行状態 (SpriteStruct / JitSpriteState)
+   ├── 文字列リテラル (StringStruct)
    ├── 関数 @thread_0(ptr) → スレッドの IR
    ├── 関数 @thread_1(ptr) → スレッドの IR
    └── ...
         │
         │ run_passes("default<O3>")
         ▼
-   最適化済み LLVM IR (テキスト形式で標準出力)
+   JIT 実行
+   ├── thread_0(ptr state) を呼ぶ
+   └── 変更後の状態を標準出力へ表示
 ```
 
 ## ステージ 1: SB3 ロード (`src/sb3.rs`)
@@ -354,23 +358,43 @@ pub enum ParserError<'a> {
 
 `Context` バリアントにより、エラーが発生したブロック ID やターゲットインデックスを連鎖的に付加できます。これにより「どのスプライトのどのブロックで失敗したか」が分かります。
 
-## ステージ 4: IR 生成 (`src/compiler/`)
+## ステージ 4: IR 生成と JIT 実行 (`src/compiler/`)
 
-コンパイラは `Vec<Thread>` を受け取り、各スレッドを LLVM IR の関数として生成します。
+コンパイラは `Vec<Thread>` を受け取り、各スレッドを LLVM IR の関数として生成したあと、JIT で 1 回ずつ実行して状態を表示します。
 
 ### `Builders` 構造体
 
-`compiler/types.rs` では `inkwell` の主要オブジェクトをまとめた `Builders` 構造体が定義されています。
+`compiler/types.rs` では、LLVM の基本オブジェクトに加えて、実行時 ABI や変数割り当てをまとめた `Builders` 構造体が定義されています。
+
+`Builders` が保持する主な情報は次のとおりです。
+
+- `context` / `module` / `builder`: LLVM の基本オブジェクト
+- `functions`: `llvm.*` intrinsic と `xyo_atod`, `xyo_dtoa`, `xyo_bool_to_str`, `xyo_str_cmp_gt`, `xyo_str_cmp_lt`, `xyo_str_cmp_eq`, `str_to_bool`, `str_is_num`, `xorshift128plus` の関数ハンドル
+- `global_variables` / `local_variables`: Scratch の変数 ID をスロット番号へ割り当てる表
+- `get_variable()`: 変数 ID を `VariableInfo` に解決して、グローバルかローカルかとスロット番号を返す
+- `rolling_hash_seed_*` / `rolling_hash_base_*`: 文字列ハッシュ生成に使う定数
+- `string_literals`: 生成済みの `StringStruct` グローバルを再利用するキャッシュ
+
+### 実行時の構造体
 
 ```rust
-pub struct Builders<'ctx> {
-    pub context: &'ctx Context,     // LLVM コンテキスト（型・定数の作成に使用）
-    pub module: Module<'ctx>,       // LLVM モジュール（関数・グローバルの格納先）
-    pub builder: Builder<'ctx>,     // IR 命令を追加するビルダー
-    // スプライトごとのグローバル変数
-    // (X 座標、Y 座標、向きなどを float64 のグローバル変数として保持)
+#[repr(C)]
+pub struct StringStruct {
+    pub length: u64,
+    pub container: *mut u16,
+    pub hash1: u64,
+    pub hash2: u64,
+}
+
+#[repr(C)]
+pub struct SpriteStruct {
+    pub sprite_x: f64,
+    pub sprite_y: f64,
+    pub sprite_rotate: f64,
 }
 ```
+
+`StringStruct` は UTF-16 の文字列本体と 2 系統のローリングハッシュを持ち、`SpriteStruct` はスプライトの実行状態を表します。`StringKeys` と `SpriteKeys` はこれらの構造体の field index を LLVM から扱いやすくするための列挙型です。
 
 ### スレッドごとの IR 生成
 
@@ -388,7 +412,7 @@ builder.position_at_end(entry);
 // 各 Stmt を IR に変換
 for stmt in &thread.stmts {
     match stmt {
-        Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, strings, target_idx),
+        Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
         _ => todo!("やります"),  // 未実装
     }
 }
@@ -396,11 +420,9 @@ for stmt in &thread.stmts {
 builder.build_return(None);  // void return
 ```
 
-### グローバル変数
+### 実行状態
 
-各スプライトの状態（X 座標、Y 座標、向きなど）は `f64` 型の LLVM グローバル変数として表現されます。例えば、スプライト 0 の X 座標は `@sprite_0_x` というグローバル変数です。
-
-動き系命令（`MotionSetX` など）はこれらのグローバル変数を読み書きする命令（`load` / `store`）として変換されます。
+各スレッドは `SpriteStruct` と同じ 3 フィールド構成の状態ポインタを受け取り、`MotionSetX` などは `build_struct_gep` を使ってそのフィールドを更新します。JIT 実行時に表示される `JitSpriteState` も、同じレイアウトを持つデバッグ用の状態構造体です。
 
 ### 式の IR 変換
 
@@ -417,7 +439,7 @@ pub enum ScratchReturnTypes<'ctx> {
 }
 ```
 
-`Literal` バリアントは実際の LLVM 値と Rust 側の定数の両方を保持します。これにより、定数畳み込みなどの最適化が可能になります。
+`Literal` バリアントは実際の LLVM 値と Rust 側の定数の両方を保持します。これにより、定数畳み込みなどの最適化が可能になります。`String` / `StringLiteral` は `StringStruct` で表現された文字列を指し、`BoolLiteral` / `NumberLiteral` は coercion のための定数としても使われます。
 
 ### 最適化
 
@@ -458,7 +480,7 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 ### 現在の制約
 
 - **IR 生成**: 動き系命令と演算子のみ。`run` で残りの opcode に当たると `todo!()` パニックが起きる
-- **ランタイム**: 生成した IR を実際に実行する仕組みがない
+- **ランタイム**: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの `run` は JIT で各 thread を 1 回ずつ実行し、状態を標準出力へ返す
 - **コスチューム・サウンド**: メタデータは読み込めるが IR 生成には未対応
 - **スレッド間通信**: ブロードキャスト・メッセージ処理は未実装
 

@@ -130,3 +130,48 @@ bool str_is_num(struct xyo_string_struct *from)
     }
     return false;
 }
+bool str_is_double(struct xyo_string_struct *input)
+{
+    if (input == NULL || input->data == NULL)
+    {
+        return NAN;
+    }
+    uint64_t left = 0;
+    uint64_t right = input->length;
+    while (left < right && is_ecma_ws_or_lt_u16(input->data[left]))
+    {
+        ++left;
+    }
+    while (right > left && is_ecma_ws_or_lt_u16(input->data[right - 1]))
+    {
+        --right;
+    }
+    if (left == right)
+    {
+        return true;
+    }
+    uint64_t len = right - left;
+    char buf[len + 1];
+    for (uint64_t i = 0; i < len; ++i)
+    {
+        uint16_t c = input->data[left + i];
+        if (c == '_' || c == 'n')
+        {
+            return false;
+        }
+        if (c > 0x7F)
+        {
+            return false;
+        }
+        buf[i] = (char)c;
+    }
+    buf[len] = '\0';
+    const char *end = NULL;
+    JSATODTempMem tmp = {0};
+    double x = js_atod(buf, &end, 0, JS_ATOD_ACCEPT_BIN_OCT, &tmp);
+    if (end == NULL || *end != '\0')
+    {
+        return false;
+    }
+    return true;
+}

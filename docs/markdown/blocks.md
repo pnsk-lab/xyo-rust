@@ -56,7 +56,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ### 動き
 
-動きカテゴリはスプライトの位置・向きを変更する命令です。IR 生成では、スプライトの X 座標・Y 座標・向きを LLVM グローバル変数として保持し、`store` 命令で値を更新します。
+動きカテゴリはスプライトの位置・向きを変更する命令です。IR 生成では、`SpriteStruct` と同じレイアウトの状態ポインタから `build_struct_gep` で X 座標・Y 座標・向きを取り出し、`store` 命令で値を更新します。
 
 - 対応 opcode:
     - `MotionMoveSteps` — `[数値]` 歩動かす
@@ -79,14 +79,14 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `MotionScrollUp` — (NoOp: 上スクロール)
 - Parser: `Stmt`
 - IR: 一部のみ（位置・向き更新系）
-    - `MotionSetX` → `store double %value, ptr @sprite_N_x`
-    - `MotionChangeXBy` → `load` + `fadd` + `store` で X 座標を加算
-    - `MotionSetY` → `store double %value, ptr @sprite_N_y`
-    - `MotionChangeYBy` → `load` + `fadd` + `store` で Y 座標を加算
-    - `MotionGoToXY` → X・Y をそれぞれ `store`
-    - `MotionTurnRight` → 現在の向きに加算
-    - `MotionTurnLeft` → 現在の向きから減算
-    - `MotionPointInDirection` → 向きを `store`
+    - `MotionSetX` → `build_struct_gep` で X フィールドを取り出して `store`
+    - `MotionChangeXBy` → `build_struct_gep` + `load` + `fadd` + `store` で X 座標を加算
+    - `MotionSetY` → `build_struct_gep` で Y フィールドを取り出して `store`
+    - `MotionChangeYBy` → `build_struct_gep` + `load` + `fadd` + `store` で Y 座標を加算
+    - `MotionGoToXY` → `build_struct_gep` した X・Y フィールドへそれぞれ `store`
+    - `MotionTurnRight` → `build_struct_gep` した向きフィールドに加算
+    - `MotionTurnLeft` → `build_struct_gep` した向きフィールドから減算
+    - `MotionPointInDirection` → `build_struct_gep` した向きフィールドへ `store`
 - 備考: `AlignScene`, `ScrollRight`, `ScrollUp` は Scratch でも実質 NoOp の命令です
 
 ### 見た目

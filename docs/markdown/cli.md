@@ -6,7 +6,7 @@
 
 ```bash
 cargo run -- --help
-```
+```text
 
 出力:
 
@@ -180,27 +180,24 @@ xyo run <path-to-project.sb3>
 3. パース          (hat block → Thread, Stmt, Expr)
 4. IR 生成         (Thread → LLVM IR 関数)
 5. 最適化          (O3 パスを適用)
-6. IR 出力         (標準出力へ LLVM IR テキストを表示)
+6. JIT 実行         (生成した各 thread 関数を 1 回呼び出す)
+7. 状態表示        (各 thread の実行後状態を Debug 形式で表示)
 ```
 
 ```warn
-`run` は実行ランタイムではなく、コンパイル経路の検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
+`run` は実行ランタイムそのものではなく、コンパイル経路を JIT までつないだ検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
 ```
 
 ### 出力例
 
-成功時は LLVM IR テキストが標準出力に表示されます。最初にターゲット CPU と対応機能の情報が出力された後、LLVM IR が続きます。
+成功時は各スレッドの実行後状態が標準出力に表示されます。
 
 ```
-cpu: x86-64, features: +cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87
-; ModuleID = 'xyo'
-source_filename = "xyo"
+JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
+```
+<!--
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-unknown-linux-gnu"
 
-@sprite_0_x = internal global double 0.0
-@sprite_0_y = internal global double 0.0
-@sprite_0_direction = internal global double 0.0
 
 define void @thread_0(ptr %0) {
 entry:
@@ -208,15 +205,16 @@ entry:
   ret void
 }
 ```
+-->
 
 各部分の意味:
 
 | セクション | 説明 |
 | ---------- | ---- |
-| `cpu: ...` | ターゲット CPU とその対応機能フラグ |
-| `@sprite_N_x` etc. | スプライトの X 座標・Y 座標・向きを表すグローバル変数 |
-| `define void @thread_N` | hat block を起点とする各スレッドの関数定義 |
-| 関数本体 | スレッドの各命令を LLVM IR に変換した結果 |
+| `JitSpriteState` | 1 回の JIT 実行後に表示されるスプライト状態 |
+| `sprite_x` | スプライトの X 座標 |
+| `sprite_y` | スプライトの Y 座標 |
+| `sprite_rotate` | スプライトの向き |
 
 ### 最適化について
 
@@ -229,24 +227,9 @@ entry:
 | SLP ベクトル化 | 隣接するスカラー演算をベクトル演算にまとめる |
 | ループアンロール | ループを展開して分岐オーバーヘッドを削減 |
 
-### IR をファイルに保存する
+### 補足
 
-出力をリダイレクトしてファイルに保存できます。
-
-```bash
-cargo run -- run my_project.sb3 > output.ll
-```
-
-保存した IR は LLVM ツール群で使えます。
-
-```bash
-# IR を読みやすくフォーマット
-llvm-as output.ll -o output.bc
-llvm-dis output.bc -o output_formatted.ll
-
-# ネイティブオブジェクトファイルに変換
-llc output.ll -o output.s
-```
+現時点の `run` は LLVM IR テキストをそのまま保存するコマンドではありません。IR は内部で生成されますが、CLI の標準出力には各 thread の実行後状態だけが表示されます。
 
 ## エラー表示
 
@@ -310,7 +293,7 @@ Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
 | ------------ | ------------ |
 | ファイルが正しく読めるか確認 | `json` |
 | どんなブロックが使われているか確認 | `stats` |
-| IR 生成できるか確認 | `stats` で opcode を確認後 → `run` |
+| JIT 実行できるか確認 | `stats` で opcode を確認後 → `run` |
 | Scratch の内部構造を調べる | `json` + `jq` |
 | コンパイルパイプラインをデバッグ | `run` |
 

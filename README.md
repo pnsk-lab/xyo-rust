@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml)
 
-`xyo-rust` は、Scratch の `.sb3` プロジェクトを Rust で読み込み、構文解析し、LLVM IR 生成へ接続する実験的なランタイム / コンパイラ基盤です。
+`xyo-rust` は、Scratch の `.sb3` プロジェクトを Rust で読み込み、構文解析し、LLVM IR を生成して JIT で動かす実験的なランタイム / コンパイラ基盤です。
 
-いまの主眼は **SB3 ローダー・パーサー・IR 生成経路の検証** にあります。Scratch VM と同等の完全実行を目指す段階ではなく、まずは「Scratch プロジェクトをどこまで静的に扱えるか」を試すための土台が実装されています。
+いまの主眼は **SB3 ローダー・パーサー・IR 生成 / JIT 実行経路の検証** にあります。Scratch VM と同等の完全実行を目指す段階ではなく、まずは「Scratch プロジェクトをどこまで静的に扱えるか」を試すための土台が実装されています。
 
 ## Scratch と `.sb3` について
 
@@ -54,7 +54,7 @@
 ## まだ開発途中のこと
 
 - Scratch opcode の網羅的な IR 実装（現状は動き系 + 演算子のみ）
-- 実行ランタイムの完成
+- Scratch VM 相当のイベントランタイムの完成
 - 生成した IR から実行可能ファイルへつなぐフロー
 - 互換性検証とリグレッションテストの拡充
 - `run` サブコマンドの未実装命令に対する安全なフォールバック

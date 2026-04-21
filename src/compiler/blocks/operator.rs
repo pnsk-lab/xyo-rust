@@ -294,12 +294,11 @@ pub fn parse_operator_expr<'ctx>(
             if is_string_compare {
                 let left_hand = scratch_return_to_string(builders, parsed_left, function);
                 let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let p = function.get_first_param().unwrap().into_pointer_value();
                 let cmp = builders
                     .builder
                     .build_call(
                         builders.functions.str_cmp_gt,
-                        &[p.into(), left_hand.into(), right_hand.into()],
+                        &[left_hand.into(), right_hand.into()],
                         "str_cmp_gt",
                     )
                     .unwrap()
@@ -330,12 +329,11 @@ pub fn parse_operator_expr<'ctx>(
             if is_string_compare {
                 let left_hand = scratch_return_to_string(builders, parsed_left, function);
                 let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let p = function.get_first_param().unwrap().into_pointer_value();
                 let cmp = builders
                     .builder
                     .build_call(
                         builders.functions.str_cmp_lt,
-                        &[p.into(), left_hand.into(), right_hand.into()],
+                        &[left_hand.into(), right_hand.into()],
                         "str_cmp_lt",
                     )
                     .unwrap()
@@ -366,12 +364,11 @@ pub fn parse_operator_expr<'ctx>(
             if is_string_compare {
                 let left_hand = scratch_return_to_string(builders, parsed_left, function);
                 let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let p = function.get_first_param().unwrap().into_pointer_value();
                 let cmp = builders
                     .builder
                     .build_call(
                         builders.functions.str_cmp_eq,
-                        &[p.into(), left_hand.into(), right_hand.into()],
+                        &[left_hand.into(), right_hand.into()],
                         "str_cmp_eq",
                     )
                     .unwrap()

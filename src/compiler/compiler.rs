@@ -2,12 +2,12 @@ use inkwell::{
     AddressSpace, OptimizationLevel,
     context::Context,
     execution_engine::JitFunction,
+    module,
     passes::PassBuilderOptions,
     support::{load_library_permanently, load_visible_symbols},
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
     values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
-use std::path::Path;
 
 use crate::{
     compiler::{
