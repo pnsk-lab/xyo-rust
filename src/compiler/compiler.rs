@@ -1,11 +1,6 @@
 use inkwell::{
-    AddressSpace, OptimizationLevel,
+    AddressSpace,
     context::Context,
-    execution_engine::JitFunction,
-    module,
-    passes::PassBuilderOptions,
-    support::{load_library_permanently, load_visible_symbols},
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
     values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
 
@@ -16,23 +11,12 @@ use crate::{
         },
         types::Builders,
     },
+    jit,
     parser::types::{Expr, Stmt, Thread},
     types::ScratchProject,
 };
 
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
-struct JitSpriteState {
-    sprite_x: f64,
-    sprite_y: f64,
-    sprite_rotate: f64,
-}
-
-type ThreadThunk = unsafe extern "C" fn(*mut JitSpriteState);
-
 pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
-    Target::initialize_native(&InitializationConfig::default())
-        .expect("failed to initialize native LLVM target");
     let context = Context::create();
     let mut builders = Builders::new(&context, project);
     let mut thread_functions = Vec::with_capacity(threads.len());
@@ -41,61 +25,7 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
         thread_functions.push(generate_thread_ir(&mut builders, v));
     });
 
-    let target_triple = TargetMachine::get_default_triple();
-    let target = Target::from_triple(&target_triple).unwrap();
-    let target_machine = target
-        .create_target_machine(
-            &target_triple,
-            &TargetMachine::get_host_cpu_name().to_string(),
-            &TargetMachine::get_host_cpu_features().to_string(),
-            OptimizationLevel::Aggressive,
-            RelocMode::PIC,
-            CodeModel::Default,
-        )
-        .unwrap();
-
-    builders.module.set_triple(&target_triple);
-    builders
-        .module
-        .set_data_layout(&target_machine.get_target_data().get_data_layout());
-
-    let passes = "default<O3>";
-    let pass_builder_options = PassBuilderOptions::create();
-    pass_builder_options.set_loop_interleaving(true);
-    pass_builder_options.set_loop_vectorization(true);
-    pass_builder_options.set_loop_slp_vectorization(true);
-    pass_builder_options.set_loop_unrolling(true);
-    pass_builder_options.set_forget_all_scev_in_loop_unroll(true);
-    builders
-        .module
-        .run_passes(passes, &target_machine, pass_builder_options)
-        .unwrap();
-    builders.module.verify().unwrap_or_else(|err| {
-        panic!(
-            "generated module is invalid:\n{err}\n{}",
-            builders.module.to_string()
-        )
-    });
-    run_threads_with_jit(&builders, &thread_functions);
-}
-
-fn run_threads_with_jit(builders: &Builders<'_>, thread_functions: &[String]) {
-    let execution_engine = builders
-        .module
-        .create_jit_execution_engine(OptimizationLevel::None)
-        .unwrap();
-    for function_name in thread_functions.iter() {
-        let mut state = JitSpriteState::default();
-        let function: JitFunction<'_, ThreadThunk> =
-            unsafe { execution_engine.get_function(function_name) }
-                .unwrap_or_else(|err| panic!("failed to find JIT function {function_name}: {err}"));
-
-        unsafe {
-            function.call(&mut state);
-        }
-
-        println!("{:?}", state)
-    }
+    jit::run(&builders, &thread_functions);
 }
 
 pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread) -> String {

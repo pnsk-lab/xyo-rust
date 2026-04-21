@@ -1082,6 +1082,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "inkwell",
+ "libc",
  "num-bigint",
  "rand 0.10.0",
  "ryu-js",

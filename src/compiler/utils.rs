@@ -26,7 +26,7 @@ pub fn is_num<'ctx>(
             let builder = &builders.builder;
 
             let floor = builder
-                .build_call(builders.functions.llvm_floor, &[v.into()], "floor")
+                .build_call(builders.functions.math_floor, &[v.into()], "floor")
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
@@ -90,11 +90,7 @@ pub fn scratch_return_to_number<'ctx>(
             let p = func.get_first_param().unwrap().into_pointer_value();
             builders
                 .builder
-                .build_call(
-                    builders.functions.str_to_num,
-                    &[(*v).into()],
-                    "xyo_atod",
-                )
+                .build_call(builders.functions.str_to_num, &[(*v).into()], "xyo_atod")
                 .unwrap()
                 .try_as_basic_value()
                 .basic()

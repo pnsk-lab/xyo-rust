@@ -1,5 +1,6 @@
 mod cli;
 mod compiler;
+mod jit;
 mod parser;
 mod sb3;
 mod types;
@@ -25,7 +26,7 @@ fn run(cli: Cli) -> Result<(), ()> {
         Command::Run { path } => {
             let project = handle_error(sb3::read_sb3(&path), "Load error")?;
             let threads = handle_error(project_parser(&project), "Parse error")?;
-            let ir = compiler(&project, &threads);
+            compiler(&project, &threads);
         }
         Command::Stats { path } => {
             let s = Instant::now();

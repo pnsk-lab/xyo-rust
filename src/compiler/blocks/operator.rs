@@ -240,7 +240,7 @@ pub fn parse_operator_expr<'ctx>(
 
                 let floor = builders
                     .builder
-                    .build_call(builders.functions.llvm_floor, &[scaled.into()], "floor_res")
+                    .build_call(builders.functions.math_floor, &[scaled.into()], "floor_res")
                     .unwrap()
                     .try_as_basic_value()
                     .basic()
@@ -523,7 +523,7 @@ pub fn parse_operator_expr<'ctx>(
                         builders
                             .builder
                             .build_call(
-                                builders.functions.llvm_floor,
+                                builders.functions.math_floor,
                                 &[builders
                                     .builder
                                     .build_float_add(
@@ -575,20 +575,20 @@ pub fn parse_operator_expr<'ctx>(
                 .builder
                 .build_call(
                     match op {
-                        CalcOp::Abs => builders.functions.llvm_abs,
-                        CalcOp::Floor => builders.functions.llvm_floor,
-                        CalcOp::Ceil => builders.functions.llvm_ceil,
-                        CalcOp::Sqrt => builders.functions.llvm_sqrt,
-                        CalcOp::Sin => builders.functions.llvm_sin,
-                        CalcOp::Cos => builders.functions.llvm_cos,
-                        CalcOp::Tan => builders.functions.llvm_tan,
-                        CalcOp::Asin => builders.functions.llvm_asin,
-                        CalcOp::Acos => builders.functions.llvm_acos,
-                        CalcOp::Atan => builders.functions.llvm_atan,
-                        CalcOp::LogE => builders.functions.llvm_loge,
-                        CalcOp::Log10 => builders.functions.llvm_log10,
-                        CalcOp::PowE => builders.functions.llvm_exp,
-                        CalcOp::Pow10 => builders.functions.llvm_pow10,
+                        CalcOp::Abs => builders.functions.math_abs,
+                        CalcOp::Floor => builders.functions.math_floor,
+                        CalcOp::Ceil => builders.functions.math_ceil,
+                        CalcOp::Sqrt => builders.functions.math_sqrt,
+                        CalcOp::Sin => builders.functions.math_sin,
+                        CalcOp::Cos => builders.functions.math_cos,
+                        CalcOp::Tan => builders.functions.math_tan,
+                        CalcOp::Asin => builders.functions.math_asin,
+                        CalcOp::Acos => builders.functions.math_acos,
+                        CalcOp::Atan => builders.functions.math_atan,
+                        CalcOp::LogE => builders.functions.math_loge,
+                        CalcOp::Log10 => builders.functions.math_log10,
+                        CalcOp::PowE => builders.functions.math_exp,
+                        CalcOp::Pow10 => builders.functions.math_pow10,
                     },
                     &[parsed_target.into()],
                     "float_calc",
@@ -655,7 +655,7 @@ pub fn parse_operator_expr<'ctx>(
                         builders
                             .builder
                             .build_call(
-                                builders.functions.llvm_floor,
+                                builders.functions.math_floor,
                                 &[builders
                                     .builder
                                     .build_float_add(
