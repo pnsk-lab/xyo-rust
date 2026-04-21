@@ -10,7 +10,7 @@
 
 [Scratch](https://scratch.mit.edu/) は MIT メディアラボが開発したビジュアルプログラミング環境です。`.sb3` ファイルは ZIP アーカイブで、内部の `project.json` にすべてのブロック・スプライト・変数などのメタデータが JSON 形式で格納されています。
 
-`xyo-rust` はこの `project.json` を Rust の型として読み込み、hat block（「緑の旗が押されたとき」など）を起点にスクリプトを解析して LLVM IR へ変換します。
+`xyo-rust` はこの `project.json` を Rust の型として読み込み、hat block（「緑の旗が押されたとき」など）を起点にスクリプトを解析して LLVM IR を生成し、JIT で動かします。
 
 ## 処理パイプライン
 
@@ -31,12 +31,13 @@
   各ブロック → Stmt / Expr (AST)
       │
       ▼
-[IR 生成]  src/compiler/
+[IR 生成 + JIT 実行]  src/compiler/
   Thread → LLVM 関数
   最適化パス (O3) を適用
+  JIT で各スレッドを実行し、状態を標準出力へ表示
       │
       ▼
-LLVM IR テキスト (標準出力)
+実行結果 (標準出力)
 ```
 
 ## 現在できること
@@ -46,7 +47,7 @@ LLVM IR テキスト (標準出力)
 | `project.json` を取り出して表示する | `json` | ✅ |
 | ブロック数・使用 opcode を確認する | `stats` | ✅ |
 | hat block からスレッドを抽出する | `run` | ✅ |
-| 動き系命令・演算子を LLVM IR へ変換する | `run` | 🚧 一部 |
+| 動き系命令・演算子を LLVM IR へ変換し、JIT で実行する | `run` | 🚧 一部 |
 | JSON パースエラー時の位置情報・コンテキスト表示 | — | ✅ |
 | 完全な Scratch 互換実行 | — | ❌ |
 
@@ -124,13 +125,17 @@ cargo run -- json <path-to-project.sb3>
 cargo run -- json my_project.sb3 | jq '[.targets[].blocks[].opcode] | unique | sort'
 ```
 
-### 解析と IR 生成を試す
+### 解析と JIT 実行を試す
 
 ```bash
 cargo run -- run <path-to-project.sb3>
 ```
 
-`run` は現状もっとも実験的なコマンドです。動き系命令と演算子のみを含むシンプルなプロジェクトから試すことを推奨します。成功時は LLVM IR テキストが出力されます。
+`run` は現状もっとも実験的なコマンドです。動き系命令と演算子のみを含むシンプルなプロジェクトから試すことを推奨します。成功時は各スレッドの実行後状態が標準出力に表示されます。
+
+```text
+JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
+```
 
 ## 入力ファイルについて
 

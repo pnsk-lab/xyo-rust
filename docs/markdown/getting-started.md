@@ -128,6 +128,7 @@ cargo test
 ```
 
 テストは `tests/template_cli.rs` に CLI の動作テストが含まれています。
+現時点では `cargo test` がそのままビルド確認と smoke test の入口です。必要になったら `tests/` 配下に fixture を足して広げていくのがよさそうです。
 
 ヘルプだけ確認したい場合は次でも十分です。
 
@@ -192,7 +193,7 @@ Block Number: 42
 Using Op Codes: ["motion_movesteps", "motion_turnright", "looks_say", "event_whenflagclicked"]
 ```
 
-### IR 生成経路を試したい場合
+### JIT 実行経路を試したい場合
 
 ```bash
 cargo run -- run <path-to-project.sb3>
@@ -202,19 +203,10 @@ cargo run -- run <path-to-project.sb3>
 > `run` はもっとも実験的なコマンドです。入力によっては未実装の opcode や IR 変換で停止することがあります。
 > 移動命令と演算子のみを含むシンプルなプロジェクトから試すことを推奨します。
 
-成功時はターミナルに LLVM IR テキストが出力されます。出力例:
+成功時はターミナルに各スレッドの実行後状態が出力されます。出力例:
 
-```llvm
-; ModuleID = 'xyo'
-source_filename = "xyo"
-target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-unknown-linux-gnu"
-
-define void @thread_0(ptr %0) {
-entry:
-  ; ... スレッドの IR 命令列
-  ret void
-}
+```text
+JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
 ```
 
 ## エラーの見方

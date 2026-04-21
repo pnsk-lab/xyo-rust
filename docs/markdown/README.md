@@ -3,7 +3,7 @@
 [![CI](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml)
 [latest release](https://github.com/pnsk-lab/xyo-rust/releases/latest)
 
-Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト `xyo-rust` の手引きです。
+Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR を生成して JIT で動かす実験プロジェクト `xyo-rust` の手引きです。
 
 ## このドキュメントについて
 
@@ -53,7 +53,7 @@ Scratch プロジェクトは `.sb3` という拡張子で保存されます。`
 
 - Scratch プロジェクトを **静的解析** できる内部表現へ変換する
 - hat block からスレッドを抽出し、実行単位を定義する
-- LLVM IR を生成し、将来的なネイティブ実行につなげる
+- LLVM IR を生成し、現在は JIT 実行で挙動確認を行う
 - SB3 解析系の **検証用ツールチェーン** を整える
 
 完全な Scratch 互換ランタイムを作るのではなく、「Scratch プロジェクトをどこまで静的に処理できるか」を探ることが現在の中心です。
@@ -66,11 +66,11 @@ Scratch プロジェクトは `.sb3` という拡張子で保存されます。`
 | 2 | `project.json` を Scratch プロジェクト構造へ変換する | ✅ 完成 |
 | 3 | hat block からスレッドを解析する | ✅ 完成 |
 | 4 | `Stmt` / `Expr` に変換する（パーサー） | ✅ ほぼ完成（86 opcode） |
-| 5 | 一部の式 / 文を LLVM IR へ変換する | 🚧 一部実装（動き系 + 演算子） |
+| 5 | 一部の式 / 文を LLVM IR へ変換し、JIT で実行する | 🚧 一部実装（動き系 + 演算子） |
 | 6 | 生成した IR から実行可能ファイルを作る | ❌ 未実装 |
 
 ```warn
-完全な Scratch 実行互換はまだ未実装です。特に `run` サブコマンドは実験段階で、入力によっては未実装分岐に到達します。
+完全な Scratch 実行互換はまだ未実装です。特に `run` サブコマンドは実験段階で、入力によっては未実装分岐に到達します。成功時は各スレッドの状態が標準出力に表示されます。
 ```
 
 ## 処理の流れ（概要）
@@ -98,7 +98,8 @@ IR 生成（src/compiler/）
    Thread → LLVM 関数
    Stmt/Expr → LLVM IR 命令列
    最適化パス（O3）を適用
-   → 標準出力へ IR テキストを出力
+   JIT で各スレッドを実行
+   → 標準出力へ実行結果を表示
 ```
 
 詳細は [アーキテクチャ](./architecture.md) を参照してください。
