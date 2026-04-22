@@ -59,6 +59,12 @@ const LIBRARIES: &[LibrarySpec] = &[
 #[cfg(target_os = "windows")]
 const LIBRARIES: &[LibrarySpec] = &[
     LibrarySpec {
+        display_name: "kernel32.dll",
+        prefer_bundled: false,
+        exact_names: &["kernel32.dll"],
+        bundled_prefixes: &[],
+    },
+    LibrarySpec {
         display_name: "ucrtbase.dll",
         prefer_bundled: false,
         exact_names: &["ucrtbase.dll"],
