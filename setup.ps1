@@ -75,6 +75,19 @@ function Ensure-Vcpkg {
     return [string]$vcpkgExe
 }
 
+function Export-GitHubEnv {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
+        return
+    }
+
+    "$Name=$Value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+}
+
 $triplet = Get-DefaultTriplet -RunnerArch $env:RUNNER_ARCH -ExplicitTriplet $VcpkgTriplet
 $vcpkgRoot = Get-VcpkgRoot
 $vcpkgExe = Join-Path $vcpkgRoot 'vcpkg.exe'
@@ -100,11 +113,17 @@ if (-not (Test-Path $icuInstallRoot)) {
 
 $env:XYO_ICU_PREBUILT_DIR = $icuInstallRoot
 $env:XYO_ICU_NATIVE_LIB_DIR = Join-Path $icuInstallRoot 'lib'
+$env:XYO_ICU_RUNTIME_DIR = $icuInstallRoot
+
+Export-GitHubEnv -Name 'XYO_ICU_PREBUILT_DIR' -Value $env:XYO_ICU_PREBUILT_DIR
+Export-GitHubEnv -Name 'XYO_ICU_NATIVE_LIB_DIR' -Value $env:XYO_ICU_NATIVE_LIB_DIR
+Export-GitHubEnv -Name 'XYO_ICU_RUNTIME_DIR' -Value $env:XYO_ICU_RUNTIME_DIR
 
 Write-Host "using VCPKG_ROOT=$vcpkgRoot"
 Write-Host "using VCPKG_TRIPLET=$triplet"
 Write-Host "using XYO_ICU_PREBUILT_DIR=$env:XYO_ICU_PREBUILT_DIR"
 Write-Host "using XYO_ICU_NATIVE_LIB_DIR=$env:XYO_ICU_NATIVE_LIB_DIR"
+Write-Host "using XYO_ICU_RUNTIME_DIR=$env:XYO_ICU_RUNTIME_DIR"
 
 Push-Location $rootDir
 try {

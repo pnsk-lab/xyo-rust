@@ -4,6 +4,7 @@ use inkwell::{
     AddressSpace,
     builder::Builder,
     context::Context,
+    intrinsics::Intrinsic,
     memory_buffer::MemoryBuffer,
     module::Module,
     types::StructType,
@@ -12,7 +13,6 @@ use inkwell::{
 
 use crate::{
     compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
-    jit::math_host_addresses,
     types::{ScratchProject, StageOrSprite},
 };
 
@@ -54,6 +54,7 @@ impl From<StringKeys> for u32 {
 }
 
 #[repr(C)]
+#[derive(Default, Debug)]
 pub struct SpriteStruct {
     pub sprite_x: f64,
     pub sprite_y: f64,
@@ -100,21 +101,22 @@ pub struct Builders<'ctx> {
     pub rolling_hash_base_2: u64,
     pub string_literals: HashMap<String, PointerValue<'ctx>>,
 }
+#[derive(Debug)]
 pub struct Functions<'ctx> {
-    pub math_abs: FunctionValue<'ctx>,
-    pub math_floor: FunctionValue<'ctx>,
-    pub math_ceil: FunctionValue<'ctx>,
-    pub math_sqrt: FunctionValue<'ctx>,
-    pub math_sin: FunctionValue<'ctx>,
-    pub math_cos: FunctionValue<'ctx>,
-    pub math_tan: FunctionValue<'ctx>,
-    pub math_asin: FunctionValue<'ctx>,
-    pub math_acos: FunctionValue<'ctx>,
-    pub math_atan: FunctionValue<'ctx>,
-    pub math_loge: FunctionValue<'ctx>,
-    pub math_log10: FunctionValue<'ctx>,
-    pub math_exp: FunctionValue<'ctx>,
-    pub math_pow10: FunctionValue<'ctx>,
+    pub llvm_abs: FunctionValue<'ctx>,
+    pub llvm_floor: FunctionValue<'ctx>,
+    pub llvm_ceil: FunctionValue<'ctx>,
+    pub llvm_sqrt: FunctionValue<'ctx>,
+    pub llvm_sin: FunctionValue<'ctx>,
+    pub llvm_cos: FunctionValue<'ctx>,
+    pub llvm_tan: FunctionValue<'ctx>,
+    pub llvm_asin: FunctionValue<'ctx>,
+    pub llvm_acos: FunctionValue<'ctx>,
+    pub llvm_atan: FunctionValue<'ctx>,
+    pub llvm_loge: FunctionValue<'ctx>,
+    pub llvm_log10: FunctionValue<'ctx>,
+    pub llvm_exp: FunctionValue<'ctx>,
+    pub llvm_pow10: FunctionValue<'ctx>,
     pub str_to_num: FunctionValue<'ctx>,
     pub num_to_str: FunctionValue<'ctx>,
     pub str_cmp_gt: FunctionValue<'ctx>,
@@ -129,35 +131,17 @@ pub struct VariableInfo {
     variable_idx: usize,
 }
 
-fn add_unary_f64_to_f64<'a>(
+fn get_intrinsic_f64_to_f64<'a>(
     module: &Module<'a>,
     context: &'a Context,
     name: &str,
-    host_address: usize,
 ) -> FunctionValue<'a> {
-    let fn_type = context
-        .f64_type()
-        .fn_type(&[context.f64_type().into()], false);
-    let function = module.add_function(name, fn_type, None);
-    let entry = context.append_basic_block(function, "entry");
-    let builder = context.create_builder();
-    let function_pointer = context
-        .i64_type()
-        .const_int(host_address as u64, false)
-        .const_to_pointer(context.ptr_type(AddressSpace::default()));
-
-    builder.position_at_end(entry);
-
-    let argument = function.get_first_param().unwrap();
-    let result = builder
-        .build_indirect_call(fn_type, function_pointer, &[argument.into()], "host_call")
-        .unwrap()
-        .try_as_basic_value()
-        .unwrap_basic()
-        .into_float_value();
-    builder.build_return(Some(&result)).unwrap();
-
-    function
+    let intrinsic = Intrinsic::find(name)
+        .unwrap_or_else(|| panic!("failed to find LLVM intrinsic declaration for {name}"));
+    let intrisic_func = intrinsic
+        .get_declaration(module, &[context.f64_type().into()])
+        .unwrap_or_else(|| panic!("failed to declare LLVM intrinsic {name} for f64"));
+    intrisic_func
 }
 
 impl<'ctx> Builders<'ctx> {
@@ -168,45 +152,29 @@ impl<'ctx> Builders<'ctx> {
         let f64_type = context.f64_type();
         let i64_type = context.i64_type();
         let i1_type = context.bool_type();
-        let str_to_num_func_type = f64_type.fn_type(&[ptr_type.into()], false);
-        let str_is_num_func_type = i1_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
-        let num_to_str_func_type = ptr_type.fn_type(
-            &[
-                f64_type.into(),
-                i64_type.into(),
-                i64_type.into(),
-                i64_type.into(),
-                i64_type.into(),
-            ],
-            false,
-        );
-        let str_cmp_gt = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-        let str_cmp_lt = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-        let str_cmp_eq = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-        let str_to_bool = i1_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-        let host_math = math_host_addresses();
+        Self::link_generated_bitcodes(&module, context);
         let functions = Functions {
-            math_floor: add_unary_f64_to_f64(&module, &context, "xyo_floor", host_math.floor),
-            math_abs: add_unary_f64_to_f64(&module, &context, "xyo_abs", host_math.abs),
-            math_ceil: add_unary_f64_to_f64(&module, &context, "xyo_ceil", host_math.ceil),
-            math_sqrt: add_unary_f64_to_f64(&module, &context, "xyo_sqrt", host_math.sqrt),
-            math_sin: add_unary_f64_to_f64(&module, &context, "xyo_sin", host_math.sin),
-            math_cos: add_unary_f64_to_f64(&module, &context, "xyo_cos", host_math.cos),
-            math_tan: add_unary_f64_to_f64(&module, &context, "xyo_tan", host_math.tan),
-            math_asin: add_unary_f64_to_f64(&module, &context, "xyo_asin", host_math.asin),
-            math_acos: add_unary_f64_to_f64(&module, &context, "xyo_acos", host_math.acos),
-            math_atan: add_unary_f64_to_f64(&module, &context, "xyo_atan", host_math.atan),
-            math_loge: add_unary_f64_to_f64(&module, &context, "xyo_loge", host_math.loge),
-            math_log10: add_unary_f64_to_f64(&module, &context, "xyo_log10", host_math.log10),
-            math_exp: add_unary_f64_to_f64(&module, &context, "xyo_exp", host_math.exp),
-            math_pow10: add_unary_f64_to_f64(&module, &context, "xyo_pow10", host_math.pow10),
-            str_to_num: module.add_function("xyo_atod", str_to_num_func_type, None),
-            num_to_str: module.add_function("xyo_dtoa", num_to_str_func_type, None),
-            str_cmp_gt: module.add_function("xyo_str_cmp_gt", str_cmp_gt, None),
-            str_cmp_lt: module.add_function("xyo_str_cmp_lt", str_cmp_lt, None),
-            str_cmp_eq: module.add_function("xyo_str_cmp_eq", str_cmp_eq, None),
-            is_num: module.add_function("str_is_num", str_is_num_func_type, None),
-            str_to_bool: module.add_function("str_to_bool", str_to_bool, None),
+            llvm_floor: get_intrinsic_f64_to_f64(&module, &context, "llvm.floor"),
+            llvm_abs: get_intrinsic_f64_to_f64(&module, &context, "llvm.fabs"),
+            llvm_ceil: get_intrinsic_f64_to_f64(&module, &context, "llvm.ceil"),
+            llvm_sqrt: get_intrinsic_f64_to_f64(&module, &context, "llvm.sqrt"),
+            llvm_sin: get_intrinsic_f64_to_f64(&module, &context, "llvm.sin"),
+            llvm_cos: get_intrinsic_f64_to_f64(&module, &context, "llvm.cos"),
+            llvm_tan: get_intrinsic_f64_to_f64(&module, &context, "llvm.tan"),
+            llvm_asin: get_intrinsic_f64_to_f64(&module, &context, "llvm.asin"),
+            llvm_acos: get_intrinsic_f64_to_f64(&module, &context, "llvm.acos"),
+            llvm_atan: get_intrinsic_f64_to_f64(&module, &context, "llvm.atan"),
+            llvm_loge: get_intrinsic_f64_to_f64(&module, &context, "llvm.log"),
+            llvm_log10: get_intrinsic_f64_to_f64(&module, &context, "llvm.log10"),
+            llvm_exp: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp"),
+            llvm_pow10: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp10"),
+            str_to_num: module.get_function("xyo_atod").unwrap(),
+            num_to_str: module.get_function("xyo_dtoa").unwrap(),
+            str_cmp_gt: module.get_function("str_cmp_gt").unwrap(),
+            str_cmp_lt: module.get_function("str_cmp_lt").unwrap(),
+            str_cmp_eq: module.get_function("str_cmp_eq").unwrap(),
+            is_num: module.get_function("str_is_num").unwrap(),
+            str_to_bool: module.get_function("str_to_bool").unwrap(),
             rand: build_xor_shift_128_plus(&context, &module),
         };
         let hash_seed_1 = gen_nbit_prime(64);
@@ -219,7 +187,6 @@ impl<'ctx> Builders<'ctx> {
             global_variable_increment,
             local_variables_increments,
         ) = Self::create_variable_map(project);
-        Self::link_generated_bitcodes(&module, context);
         Self {
             context,
             module,

@@ -133,14 +133,40 @@ jobs:
               run: |
                   ./setup.sh --clean-icu
 
+            - name: Build bundled ICU runtime (Linux)
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  ./tools/build_icu_runtime.sh --clean
+
+            - name: Package release artifact (Linux)
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  ./tools/package_release_linux.sh
+
             - name: Setup and build (Windows)
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
                   ./setup.ps1 -CleanIcu -SkipCheck
 
-            - name: Upload artifact (Unix)
-              if: runner.os != 'Windows'
+            - name: Package release artifact (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  ./tools/package_release_windows.ps1
+
+            - name: Upload artifact (Linux)
+              if: runner.os == 'Linux'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: xyo-${{ matrix.label }}
+                  path: target/release/xyo-linux.tar.gz
+                  if-no-files-found: error
+
+            - name: Upload artifact (macOS)
+              if: runner.os == 'macOS'
               uses: actions/upload-artifact@v4
               with:
                   name: xyo-${{ matrix.label }}
@@ -152,7 +178,7 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: xyo-${{ matrix.label }}
-                  path: target/release/xyo.exe
+                  path: target/release/xyo-windows.zip
                   if-no-files-found: error
 
     release:
@@ -189,14 +215,14 @@ jobs:
 
             - name: Rename artifacts
               run: |
-                  mv ./artifacts/linux/xyo ./artifacts/xyo-linux
+                  mv ./artifacts/linux/xyo-linux.tar.gz ./artifacts/xyo-linux.tar.gz
                   mv ./artifacts/macos/xyo ./artifacts/xyo-macos
-                  mv ./artifacts/windows/xyo.exe ./artifacts/xyo-windows.exe
-                  mv ./artifacts/windows-arm64/xyo.exe ./artifacts/xyo-windows-arm64.exe
+                  mv ./artifacts/windows/xyo-windows.zip ./artifacts/xyo-windows.zip
+                  mv ./artifacts/windows-arm64/xyo-windows.zip ./artifacts/xyo-windows-arm64.zip
 
             - name: Create GitHub Release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   TAG_NAME=${GITHUB_REF#refs/tags/}
-                  gh release create "$TAG_NAME" ./artifacts/xyo-linux ./artifacts/xyo-macos ./artifacts/xyo-windows.exe ./artifacts/xyo-windows-arm64.exe --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
+                  gh release create "$TAG_NAME" ./artifacts/xyo-linux.tar.gz ./artifacts/xyo-macos ./artifacts/xyo-windows.zip ./artifacts/xyo-windows-arm64.zip --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"

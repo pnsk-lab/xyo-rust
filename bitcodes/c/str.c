@@ -3,10 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include <unicode/ucasemap.h>
-#include <unicode/uchar.h>
-#include <unicode/utf16.h>
-#include <unicode/ustring.h>
+#include "lib/icu/source/common/unicode/ucasemap.h"
+#include "lib/icu/source/common/unicode/uchar.h"
+#include "lib/icu/source/common/unicode/utf16.h"
+#include "lib/icu/source/common/unicode/ustring.h"
 
 struct xyo_string_struct
 {
@@ -18,35 +18,36 @@ struct xyo_string_struct
 
 bool str_to_bool(const struct xyo_string_struct *state, const struct xyo_string_struct *input)
 {
-    (void)state;
+    if (input == NULL || input->data == NULL)
+        return false;
 
+    const UChar *s = (const UChar *)input->data;
+    int32_t len = (int32_t)input->length;
+
+    while (len > 0 && u_isUWhiteSpace(s[0]))
+    {
+        s++;
+        len--;
+    }
+    while (len > 0 && u_isUWhiteSpace(s[len - 1]))
+    {
+        len--;
+    }
+
+    if (len == 0)
+        return false;
+
+    if (len == 1 && s[0] == (UChar)'0')
+        return false;
+
+    static const UChar false_word[] = {'f', 'a', 'l', 's', 'e', 0};
     UErrorCode status = U_ZERO_ERROR;
-    UCaseMap *csm = ucasemap_open("", 0, &status);
-
-    const UChar *src = (const UChar *)input->data;
-    UChar dest[32];
-    int32_t len = u_strToLower(
-        dest,
-        32,
-        src,
-        input->length,
-        NULL,
-        &status);
-
-    ucasemap_close(csm);
-
-    if (U_FAILURE(status))
+    UChar lowered[16];
+    int32_t out_len = u_strToLower(lowered, 16, s, len, "", &status);
+    if (U_FAILURE(status) || out_len != 5)
         return true;
 
-    char out[64];
-    u_austrcpy(out, dest);
-    out[len] = '\0';
-
-    if (out[0] == '\0')
-        return false;
-    if (strcmp(out, "0") == 0)
-        return false;
-    if (strcmp(out, "false") == 0)
+    if (u_strncmp(lowered, false_word, 5) == 0)
         return false;
 
     return true;
@@ -98,5 +99,6 @@ bool str_cmp_lt(const struct xyo_string_struct *a, const struct xyo_string_struc
 
 bool str_cmp_eq(const struct xyo_string_struct *a, const struct xyo_string_struct *b)
 {
+    // printf("cmp_eq");
     return str_cmp_lowered(a, b) == 0;
 }

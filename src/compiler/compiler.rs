@@ -25,6 +25,8 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
         thread_functions.push(generate_thread_ir(&mut builders, v));
     });
 
+    builders.module.print_to_file("path.ll").unwrap();
+
     jit::run(&builders, &thread_functions);
 }
 

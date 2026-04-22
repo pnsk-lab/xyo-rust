@@ -26,7 +26,7 @@ pub fn is_num<'ctx>(
             let builder = &builders.builder;
 
             let floor = builder
-                .build_call(builders.functions.math_floor, &[v.into()], "floor")
+                .build_call(builders.functions.llvm_floor, &[v.into()], "floor")
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
