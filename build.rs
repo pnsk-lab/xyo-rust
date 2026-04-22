@@ -10,6 +10,11 @@ fn main() {
     let input_dir = bitcodes_dir.join("c");
     let output_bc_dir = bitcodes_dir.join("bc");
     let output_ll_dir = bitcodes_dir.join("ll");
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+
+    println!("cargo:rerun-if-env-changed=CLANG");
+    println!("cargo:rerun-if-env-changed=LLVM_CONFIG_PATH");
+    println!("cargo:rerun-if-changed={}", input_dir.display());
 
     let clang = resolve_clang().unwrap_or_else(|| {
         panic!(
@@ -23,6 +28,8 @@ fn main() {
     for source in top_level_sources(&input_dir) {
         compile_source(&clang, &input_dir, &output_bc_dir, &output_ll_dir, &source);
     }
+
+    write_embedded_bitcodes_rs(&output_bc_dir, &out_dir.join("embedded_bitcodes.rs"));
 }
 
 fn top_level_sources(dir: &Path) -> Vec<PathBuf> {
@@ -36,7 +43,36 @@ fn top_level_sources(dir: &Path) -> Vec<PathBuf> {
         }
     }
 
+    sources.sort();
     sources
+}
+
+fn write_embedded_bitcodes_rs(output_bc_dir: &Path, destination: &Path) {
+    let mut bitcode_paths = fs::read_dir(output_bc_dir)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", output_bc_dir.display()))
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            (path.extension() == Some(OsStr::new("bc"))).then_some(path)
+        })
+        .collect::<Vec<_>>();
+
+    bitcode_paths.sort();
+
+    let mut contents = String::from("pub static EMBEDDED_BITCODES: &[(&str, &[u8])] = &[\n");
+    for path in bitcode_paths {
+        let name = path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or_else(|| panic!("invalid bitcode file name: {}", path.display()));
+        let include_path = path.display().to_string();
+        contents.push_str(&format!(
+            "    ({name:?}, include_bytes!({include_path:?})),\n"
+        ));
+    }
+    contents.push_str("];\n");
+
+    fs::write(destination, contents)
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", destination.display()));
 }
 
 fn resolve_clang() -> Option<PathBuf> {
