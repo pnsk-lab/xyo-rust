@@ -31,11 +31,11 @@ target triple = "x86_64-pc-linux-gnu"
 @switch.table.unicode_from_utf8 = private unnamed_addr constant [62 x i32] [i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 3, i32 3, i32 3, i32 3, i32 3, i32 3, i32 3, i32 3, i32 4, i32 4, i32 4, i32 4, i32 5, i32 5], align 4
 @str_to_bool.false_word = internal constant [6 x i16] [i16 102, i16 97, i16 108, i16 115, i16 101, i16 0], align 2
 @.str = private unnamed_addr constant [1 x i8] zeroinitializer, align 1
-@xorshift128_state_0 = global i64 3770411098252876512
-@xorshift128_state_1 = global i64 2895387529709324227
-@string_struct = global { i64, ptr, i64, i64 } { i64 2, ptr @string_data, i64 6108732, i64 6918762 }
+@xorshift128_state_0 = global i64 -5454172727570165553
+@xorshift128_state_1 = global i64 3779657903339916629
+@string_struct = global { i64, ptr, i64, i64 } { i64 2, ptr @string_data, i64 5427402, i64 4396112 }
 @string_data = global [2 x i16] [i16 65, i16 97]
-@string_struct.1 = global { i64, ptr, i64, i64 } { i64 2, ptr @string_data.2, i64 9116028, i64 10324842 }
+@string_struct.1 = global { i64, ptr, i64, i64 } { i64 2, ptr @string_data.2, i64 8099274, i64 6560272 }
 @string_data.2 = global [2 x i16] [i16 97, i16 65]
 @string_struct.3 = global { i64, ptr, i64, i64 } { i64 1, ptr @string_data.4, i64 48, i64 48 }
 @string_data.4 = global [1 x i16] [i16 48]
@@ -7159,10 +7159,10 @@ define dso_local void @xyo_sleep_until_ns(i64 noundef %0) local_unnamed_addr #5 
   %2 = alloca %struct.timespec, align 8
   call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %2) #22
   %3 = sdiv i64 %0, 1000000000
-  store i64 %3, ptr %2, align 8, !tbaa !123
   %4 = srem i64 %0, 1000000000
+  store i64 %3, ptr %2, align 8
   %5 = getelementptr inbounds nuw i8, ptr %2, i64 8
-  store i64 %4, ptr %5, align 8, !tbaa !125
+  store i64 %4, ptr %5, align 8
   br label %6
 
 6:                                                ; preds = %6, %1
