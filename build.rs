@@ -11,10 +11,16 @@ fn main() {
     let output_bc_dir = bitcodes_dir.join("bc");
     let output_ll_dir = bitcodes_dir.join("ll");
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let icu_include_dirs = resolve_icu_include_dirs(&input_dir);
 
     println!("cargo:rerun-if-env-changed=CLANG");
     println!("cargo:rerun-if-env-changed=LLVM_CONFIG_PATH");
+    println!("cargo:rerun-if-env-changed=XYO_ICU_ROOT");
+    println!("cargo:rerun-if-env-changed=XYO_ICU_PREBUILT_DIR");
     println!("cargo:rerun-if-changed={}", input_dir.display());
+    for include_dir in &icu_include_dirs {
+        println!("cargo:rerun-if-changed={}", include_dir.display());
+    }
 
     let clang = resolve_clang().unwrap_or_else(|| {
         panic!(
@@ -26,7 +32,14 @@ fn main() {
     fs::create_dir_all(&output_ll_dir).unwrap();
 
     for source in top_level_sources(&input_dir) {
-        compile_source(&clang, &input_dir, &output_bc_dir, &output_ll_dir, &source);
+        compile_source(
+            &clang,
+            &input_dir,
+            &output_bc_dir,
+            &output_ll_dir,
+            &icu_include_dirs,
+            &source,
+        );
     }
 
     write_embedded_bitcodes_rs(&output_bc_dir, &out_dir.join("embedded_bitcodes.rs"));
@@ -73,6 +86,50 @@ fn write_embedded_bitcodes_rs(output_bc_dir: &Path, destination: &Path) {
 
     fs::write(destination, contents)
         .unwrap_or_else(|err| panic!("failed to write {}: {err}", destination.display()));
+}
+
+fn resolve_icu_include_dirs(input_dir: &Path) -> Vec<PathBuf> {
+    let mut include_dirs = Vec::new();
+
+    if let Ok(prebuilt_dir) = env::var("XYO_ICU_PREBUILT_DIR") {
+        let include_dir = PathBuf::from(prebuilt_dir).join("include");
+        if include_dir.join("unicode").join("ucasemap.h").is_file() {
+            include_dirs.push(include_dir);
+        }
+    }
+
+    if let Some(icu_root) = resolve_icu_root(input_dir) {
+        let include_dir = icu_root.join("source").join("common");
+        if include_dir.join("unicode").join("ucasemap.h").is_file()
+            && !include_dirs.iter().any(|existing| existing == &include_dir)
+        {
+            include_dirs.push(include_dir);
+        }
+    }
+
+    if include_dirs.is_empty() {
+        panic!(
+            "ICU headers not found; set XYO_ICU_PREBUILT_DIR to a prebuilt ICU install or XYO_ICU_ROOT to an ICU source tree"
+        );
+    }
+
+    include_dirs
+}
+
+fn resolve_icu_root(input_dir: &Path) -> Option<PathBuf> {
+    if let Ok(root) = env::var("XYO_ICU_ROOT") {
+        let path = PathBuf::from(root);
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+
+    let default_root = input_dir.join("lib").join("icu");
+    if default_root.is_dir() {
+        Some(default_root)
+    } else {
+        None
+    }
 }
 
 fn resolve_clang() -> Option<PathBuf> {
@@ -135,6 +192,7 @@ fn compile_source(
     input_dir: &Path,
     output_bc_dir: &Path,
     output_ll_dir: &Path,
+    icu_include_dirs: &[PathBuf],
     source: &Path,
 ) {
     let stem = source
@@ -144,35 +202,38 @@ fn compile_source(
 
     let bc_output = output_bc_dir.join(format!("{stem}.bc"));
     let ll_output = output_ll_dir.join(format!("{stem}.ll"));
-    let include_dir = input_dir.join("lib");
+    let mut include_args = vec![
+        OsStr::new("-I").to_os_string(),
+        input_dir.join("lib").into_os_string(),
+    ];
+    for include_dir in icu_include_dirs {
+        include_args.push(OsStr::new("-I").to_os_string());
+        include_args.push(include_dir.as_os_str().to_os_string());
+    }
 
-    run_clang(
-        clang,
-        [
-            "-emit-llvm",
-            "-c",
-            "-O3",
-            "-I",
-            include_dir.to_str().unwrap(),
-            source.to_str().unwrap(),
-            "-o",
-            bc_output.to_str().unwrap(),
-        ],
-    );
+    let mut bc_args = vec![
+        OsStr::new("-emit-llvm").to_os_string(),
+        OsStr::new("-c").to_os_string(),
+        OsStr::new("-O3").to_os_string(),
+    ];
+    bc_args.extend(include_args.iter().cloned());
+    bc_args.push(source.as_os_str().to_os_string());
+    bc_args.push(OsStr::new("-o").to_os_string());
+    bc_args.push(bc_output.into_os_string());
 
-    run_clang(
-        clang,
-        [
-            "-S",
-            "-emit-llvm",
-            "-O3",
-            "-I",
-            include_dir.to_str().unwrap(),
-            source.to_str().unwrap(),
-            "-o",
-            ll_output.to_str().unwrap(),
-        ],
-    );
+    run_clang(clang, bc_args);
+
+    let mut ll_args = vec![
+        OsStr::new("-S").to_os_string(),
+        OsStr::new("-emit-llvm").to_os_string(),
+        OsStr::new("-O3").to_os_string(),
+    ];
+    ll_args.extend(include_args);
+    ll_args.push(source.as_os_str().to_os_string());
+    ll_args.push(OsStr::new("-o").to_os_string());
+    ll_args.push(ll_output.into_os_string());
+
+    run_clang(clang, ll_args);
 }
 
 fn run_clang<I, S>(clang: &Path, args: I)

@@ -3,10 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "lib/icu/source/common/unicode/ucasemap.h"
-#include "lib/icu/source/common/unicode/uchar.h"
-#include "lib/icu/source/common/unicode/utf16.h"
-#include "lib/icu/source/common/unicode/ustring.h"
+#include "unicode/ucasemap.h"
+#include "unicode/uchar.h"
+#include "unicode/utf16.h"
+#include "unicode/ustring.h"
 
 struct xyo_string_struct
 {
