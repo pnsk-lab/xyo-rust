@@ -55,10 +55,38 @@ impl From<StringKeys> for u32 {
 
 #[repr(C)]
 #[derive(Default, Debug)]
+pub struct CostumeInfo {
+    pub width: f64,
+    pub height: f64,
+}
+pub fn create_costume_struct_type<'a>(context: &'a Context) -> StructType<'a> {
+    context.struct_type(
+        &[context.f64_type().into(), context.f64_type().into()],
+        false,
+    )
+}
+pub enum CostumeInfoKeys {
+    Width,
+    Height,
+}
+impl From<CostumeInfoKeys> for u32 {
+    fn from(field: CostumeInfoKeys) -> Self {
+        match field {
+            CostumeInfoKeys::Width => 0,
+            CostumeInfoKeys::Height => 1,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Default, Debug)]
 pub struct SpriteStruct {
     pub sprite_x: f64,
     pub sprite_y: f64,
     pub sprite_rotate: f64,
+    pub sprite_size: f64,
+    pub sprite_costume_id: i64,
+    pub sprite_costumes: [CostumeInfo; 0],
 }
 pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
     context.struct_type(
@@ -66,6 +94,8 @@ pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
             context.f64_type().into(),
             context.f64_type().into(),
             context.f64_type().into(),
+            context.f64_type().into(),
+            context.i64_type().into(),
         ],
         false,
     )
@@ -74,6 +104,8 @@ pub enum SpriteKeys {
     SpriteX,
     SpriteY,
     SpriteRotate,
+    SpriteSize,
+    SpriteCostumeId,
 }
 impl From<SpriteKeys> for u32 {
     fn from(field: SpriteKeys) -> Self {
@@ -81,6 +113,8 @@ impl From<SpriteKeys> for u32 {
             SpriteKeys::SpriteX => 0,
             SpriteKeys::SpriteY => 1,
             SpriteKeys::SpriteRotate => 2,
+            SpriteKeys::SpriteSize => 3,
+            SpriteKeys::SpriteCostumeId => 4,
         }
     }
 }

@@ -9,7 +9,7 @@ pub fn parse_literal_expr<'ctx>(
     builders: &Builders<'ctx>,
     expr: &Literal,
     _function: &FunctionValue<'ctx>,
-    target_idx: usize,
+    _: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
         Literal::Number(v) => {
