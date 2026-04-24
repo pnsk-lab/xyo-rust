@@ -3,6 +3,8 @@ name: CI
 env:
     LLVM_VERSION: 21.1.8
     LLVM_CACHE_VERSION: v2
+    ICU_VERSION: 78.3
+    ICU_CACHE_VERSION: v1
 
 on:
     push:
@@ -34,6 +36,16 @@ jobs:
               with:
                   path: .llvm/${{ runner.os }}-${{ runner.arch }}
                   key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-x86-aarch64-riscv-wasm-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Cache ICU prebuilt
+              id: cache-icu-prebuilt
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      bitcodes/c/lib/icu
+                      bitcodes/c/lib/icu-prebuilt
+                      target/icu-prebuilt-build
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
             - name: Build LLVM 21.1.x
               if: steps.cache-llvm.outputs.cache-hit != 'true'
@@ -75,7 +87,11 @@ jobs:
             - name: Setup and build
               shell: bash
               run: |
-                  ./setup.sh --clean-icu
+                  if [[ "${{ steps.cache-icu-prebuilt.outputs.cache-hit }}" == "true" ]]; then
+                      ./setup.sh
+                  else
+                      ./setup.sh --clean-icu
+                  fi
 
             - name: Test
               run: cargo test --locked
