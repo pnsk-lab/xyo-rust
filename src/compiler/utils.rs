@@ -121,7 +121,29 @@ pub fn scratch_return_to_string<'ctx>(
             .builder
             .build_call(
                 builders.functions.num_to_str,
-                &[func.get_first_param().unwrap().into(), (*v).into()],
+                &[
+                    (*v).into(),
+                    builders
+                        .context
+                        .i64_type()
+                        .const_int(builders.rolling_hash_seed_1, false)
+                        .into(),
+                    builders
+                        .context
+                        .i64_type()
+                        .const_int(builders.rolling_hash_base_1, false)
+                        .into(),
+                    builders
+                        .context
+                        .i64_type()
+                        .const_int(builders.rolling_hash_seed_2, false)
+                        .into(),
+                    builders
+                        .context
+                        .i64_type()
+                        .const_int(builders.rolling_hash_base_2, false)
+                        .into(),
+                ],
                 "xyo_num_to_str",
             )
             .unwrap()

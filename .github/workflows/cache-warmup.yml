@@ -3,6 +3,8 @@ name: Cache Warmup
 env:
     LLVM_VERSION: 21.1.8
     LLVM_CACHE_VERSION: v2
+    ICU_VERSION: 78.3
+    ICU_CACHE_VERSION: v1
 
 on:
     schedule:
@@ -31,11 +33,13 @@ jobs:
                     - os: windows-latest
                       label: windows-latest-x64
                       cmake_arch: x64
+                      vcpkg_triplet: x64-windows
                       llvm_targets: X86;AArch64;WebAssembly
                       llvm_cache_targets: x86-aarch64-wasm
                     - os: windows-11-arm
                       label: windows-11-arm64
                       cmake_arch: ARM64
+                      vcpkg_triplet: arm64-windows
                       llvm_targets: X86;AArch64;RISCV;WebAssembly
                       llvm_cache_targets: x86-aarch64-riscv-wasm
 
@@ -52,6 +56,25 @@ jobs:
               with:
                   path: .llvm/${{ runner.os }}-${{ runner.arch }}
                   key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Cache ICU prebuilt (Unix)
+              if: runner.os != 'Windows'
+              id: cache-icu-prebuilt-unix
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      bitcodes/c/lib/icu
+                      bitcodes/c/lib/icu-prebuilt
+                      target/icu-prebuilt-build
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+
+            - name: Cache ICU prebuilt (Windows)
+              if: runner.os == 'Windows'
+              id: cache-icu-prebuilt-windows
+              uses: actions/cache@v4
+              with:
+                  path: ${{ runner.temp }}/vcpkg
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vcpkg_triplet }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
             - name: Build LLVM 21.1.x (Unix)
               if: runner.os != 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
@@ -112,3 +135,43 @@ jobs:
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
+
+            - name: Setup and build (Unix)
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  if [[ "${{ steps.cache-icu-prebuilt-unix.outputs.cache-hit }}" == "true" ]]; then
+                      ./setup.sh
+                  else
+                      ./setup.sh --clean-icu
+                  fi
+
+            - name: Cache ICU runtime (Linux)
+              if: runner.os == 'Linux'
+              id: cache-icu-runtime
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      target/icu-runtime
+                      target/icu-runtime-build
+                  key: icu-runtime-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+
+            - name: Build bundled ICU runtime (Linux)
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  if [[ "${{ steps.cache-icu-runtime.outputs.cache-hit }}" == "true" ]]; then
+                      ./tools/build_icu_runtime.sh
+                  else
+                      ./tools/build_icu_runtime.sh --clean
+                  fi
+
+            - name: Setup and build (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  if ("${{ steps.cache-icu-prebuilt-windows.outputs.cache-hit }}" -eq "true") {
+                    ./setup.ps1 -SkipCheck
+                  } else {
+                    ./setup.ps1 -CleanIcu -SkipCheck
+                  }

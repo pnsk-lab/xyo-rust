@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use inkwell::{
     AddressSpace,
+    attributes::{Attribute, AttributeLoc},
     builder::Builder,
     context::Context,
     intrinsics::Intrinsic,
@@ -86,7 +87,7 @@ pub struct SpriteStruct {
     pub sprite_rotate: f64,
     pub sprite_size: f64,
     pub sprite_costume_id: i64,
-    pub sprite_costumes: [CostumeInfo; 0],
+    pub sprite_costumes: *mut CostumeInfo,
 }
 pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
     context.struct_type(
@@ -96,6 +97,7 @@ pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
             context.f64_type().into(),
             context.f64_type().into(),
             context.i64_type().into(),
+            context.ptr_type(AddressSpace::default()).into(),
         ],
         false,
     )
@@ -106,6 +108,7 @@ pub enum SpriteKeys {
     SpriteRotate,
     SpriteSize,
     SpriteCostumeId,
+    SpriteCostumes,
 }
 impl From<SpriteKeys> for u32 {
     fn from(field: SpriteKeys) -> Self {
@@ -115,6 +118,7 @@ impl From<SpriteKeys> for u32 {
             SpriteKeys::SpriteRotate => 2,
             SpriteKeys::SpriteSize => 3,
             SpriteKeys::SpriteCostumeId => 4,
+            SpriteKeys::SpriteCostumes => 5,
         }
     }
 }
@@ -165,17 +169,18 @@ pub struct VariableInfo {
     variable_idx: usize,
 }
 
-fn get_intrinsic_f64_to_f64<'a>(
+fn get_libm_f64_to_f64<'a>(
     module: &Module<'a>,
     context: &'a Context,
     name: &str,
 ) -> FunctionValue<'a> {
-    let intrinsic = Intrinsic::find(name)
-        .unwrap_or_else(|| panic!("failed to find LLVM intrinsic declaration for {name}"));
-    let intrisic_func = intrinsic
-        .get_declaration(module, &[context.f64_type().into()])
-        .unwrap_or_else(|| panic!("failed to declare LLVM intrinsic {name} for f64"));
-    intrisic_func
+    let f64_type = context.f64_type();
+    let floor_type = f64_type.fn_type(&[f64_type.into()], false);
+    let func = module.add_function(name, floor_type, None);
+    let nobuiltin_kind = Attribute::get_named_enum_kind_id("nobuiltin");
+    let nobuiltin_attr = context.create_enum_attribute(nobuiltin_kind, 0);
+    func.add_attribute(AttributeLoc::Function, nobuiltin_attr);
+    func
 }
 
 impl<'ctx> Builders<'ctx> {
@@ -188,20 +193,20 @@ impl<'ctx> Builders<'ctx> {
         let i1_type = context.bool_type();
         Self::link_generated_bitcodes(&module, context);
         let functions = Functions {
-            llvm_floor: get_intrinsic_f64_to_f64(&module, &context, "llvm.floor"),
-            llvm_abs: get_intrinsic_f64_to_f64(&module, &context, "llvm.fabs"),
-            llvm_ceil: get_intrinsic_f64_to_f64(&module, &context, "llvm.ceil"),
-            llvm_sqrt: get_intrinsic_f64_to_f64(&module, &context, "llvm.sqrt"),
-            llvm_sin: get_intrinsic_f64_to_f64(&module, &context, "llvm.sin"),
-            llvm_cos: get_intrinsic_f64_to_f64(&module, &context, "llvm.cos"),
-            llvm_tan: get_intrinsic_f64_to_f64(&module, &context, "llvm.tan"),
-            llvm_asin: get_intrinsic_f64_to_f64(&module, &context, "llvm.asin"),
-            llvm_acos: get_intrinsic_f64_to_f64(&module, &context, "llvm.acos"),
-            llvm_atan: get_intrinsic_f64_to_f64(&module, &context, "llvm.atan"),
-            llvm_loge: get_intrinsic_f64_to_f64(&module, &context, "llvm.log"),
-            llvm_log10: get_intrinsic_f64_to_f64(&module, &context, "llvm.log10"),
-            llvm_exp: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp"),
-            llvm_pow10: get_intrinsic_f64_to_f64(&module, &context, "llvm.exp10"),
+            llvm_floor: get_libm_f64_to_f64(&module, &context, "floor"),
+            llvm_abs: get_libm_f64_to_f64(&module, &context, "fabs"),
+            llvm_ceil: get_libm_f64_to_f64(&module, &context, "ceil"),
+            llvm_sqrt: get_libm_f64_to_f64(&module, &context, "sqrt"),
+            llvm_sin: get_libm_f64_to_f64(&module, &context, "sin"),
+            llvm_cos: get_libm_f64_to_f64(&module, &context, "cos"),
+            llvm_tan: get_libm_f64_to_f64(&module, &context, "tan"),
+            llvm_asin: get_libm_f64_to_f64(&module, &context, "asin"),
+            llvm_acos: get_libm_f64_to_f64(&module, &context, "acos"),
+            llvm_atan: get_libm_f64_to_f64(&module, &context, "atan"),
+            llvm_loge: get_libm_f64_to_f64(&module, &context, "log"),
+            llvm_log10: get_libm_f64_to_f64(&module, &context, "log10"),
+            llvm_exp: get_libm_f64_to_f64(&module, &context, "exp"),
+            llvm_pow10: get_libm_f64_to_f64(&module, &context, "exp10"),
             str_to_num: module.get_function("xyo_atod").unwrap(),
             num_to_str: module.get_function("xyo_dtoa").unwrap(),
             str_cmp_gt: module.get_function("str_cmp_gt").unwrap(),

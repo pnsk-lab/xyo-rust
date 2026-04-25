@@ -15,7 +15,7 @@ use inkwell::{
 };
 
 use crate::{
-    compiler::types::{Builders, SpriteStruct},
+    compiler::types::{Builders, CostumeInfo, SpriteStruct},
     jit::memory::SectionMemoryManager,
 };
 
@@ -112,8 +112,22 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
         )
         .unwrap_or_else(|err| panic!("failed to create MCJIT execution engine: {err}"));
 
+    let mut costume_storage = vec![
+        CostumeInfo {
+            width: 120.0,
+            height: 90.0,
+        },
+        CostumeInfo {
+            width: 80.0,
+            height: 60.0,
+        },
+    ]
+    .into_boxed_slice();
+    let costume_ptr = costume_storage.as_mut_ptr();
+
     for function_name in thread_functions {
         let mut state = SpriteStruct::default();
+        state.sprite_costumes = costume_ptr;
         let function: JitFunction<'_, ThreadThunk> =
             unsafe { execution_engine.get_function(function_name) }
                 .unwrap_or_else(|err| panic!("failed to find JIT function {function_name}: {err}"));
