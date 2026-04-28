@@ -168,12 +168,11 @@ if [[ ${SKIP_ICU} -eq 0 ]]; then
         export XYO_ICU_ROOT
     fi
 
-    ICU_ARGS=()
     if [[ ${CLEAN_ICU} -eq 1 ]]; then
-        ICU_ARGS+=(--clean)
+        "${ROOT_DIR}/tools/build_icu_prebuilt.sh" --clean
+    else
+        "${ROOT_DIR}/tools/build_icu_prebuilt.sh"
     fi
-
-    "${ROOT_DIR}/tools/build_icu_prebuilt.sh" "${ICU_ARGS[@]}"
 fi
 
 echo "using CLANG=${CLANG}"
