@@ -1,14 +1,14 @@
 use inkwell::{
-    values::{FloatValue, FunctionValue, PointerValue},
     FloatPredicate,
+    values::{FloatValue, FunctionValue, PointerValue},
 };
 
 use crate::{
     compiler::{
         compiler::generate_expr_ir,
         types::{
-            create_costume_struct_type, create_sprite_struct_type, Builders, CostumeInfoKeys,
-            SpriteKeys,
+            Builders, CostumeInfoKeys, SpriteKeys, create_costume_struct_type,
+            create_sprite_struct_type,
         },
         utils::scratch_return_to_number,
     },
@@ -37,11 +37,141 @@ pub fn get_y_ptr<'ctx>(
         .build_struct_gep(sprite_type, p, SpriteKeys::SpriteY.into(), "field1")
         .unwrap()
 }
+
+fn build_float_min<'ctx>(
+    builders: &Builders<'ctx>,
+    left: FloatValue<'ctx>,
+    right: FloatValue<'ctx>,
+    name: &str,
+) -> FloatValue<'ctx> {
+    builders
+        .builder
+        .build_select(
+            builders
+                .builder
+                .build_float_compare(FloatPredicate::OGT, left, right, &format!("{name}_cmp"))
+                .unwrap(),
+            right,
+            left,
+            name,
+        )
+        .unwrap()
+        .into_float_value()
+}
+
+fn build_floor<'ctx>(
+    builders: &Builders<'ctx>,
+    value: FloatValue<'ctx>,
+    name: &str,
+) -> FloatValue<'ctx> {
+    builders
+        .builder
+        .build_call(builders.functions.llvm_floor, &[value.into()], name)
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_float_value()
+}
+
+fn build_ceil<'ctx>(
+    builders: &Builders<'ctx>,
+    value: FloatValue<'ctx>,
+    name: &str,
+) -> FloatValue<'ctx> {
+    builders
+        .builder
+        .build_call(builders.functions.llvm_ceil, &[value.into()], name)
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_float_value()
+}
+
+fn build_scratch_fenced_axis<'ctx>(
+    builders: &Builders<'ctx>,
+    value: FloatValue<'ctx>,
+    stage_half_extent: FloatValue<'ctx>,
+    inset: FloatValue<'ctx>,
+    half_extent: FloatValue<'ctx>,
+    axis_name: &str,
+) -> FloatValue<'ctx> {
+    let f64_type = builders.context.f64_type();
+    // Scratch fences against the costume bounds, leaving a small visible strip on stage.
+    let visible_limit = builders
+        .builder
+        .build_float_sub(
+            stage_half_extent,
+            inset,
+            &format!("{axis_name}_visible_limit"),
+        )
+        .unwrap();
+    let max_unrounded = builders
+        .builder
+        .build_float_add(
+            visible_limit,
+            half_extent,
+            &format!("{axis_name}_max_unrounded"),
+        )
+        .unwrap();
+    let min_unrounded = builders
+        .builder
+        .build_float_mul(
+            max_unrounded,
+            f64_type.const_float(-1.0),
+            &format!("{axis_name}_min_unrounded"),
+        )
+        .unwrap();
+
+    let min_rounded = build_ceil(builders, min_unrounded, &format!("{axis_name}_min_ceil"));
+    let max_rounded = build_floor(builders, max_unrounded, &format!("{axis_name}_max_floor"));
+    let below_min = builders
+        .builder
+        .build_float_compare(
+            FloatPredicate::OLT,
+            value,
+            min_unrounded,
+            &format!("{axis_name}_below_min"),
+        )
+        .unwrap();
+    let above_max = builders
+        .builder
+        .build_float_compare(
+            FloatPredicate::OGT,
+            value,
+            max_unrounded,
+            &format!("{axis_name}_above_max"),
+        )
+        .unwrap();
+    let low_fenced = builders
+        .builder
+        .build_select(
+            below_min,
+            min_rounded,
+            value,
+            &format!("{axis_name}_low_fenced"),
+        )
+        .unwrap()
+        .into_float_value();
+
+    builders
+        .builder
+        .build_select(
+            above_max,
+            max_rounded,
+            low_fenced,
+            &format!("{axis_name}_fenced"),
+        )
+        .unwrap()
+        .into_float_value()
+}
+
 pub fn fence_goto<'ctx>(
     builders: &Builders<'ctx>,
     function: &FunctionValue<'ctx>,
-    x: Option<&FloatValue>,
-    y: Option<&FloatValue>,
+    x: Option<&FloatValue<'ctx>>,
+    y: Option<&FloatValue<'ctx>>,
 ) {
     let p = function.get_first_param().unwrap().into_pointer_value();
     let sprite_type = create_sprite_struct_type(builders.context);
@@ -85,10 +215,15 @@ pub fn fence_goto<'ctx>(
         .build_is_null(costumes_base_ptr, "sprite_costumes_is_null")
         .unwrap();
 
-    let with_costume_block = builders.context.append_basic_block(*function, "fence_with_costume");
-    let without_costume_block =
-        builders.context.append_basic_block(*function, "fence_without_costume");
-    let merge_block = builders.context.append_basic_block(*function, "fence_merge");
+    let with_costume_block = builders
+        .context
+        .append_basic_block(*function, "fence_with_costume");
+    let without_costume_block = builders
+        .context
+        .append_basic_block(*function, "fence_without_costume");
+    let merge_block = builders
+        .context
+        .append_basic_block(*function, "fence_merge");
     builders
         .builder
         .build_conditional_branch(costumes_missing, without_costume_block, with_costume_block)
@@ -136,48 +271,37 @@ pub fn fence_goto<'ctx>(
         .unwrap()
         .into_float_value();
 
-    let min_width_height = builders
+    let size_scale = builders
         .builder
-        .build_select(
-            builders
-                .builder
-                .build_float_compare(FloatPredicate::OGT, width_val, height_val, "comp")
-                .unwrap(),
-            height_val,
-            width_val,
-            "min",
-        )
-        .unwrap()
-        .into_float_value();
-
-    let scaled_min_axis = builders
+        .build_float_div(size_val, f64_type.const_float(100.0), "size_scale")
+        .unwrap();
+    let scaled_width = builders
         .builder
-        .build_float_mul(
-            min_width_height,
-            builders
-                .builder
-                .build_float_div(size_val, f64_type.const_float(100.0), "div")
-                .unwrap(),
-            "mul",
-        )
+        .build_float_mul(width_val, size_scale, "fence_scaled_width")
+        .unwrap();
+    let scaled_height = builders
+        .builder
+        .build_float_mul(height_val, size_scale, "fence_scaled_height")
         .unwrap();
 
-    let half_axis = builders
+    let half_width_with_costume = builders
         .builder
-        .build_float_div(scaled_min_axis, f64_type.const_float(2.0), "half_axis")
+        .build_float_div(scaled_width, f64_type.const_float(2.0), "fence_half_width")
         .unwrap();
-    let inset_with_costume = builders
+    let half_height_with_costume = builders
         .builder
-        .build_call(
-            builders.functions.llvm_floor,
-            &[half_axis.into()],
-            "fence_inset_floor",
+        .build_float_div(
+            scaled_height,
+            f64_type.const_float(2.0),
+            "fence_half_height",
         )
-        .unwrap()
-        .try_as_basic_value()
-        .basic()
-        .unwrap()
-        .into_float_value();
+        .unwrap();
+    let min_axis = build_float_min(builders, scaled_width, scaled_height, "fence_min_axis");
+    let half_min_axis = builders
+        .builder
+        .build_float_div(min_axis, f64_type.const_float(2.0), "fence_half_min_axis")
+        .unwrap();
+    let inset_with_costume = build_floor(builders, half_min_axis, "fence_inset_floor");
     let inset_with_costume = builders
         .builder
         .build_select(
@@ -208,6 +332,7 @@ pub fn fence_goto<'ctx>(
         .unwrap();
 
     builders.builder.position_at_end(merge_block);
+    let zero = f64_type.const_float(0.0);
     let inset = builders
         .builder
         .build_phi(f64_type, "fence_inset_phi")
@@ -217,6 +342,24 @@ pub fn fence_goto<'ctx>(
         (&fence_width, without_costume_block),
     ]);
     let inset = inset.as_basic_value().into_float_value();
+    let half_width = builders
+        .builder
+        .build_phi(f64_type, "fence_half_width_phi")
+        .unwrap();
+    half_width.add_incoming(&[
+        (&half_width_with_costume, with_costume_block),
+        (&zero, without_costume_block),
+    ]);
+    let half_width = half_width.as_basic_value().into_float_value();
+    let half_height = builders
+        .builder
+        .build_phi(f64_type, "fence_half_height_phi")
+        .unwrap();
+    half_height.add_incoming(&[
+        (&half_height_with_costume, with_costume_block),
+        (&zero, without_costume_block),
+    ]);
+    let half_height = half_height.as_basic_value().into_float_value();
 
     let x = match x {
         Some(v) => *v,
@@ -237,104 +380,8 @@ pub fn fence_goto<'ctx>(
 
     let stage_half_width = f64_type.const_float(240.0);
     let stage_half_height = f64_type.const_float(180.0);
-    let limit_x = builders
-        .builder
-        .build_float_sub(stage_half_width, inset, "limit_x")
-        .unwrap();
-    let limit_y = builders
-        .builder
-        .build_float_sub(stage_half_height, inset, "limit_y")
-        .unwrap();
-
-    let x = builders
-        .builder
-        .build_select(
-            builders
-                .builder
-                .build_float_compare(FloatPredicate::OLT, x, limit_x, "x_lt_limit")
-                .unwrap(),
-            builders
-                .builder
-                .build_select(
-                    builders
-                        .builder
-                        .build_float_compare(
-                            FloatPredicate::OGT,
-                            x,
-                            builders
-                                .builder
-                                .build_float_mul(
-                                    limit_x,
-                                    builders.context.f64_type().const_float(-1.0),
-                                    "neg",
-                                )
-                                .unwrap(),
-                            "x_gt_neg_limit",
-                        )
-                        .unwrap(),
-                    x,
-                    builders
-                        .builder
-                        .build_float_mul(
-                            limit_x,
-                            builders.context.f64_type().const_float(-1.0),
-                            "neg",
-                        )
-                        .unwrap(),
-                    "x_mid",
-                )
-                .unwrap()
-                .into_float_value(),
-            limit_x,
-            "x_fenced",
-        )
-        .unwrap()
-        .into_float_value();
-
-    let y = builders
-        .builder
-        .build_select(
-            builders
-                .builder
-                .build_float_compare(FloatPredicate::OLT, y, limit_y, "y_lt_limit")
-                .unwrap(),
-            builders
-                .builder
-                .build_select(
-                    builders
-                        .builder
-                        .build_float_compare(
-                            FloatPredicate::OGT,
-                            y,
-                            builders
-                                .builder
-                                .build_float_mul(
-                                    limit_y,
-                                    builders.context.f64_type().const_float(-1.0),
-                                    "neg",
-                                )
-                                .unwrap(),
-                            "y_gt_neg_limit",
-                        )
-                        .unwrap(),
-                    y,
-                    builders
-                        .builder
-                        .build_float_mul(
-                            limit_y,
-                            builders.context.f64_type().const_float(-1.0),
-                            "neg",
-                        )
-                        .unwrap(),
-                    "y_mid",
-                )
-                .unwrap()
-                .into_float_value(),
-            limit_y,
-            "y_fenced",
-        )
-        .unwrap()
-        .into_float_value();
+    let x = build_scratch_fenced_axis(builders, x, stage_half_width, inset, half_width, "x");
+    let y = build_scratch_fenced_axis(builders, y, stage_half_height, inset, half_height, "y");
 
     let x_ptr = get_x_ptr(builders, function);
     builders.builder.build_store(x_ptr, x).unwrap();

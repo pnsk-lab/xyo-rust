@@ -80,7 +80,7 @@ impl From<CostumeInfoKeys> for u32 {
 }
 
 #[repr(C)]
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct SpriteStruct {
     pub sprite_x: f64,
     pub sprite_y: f64,
@@ -88,6 +88,19 @@ pub struct SpriteStruct {
     pub sprite_size: f64,
     pub sprite_costume_id: i64,
     pub sprite_costumes: *mut CostumeInfo,
+}
+
+impl Default for SpriteStruct {
+    fn default() -> Self {
+        Self {
+            sprite_x: 0.0,
+            sprite_y: 0.0,
+            sprite_rotate: 90.0,
+            sprite_size: 100.0,
+            sprite_costume_id: 0,
+            sprite_costumes: std::ptr::null_mut(),
+        }
+    }
 }
 pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
     context.struct_type(

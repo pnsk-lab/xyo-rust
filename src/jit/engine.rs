@@ -127,6 +127,8 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
 
     for function_name in thread_functions {
         let mut state = SpriteStruct::default();
+        state.sprite_size = 100.0;
+        state.sprite_costume_id = 1;
         state.sprite_costumes = costume_ptr;
         let function: JitFunction<'_, ThreadThunk> =
             unsafe { execution_engine.get_function(function_name) }
