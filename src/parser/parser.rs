@@ -141,7 +141,6 @@ pub fn parse_stmt<'a>(
         BlockKind::Procedures => {
             parse_procedures_stmt(project, target_idx, block).map(Stmt::Procedures)
         }
-        _ => Err(ParserError::NotHandledOp(block.opcode)),
     };
 
     with_context(

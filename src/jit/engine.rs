@@ -6,7 +6,7 @@ use std::{
 
 use inkwell::{
     OptimizationLevel,
-    execution_engine::{ExecutionEngine, JitFunction},
+    execution_engine::JitFunction,
     llvm_sys::support::LLVMLoadLibraryPermanently,
     module::Module,
     passes::PassBuilderOptions,

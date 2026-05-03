@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 pub mod inputtype;
 pub mod primitive;
 pub mod shadow;
@@ -141,6 +143,7 @@ macro_rules! str_enum {
         $vis enum $Name { $($Var),* }
 
         impl $Name {
+           #[allow(dead_code)]
             $vis fn as_str(self) -> &'static str {
                 match self {
                     $(Self::$Var => $lit),*

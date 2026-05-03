@@ -2,8 +2,7 @@ use core::f64;
 
 use inkwell::{
     FloatPredicate,
-    llvm_sys::core::LLVMBuildFreeze,
-    values::{AsValueRef, FloatValue, FunctionValue},
+    values::{FloatValue, FunctionValue},
 };
 
 use crate::{

@@ -15,12 +15,6 @@ pub enum InputType {
     List = 13,
 }
 
-impl InputType {
-    pub const fn as_u8(self) -> u8 {
-        self as u8
-    }
-}
-
 impl TryFrom<u8> for InputType {
     type Error = ();
 

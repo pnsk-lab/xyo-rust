@@ -2,11 +2,10 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     context::Context,
     module::Module,
-    values::{BasicValue, FloatValue, FunctionValue, IntValue, PointerValue},
+    values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
 use rand::Rng;
 use ryu_js::Buffer;
-use serde::de::value;
 
 use crate::compiler::{
     compiler::ScratchReturnTypes,
@@ -72,7 +71,7 @@ pub fn is_num<'ctx>(
 pub fn scratch_return_to_number<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
-    func: &FunctionValue<'ctx>,
+    _: &FunctionValue<'ctx>,
 ) -> FloatValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => *v,
@@ -86,17 +85,14 @@ pub fn scratch_return_to_number<'ctx>(
             )
             .unwrap()
             .into_float_value(),
-        ScratchReturnTypes::String(v) => {
-            let p = func.get_first_param().unwrap().into_pointer_value();
-            builders
-                .builder
-                .build_call(builders.functions.str_to_num, &[(*v).into()], "xyo_atod")
-                .unwrap()
-                .try_as_basic_value()
-                .basic()
-                .unwrap()
-                .into_float_value()
-        }
+        ScratchReturnTypes::String(v) => builders
+            .builder
+            .build_call(builders.functions.str_to_num, &[(*v).into()], "xyo_atod")
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_float_value(),
         ScratchReturnTypes::NumberLiteral(v) => builders.context.f64_type().const_float(*v),
         ScratchReturnTypes::StringLiteral(v) => builders
             .context
@@ -114,7 +110,7 @@ pub fn js_number_to_string(x: f64) -> String {
 pub fn scratch_return_to_string<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
-    func: &FunctionValue<'ctx>,
+    _: &FunctionValue<'ctx>,
 ) -> PointerValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => builders

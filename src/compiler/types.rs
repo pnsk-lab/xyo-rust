@@ -9,7 +9,6 @@ use inkwell::{
     attributes::{Attribute, AttributeLoc},
     builder::Builder,
     context::Context,
-    intrinsics::Intrinsic,
     memory_buffer::MemoryBuffer,
     module::Module,
     types::StructType,
@@ -218,10 +217,6 @@ impl<'ctx> Builders<'ctx> {
     pub fn new(context: &'ctx Context, project: &ScratchProject) -> Self {
         let module = context.create_module("xyojit");
         let builder = context.create_builder();
-        let ptr_type = context.ptr_type(AddressSpace::default());
-        let f64_type = context.f64_type();
-        let i64_type = context.i64_type();
-        let i1_type = context.bool_type();
         Self::link_generated_bitcodes(&module, context);
         let functions = Functions {
             llvm_floor: get_libm_f64_to_f64(&module, &context, "floor"),
