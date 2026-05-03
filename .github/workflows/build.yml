@@ -16,28 +16,50 @@ permissions:
 
 jobs:
     build:
-        name: Build (${{ matrix.label }})
+        name: Build (${{ matrix.rust_target }})
         runs-on: ${{ matrix.os }}
+        env:
+            CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
+            XYO_RELEASE_TARGET: ${{ matrix.rust_target }}
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - os: ubuntu-latest
-                      label: ubuntu-latest
+                    - os: ubuntu-24.04
+                      rust_target: x86_64-unknown-linux-gnu
+                      artifact_path: target/release/xyo-x86_64-unknown-linux-gnu.tar.gz
                       llvm_targets: X86;AArch64;RISCV;WebAssembly
                       llvm_cache_targets: x86-aarch64-riscv-wasm
-                    - os: macos-latest
-                      label: macos-latest
+                    - os: ubuntu-24.04
+                      rust_target: x86_64-unknown-linux-musl
+                      artifact_path: target/release/xyo-x86_64-unknown-linux-musl.tar.gz
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                    - os: ubuntu-24.04-arm
+                      rust_target: aarch64-unknown-linux-gnu
+                      artifact_path: target/release/xyo-aarch64-unknown-linux-gnu.tar.gz
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                    - os: macos-15-intel
+                      rust_target: x86_64-apple-darwin
+                      artifact_path: target/release/xyo-x86_64-apple-darwin
+                      llvm_targets: X86;AArch64;WebAssembly
+                      llvm_cache_targets: x86-aarch64-wasm
+                    - os: macos-15
+                      rust_target: aarch64-apple-darwin
+                      artifact_path: target/release/xyo-aarch64-apple-darwin
                       llvm_targets: X86;AArch64;WebAssembly
                       llvm_cache_targets: x86-aarch64-wasm
                     - os: windows-latest
-                      label: windows-latest-x64
+                      rust_target: x86_64-pc-windows-msvc
+                      artifact_path: target/release/xyo-x86_64-pc-windows-msvc.zip
                       cmake_arch: x64
                       vcpkg_triplet: x64-windows
                       llvm_targets: X86;AArch64;WebAssembly
                       llvm_cache_targets: x86-aarch64-wasm
                     - os: windows-11-arm
-                      label: windows-11-arm64
+                      rust_target: aarch64-pc-windows-msvc
+                      artifact_path: target/release/xyo-aarch64-pc-windows-msvc.zip
                       cmake_arch: ARM64
                       vcpkg_triplet: arm64-windows
                       llvm_targets: X86;AArch64;RISCV;WebAssembly
@@ -49,6 +71,15 @@ jobs:
 
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
+
+            - name: Add Rust target
+              run: rustup target add ${{ matrix.rust_target }}
+
+            - name: Install musl tools
+              if: matrix.rust_target == 'x86_64-unknown-linux-musl'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y musl-tools
 
             - name: Cache LLVM 21.1.x
               id: cache-llvm
@@ -66,7 +97,7 @@ jobs:
                       bitcodes/c/lib/icu
                       bitcodes/c/lib/icu-prebuilt
                       target/icu-prebuilt-build
-                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
             - name: Cache ICU prebuilt (Windows)
               if: runner.os == 'Windows'
@@ -168,7 +199,7 @@ jobs:
                   path: |
                       target/icu-runtime
                       target/icu-runtime-build
-                  key: icu-runtime-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+                  key: icu-runtime-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
             - name: Build bundled ICU runtime (Linux)
               if: runner.os == 'Linux'
@@ -183,47 +214,41 @@ jobs:
             - name: Package release artifact (Linux)
               if: runner.os == 'Linux'
               shell: bash
+              env:
+                  XYO_RELEASE_BIN: target/${{ matrix.rust_target }}/release/xyo
               run: |
                   ./tools/package_release_linux.sh
+
+            - name: Package release artifact (macOS)
+              if: runner.os == 'macOS'
+              shell: bash
+              run: |
+                  mkdir -p target/release
+                  install -m 0755 "target/${{ matrix.rust_target }}/release/xyo" "${{ matrix.artifact_path }}"
 
             - name: Setup and build (Windows)
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
                   if ("${{ steps.cache-icu-prebuilt-windows.outputs.cache-hit }}" -eq "true") {
-                    ./setup.ps1 -SkipCheck
+                    ./setup.ps1 -SkipCheck -VcpkgTriplet "${{ matrix.vcpkg_triplet }}"
                   } else {
-                    ./setup.ps1 -CleanIcu -SkipCheck
+                    ./setup.ps1 -CleanIcu -SkipCheck -VcpkgTriplet "${{ matrix.vcpkg_triplet }}"
                   }
 
             - name: Package release artifact (Windows)
               if: runner.os == 'Windows'
               shell: pwsh
+              env:
+                  XYO_RELEASE_BIN: target/${{ matrix.rust_target }}/release/xyo.exe
               run: |
                   ./tools/package_release_windows.ps1
 
-            - name: Upload artifact (Linux)
-              if: runner.os == 'Linux'
+            - name: Upload artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: xyo-${{ matrix.label }}
-                  path: target/release/xyo-linux.tar.gz
-                  if-no-files-found: error
-
-            - name: Upload artifact (macOS)
-              if: runner.os == 'macOS'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: xyo-${{ matrix.label }}
-                  path: target/release/xyo
-                  if-no-files-found: error
-
-            - name: Upload artifact (Windows)
-              if: runner.os == 'Windows'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: xyo-${{ matrix.label }}
-                  path: target/release/xyo-windows.zip
+                  name: xyo-${{ matrix.rust_target }}
+                  path: ${{ matrix.artifact_path }}
                   if-no-files-found: error
 
     release:
@@ -234,40 +259,16 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Download artifact (Linux)
+            - name: Download artifacts
               uses: actions/download-artifact@v4
               with:
-                  name: xyo-ubuntu-latest
-                  path: ./artifacts/linux
-
-            - name: Download artifact (macOS)
-              uses: actions/download-artifact@v4
-              with:
-                  name: xyo-macos-latest
-                  path: ./artifacts/macos
-
-            - name: Download artifact (Windows)
-              uses: actions/download-artifact@v4
-              with:
-                  name: xyo-windows-latest-x64
-                  path: ./artifacts/windows
-
-            - name: Download artifact (Windows ARM64)
-              uses: actions/download-artifact@v4
-              with:
-                  name: xyo-windows-11-arm64
-                  path: ./artifacts/windows-arm64
-
-            - name: Rename artifacts
-              run: |
-                  mv ./artifacts/linux/xyo-linux.tar.gz ./artifacts/xyo-linux.tar.gz
-                  mv ./artifacts/macos/xyo ./artifacts/xyo-macos
-                  mv ./artifacts/windows/xyo-windows.zip ./artifacts/xyo-windows.zip
-                  mv ./artifacts/windows-arm64/xyo-windows.zip ./artifacts/xyo-windows-arm64.zip
+                  pattern: xyo-*
+                  path: ./artifacts
+                  merge-multiple: true
 
             - name: Create GitHub Release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   TAG_NAME=${GITHUB_REF#refs/tags/}
-                  gh release create "$TAG_NAME" ./artifacts/xyo-linux.tar.gz ./artifacts/xyo-macos ./artifacts/xyo-windows.zip ./artifacts/xyo-windows-arm64.zip --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"
+                  gh release create "$TAG_NAME" ./artifacts/xyo-* --title "$TAG_NAME" --notes "Automated release for $TAG_NAME"

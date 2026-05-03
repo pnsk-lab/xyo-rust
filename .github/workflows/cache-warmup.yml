@@ -16,28 +16,42 @@ permissions:
 
 jobs:
     warm-cache:
-        name: Warm Cache (${{ matrix.label }})
+        name: Warm Cache (${{ matrix.rust_target }})
         runs-on: ${{ matrix.os }}
+        env:
+            CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - os: ubuntu-latest
-                      label: ubuntu-latest
+                    - os: ubuntu-24.04
+                      rust_target: x86_64-unknown-linux-gnu
                       llvm_targets: X86;AArch64;RISCV;WebAssembly
                       llvm_cache_targets: x86-aarch64-riscv-wasm
-                    - os: macos-latest
-                      label: macos-latest
+                    - os: ubuntu-24.04
+                      rust_target: x86_64-unknown-linux-musl
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                    - os: ubuntu-24.04-arm
+                      rust_target: aarch64-unknown-linux-gnu
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                    - os: macos-15-intel
+                      rust_target: x86_64-apple-darwin
+                      llvm_targets: X86;AArch64;WebAssembly
+                      llvm_cache_targets: x86-aarch64-wasm
+                    - os: macos-15
+                      rust_target: aarch64-apple-darwin
                       llvm_targets: X86;AArch64;WebAssembly
                       llvm_cache_targets: x86-aarch64-wasm
                     - os: windows-latest
-                      label: windows-latest-x64
+                      rust_target: x86_64-pc-windows-msvc
                       cmake_arch: x64
                       vcpkg_triplet: x64-windows
                       llvm_targets: X86;AArch64;WebAssembly
                       llvm_cache_targets: x86-aarch64-wasm
                     - os: windows-11-arm
-                      label: windows-11-arm64
+                      rust_target: aarch64-pc-windows-msvc
                       cmake_arch: ARM64
                       vcpkg_triplet: arm64-windows
                       llvm_targets: X86;AArch64;RISCV;WebAssembly
@@ -49,6 +63,15 @@ jobs:
 
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
+
+            - name: Add Rust target
+              run: rustup target add ${{ matrix.rust_target }}
+
+            - name: Install musl tools
+              if: matrix.rust_target == 'x86_64-unknown-linux-musl'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y musl-tools
 
             - name: Cache LLVM 21.1.x
               id: cache-llvm
@@ -66,7 +89,7 @@ jobs:
                       bitcodes/c/lib/icu
                       bitcodes/c/lib/icu-prebuilt
                       target/icu-prebuilt-build
-                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
             - name: Cache ICU prebuilt (Windows)
               if: runner.os == 'Windows'
@@ -154,7 +177,7 @@ jobs:
                   path: |
                       target/icu-runtime
                       target/icu-runtime-build
-                  key: icu-runtime-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+                  key: icu-runtime-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
             - name: Build bundled ICU runtime (Linux)
               if: runner.os == 'Linux'
@@ -171,7 +194,7 @@ jobs:
               shell: pwsh
               run: |
                   if ("${{ steps.cache-icu-prebuilt-windows.outputs.cache-hit }}" -eq "true") {
-                    ./setup.ps1 -SkipCheck
+                    ./setup.ps1 -SkipCheck -VcpkgTriplet "${{ matrix.vcpkg_triplet }}"
                   } else {
-                    ./setup.ps1 -CleanIcu -SkipCheck
+                    ./setup.ps1 -CleanIcu -SkipCheck -VcpkgTriplet "${{ matrix.vcpkg_triplet }}"
                   }

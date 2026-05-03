@@ -13,6 +13,14 @@ rustflags = [
   "-C", "link-arg=-Wl,--export-dynamic-symbol=rt_*",
 ]
 
+[target.x86_64-unknown-linux-musl]
+linker = "musl-gcc"
+rustflags = [
+  "-C", "link-arg=-rdynamic",
+  "-C", "link-arg=-Wl,--exclude-libs,ALL",
+  "-C", "link-arg=-Wl,--export-dynamic-symbol=rt_*",
+]
+
 [target.aarch64-apple-darwin]
 
 [target.x86_64-pc-windows-msvc]

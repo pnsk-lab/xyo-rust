@@ -1,12 +1,25 @@
 param(
-    [string]$ArchivePath = (Join-Path (Join-Path $PSScriptRoot '..') 'target/release/xyo-windows.zip'),
-    [string]$StageDir = (Join-Path (Join-Path $PSScriptRoot '..') 'target/release/xyo-windows')
+    [string]$ArchivePath,
+    [string]$StageDir
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $rootDir = Split-Path -Parent $PSScriptRoot
+$releaseTarget = $env:XYO_RELEASE_TARGET
+if ([string]::IsNullOrWhiteSpace($releaseTarget)) {
+    $releaseTarget = 'windows'
+}
+
+if ([string]::IsNullOrWhiteSpace($ArchivePath)) {
+    $ArchivePath = Join-Path $rootDir "target/release/xyo-$releaseTarget.zip"
+}
+
+if ([string]::IsNullOrWhiteSpace($StageDir)) {
+    $StageDir = Join-Path $rootDir "target/release/xyo-$releaseTarget"
+}
+
 $binPath = $env:XYO_RELEASE_BIN
 if ([string]::IsNullOrWhiteSpace($binPath)) {
     $binPath = Join-Path $rootDir 'target/release/xyo.exe'
@@ -39,7 +52,11 @@ if (Test-Path $ArchivePath) {
     Remove-Item $ArchivePath -Force
 }
 
-New-Item -ItemType Directory -Path $StageDir | Out-Null
+$archiveParent = Split-Path -Parent $ArchivePath
+if (-not [string]::IsNullOrWhiteSpace($archiveParent)) {
+    New-Item -ItemType Directory -Path $archiveParent -Force | Out-Null
+}
+New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
 Copy-Item $binPath (Join-Path $StageDir 'xyo.exe')
 foreach ($dll in $dlls) {

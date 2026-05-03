@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RELEASE_TARGET="${XYO_RELEASE_TARGET:-linux}"
 BIN_PATH="${XYO_RELEASE_BIN:-${ROOT_DIR}/target/release/xyo}"
 ICU_RUNTIME_DIR="${XYO_ICU_RUNTIME_DIR:-${ROOT_DIR}/target/icu-runtime}"
-STAGE_DIR="${ROOT_DIR}/target/release/xyo-linux"
-ARCHIVE_PATH="${ROOT_DIR}/target/release/xyo-linux.tar.gz"
+STAGE_DIR="${XYO_RELEASE_STAGE_DIR:-${ROOT_DIR}/target/release/xyo-${RELEASE_TARGET}}"
+ARCHIVE_PATH="${XYO_RELEASE_ARCHIVE_PATH:-${ROOT_DIR}/target/release/xyo-${RELEASE_TARGET}.tar.gz}"
 
 usage() {
     cat <<EOF
@@ -15,6 +16,9 @@ Package the Linux release artifact with bundled ICU runtime libraries.
 
 Environment:
   XYO_RELEASE_BIN     Path to the built xyo binary
+  XYO_RELEASE_TARGET  Target suffix for the staged directory/archive
+  XYO_RELEASE_STAGE_DIR     Staging directory override
+  XYO_RELEASE_ARCHIVE_PATH  Archive path override
   XYO_ICU_RUNTIME_DIR ICU runtime prefix (default: target/icu-runtime)
 EOF
 }
