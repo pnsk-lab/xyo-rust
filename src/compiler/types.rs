@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    ffi::{CStr, CString},
+};
 
 use inkwell::{
     AddressSpace,
@@ -11,6 +15,7 @@ use inkwell::{
     types::StructType,
     values::{FunctionValue, PointerValue},
 };
+use llvm_sys::core::LLVMCreateMemoryBufferWithMemoryRange;
 
 use crate::{
     compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
@@ -196,6 +201,19 @@ fn get_libm_f64_to_f64<'a>(
     func
 }
 
+#[inline]
+pub(crate) fn to_c_str(mut s: &str) -> Cow<'_, CStr> {
+    if s.is_empty() {
+        s = "\0";
+    }
+
+    match CStr::from_bytes_until_nul(s.as_bytes()) {
+        Ok(c) => Cow::from(c),
+        // SAFETY: No internal 0 byte since already `FromBytesUntilNulError`
+        Err(_) => unsafe { Cow::from(CString::new(s.as_bytes()).unwrap_unchecked()) },
+    }
+}
+
 impl<'ctx> Builders<'ctx> {
     pub fn new(context: &'ctx Context, project: &ScratchProject) -> Self {
         let module = context.create_module("xyojit");
@@ -258,7 +276,15 @@ impl<'ctx> Builders<'ctx> {
     }
     fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context) {
         for (name, bytes) in EMBEDDED_BITCODES {
-            let buffer = MemoryBuffer::create_from_memory_range_copy(bytes, name);
+            let memory_buffer = unsafe {
+                LLVMCreateMemoryBufferWithMemoryRange(
+                    bytes.as_ptr() as *const libc::c_char,
+                    bytes.len(),
+                    to_c_str(name).as_ptr(),
+                    false as i32,
+                )
+            };
+            let buffer = unsafe { MemoryBuffer::new(memory_buffer) };
             let bitcode_module = Module::parse_bitcode_from_buffer(&buffer, context)
                 .unwrap_or_else(|err| panic!("failed to parse embedded {name}: {err}"));
             module

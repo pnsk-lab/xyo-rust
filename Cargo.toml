@@ -1,6 +1,6 @@
 [package]
 name = "xyo-rust"
-version = "0.1.0"
+version = "0.0.0-pre22"
 edition = "2024"
 build = "build.rs"
 authors = ["Scratch Native Runtime Contributors"]
@@ -23,7 +23,8 @@ serde_json = "1.0.149"
 serde_path_to_error = "0.1.16"
 serde_repr = "0.1.20"
 zip = "8.1.0"
-inkwell = { version = "0.8.0", default-features = false, features = ["llvm21-1"] }
+inkwell = { version = "0.9.0", default-features = false, features = ["llvm21-1"] }
+llvm-sys = "211.0.0"
 num-bigint = { version = "0.4.6", features = ["rand"] }
 ryu-js = "1.0.2"
 libc = "0.2"
