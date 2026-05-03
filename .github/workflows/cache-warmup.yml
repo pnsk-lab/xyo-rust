@@ -77,8 +77,8 @@ jobs:
               id: cache-llvm
               uses: actions/cache@v4
               with:
-                  path: .llvm/${{ runner.os }}-${{ runner.arch }}
-                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
+                  path: .llvm/${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}
+                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
 
             - name: Cache ICU prebuilt (Unix)
               if: runner.os != 'Windows'
@@ -104,7 +104,7 @@ jobs:
               shell: bash
               run: |
                   set -euxo pipefail
-                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
+                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
                   LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
                   LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
                   rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
@@ -124,7 +124,7 @@ jobs:
               if: runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
               shell: pwsh
               run: |
-                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)"
+                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
                   $llvmSourceDir = Join-Path $env:RUNNER_TEMP 'llvm-project'
                   $llvmBuildDir = Join-Path $env:RUNNER_TEMP 'llvm-build'
                   if (Test-Path $llvmInstallDir) {
@@ -144,7 +144,7 @@ jobs:
               if: runner.os != 'Windows'
               shell: bash
               run: |
-                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
+                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
                   echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
                   echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
@@ -152,7 +152,7 @@ jobs:
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
-                  $llvmRoot = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)"
+                  $llvmRoot = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
                   "LLVM_SYS_211_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
                   "$llvmRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
