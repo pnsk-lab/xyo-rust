@@ -432,7 +432,7 @@ pub fn parse_operator_expr<'ctx>(
                 ScratchReturnTypes::Bool(
                     builders
                         .builder
-                        .build_and(left_parsed, right_parsed, "or")
+                        .build_or(left_parsed, right_parsed, "or")
                         .unwrap(),
                 )
             } else {
@@ -707,5 +707,106 @@ pub fn parse_operator_expr<'ctx>(
             ScratchReturnTypes::Number(ret_val)
         }
         _ => todo!("あとでやる"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use inkwell::{AddressSpace, context::Context, values::AnyValue};
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        parser::types::{Expr, Literal},
+        types::ScratchProject,
+    };
+
+    fn empty_project() -> ScratchProject {
+        serde_json::from_value(json!({
+            "meta": {
+                "semver": "3.0.0",
+                "vm": null,
+                "agent": null,
+                "origin": null
+            },
+            "targets": [{
+                "isStage": true,
+                "name": "Stage",
+                "currentCostume": 0,
+                "blocks": {},
+                "variables": {},
+                "lists": {},
+                "broadcasts": {},
+                "comments": null,
+                "costumes": [],
+                "sounds": [],
+                "tempo": null,
+                "videoTransparency": null,
+                "videoState": null,
+                "layerOrder": null,
+                "volume": null
+            }]
+        }))
+        .unwrap()
+    }
+
+    fn test_function<'ctx>(
+        context: &'ctx Context,
+        builders: &Builders<'ctx>,
+    ) -> FunctionValue<'ctx> {
+        let fn_type = context
+            .void_type()
+            .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false);
+        let function = builders.module.add_function("test_func", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        builders.builder.position_at_end(entry);
+        function
+    }
+
+    fn literal(value: &str) -> Box<Expr> {
+        Box::new(Expr::Literal(Literal::String(value.to_string())))
+    }
+
+    #[test]
+    fn operator_or_uses_boolean_or_for_literal_truthiness() {
+        let context = Context::create();
+        let project = empty_project();
+        let builders = Builders::new(&context, &project);
+        let function = test_function(&context, &builders);
+        let expr = OperatorExpr::Or {
+            left: Some(literal("true")),
+            right: Some(literal("false")),
+        };
+
+        let result = parse_operator_expr(&builders, &expr, &function, 0);
+
+        match result {
+            ScratchReturnTypes::Bool(value) => {
+                assert_eq!(value.print_to_string().to_string(), "i1 true");
+            }
+            _ => panic!("expected boolean result"),
+        }
+    }
+
+    #[test]
+    fn operator_or_with_no_inputs_matches_scratch_false_default() {
+        let context = Context::create();
+        let project = empty_project();
+        let builders = Builders::new(&context, &project);
+        let function = test_function(&context, &builders);
+        let expr = OperatorExpr::Or {
+            left: None,
+            right: None,
+        };
+
+        let result = parse_operator_expr(&builders, &expr, &function, 0);
+
+        match result {
+            ScratchReturnTypes::BoolLiteral((value, llvm_value)) => {
+                assert!(!value);
+                assert_eq!(llvm_value.print_to_string().to_string(), "i1 false");
+            }
+            _ => panic!("expected boolean literal result"),
+        }
     }
 }

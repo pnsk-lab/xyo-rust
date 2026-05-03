@@ -369,3 +369,121 @@ impl<'ctx> Builders<'ctx> {
         format!("func_{}", chars.iter().rev().collect::<String>())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use inkwell::context::Context;
+    use serde_json::json;
+
+    use super::*;
+
+    fn project_with_variables() -> ScratchProject {
+        serde_json::from_value(json!({
+            "meta": {
+                "semver": "3.0.0",
+                "vm": null,
+                "agent": null,
+                "origin": null
+            },
+            "targets": [
+                {
+                    "isStage": true,
+                    "name": "Stage",
+                    "currentCostume": 0,
+                    "blocks": {},
+                    "variables": {
+                        "global-score": ["score", 0],
+                        "shared-id": ["shared", "stage"]
+                    },
+                    "lists": {},
+                    "broadcasts": {},
+                    "comments": null,
+                    "costumes": [],
+                    "sounds": [],
+                    "tempo": null,
+                    "videoTransparency": null,
+                    "videoState": null,
+                    "layerOrder": null,
+                    "volume": null
+                },
+                {
+                    "isStage": false,
+                    "name": "Sprite1",
+                    "currentCostume": 0,
+                    "blocks": {},
+                    "variables": {
+                        "local-health": ["health", 100],
+                        "shared-id": ["shared local", "sprite"]
+                    },
+                    "lists": {},
+                    "broadcasts": {},
+                    "comments": null,
+                    "costumes": [],
+                    "sounds": [],
+                    "visible": true,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "size": 100.0,
+                    "direction": 90.0,
+                    "draggable": false,
+                    "rotationStyle": "all around",
+                    "layerOrder": 1,
+                    "volume": null
+                }
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn builders_index_stage_variables_as_global_and_sprite_variables_as_local() {
+        let context = Context::create();
+        let project = project_with_variables();
+        let builders = Builders::new(&context, &project);
+
+        let global = builders.get_variable(1, "global-score").unwrap();
+        assert!(global.is_global);
+        assert!(global.variable_idx < 2);
+
+        let local = builders.get_variable(1, "local-health").unwrap();
+        assert!(!local.is_global);
+        assert!(local.variable_idx < 2);
+
+        assert!(builders.get_variable(0, "local-health").is_none());
+    }
+
+    #[test]
+    fn get_variable_prefers_stage_global_when_ids_overlap() {
+        let context = Context::create();
+        let project = project_with_variables();
+        let builders = Builders::new(&context, &project);
+
+        let variable = builders.get_variable(1, "shared-id").unwrap();
+
+        assert!(variable.is_global);
+        assert!(variable.variable_idx < 2);
+    }
+
+    #[test]
+    fn create_function_name_advances_in_stable_sequence() {
+        let context = Context::create();
+        let project = project_with_variables();
+        let mut builders = Builders::new(&context, &project);
+
+        let names = (0..28)
+            .map(|_| builders.create_function_name())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names[0], "func_a");
+        assert_eq!(names[1], "func_b");
+        assert_eq!(names[25], "func_z");
+        assert_eq!(names[26], "func_ba");
+        assert_eq!(names[27], "func_bb");
+    }
+
+    #[test]
+    fn to_c_str_handles_empty_and_truncates_at_existing_nul() {
+        assert_eq!(to_c_str("").to_bytes_with_nul(), b"\0");
+        assert_eq!(to_c_str("abc\0ignored").to_bytes_with_nul(), b"abc\0");
+    }
+}

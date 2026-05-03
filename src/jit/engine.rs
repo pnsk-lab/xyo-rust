@@ -100,7 +100,9 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
     });
 
     load_visible_symbols();
-    unsafe { llvm_sys::execution_engine::LLVMLinkInMCJIT(); }
+    unsafe {
+        llvm_sys::execution_engine::LLVMLinkInMCJIT();
+    }
     let execution_engine = builders
         .module
         .create_mcjit_execution_engine_with_memory_manager(
