@@ -2,7 +2,7 @@ name: Cache Warmup
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v2
+    LLVM_CACHE_VERSION: v3
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -67,11 +67,24 @@ jobs:
             - name: Add Rust target
               run: rustup target add ${{ matrix.rust_target }}
 
-            - name: Install musl tools
+            - name: Setup Zig for musl
               if: matrix.rust_target == 'x86_64-unknown-linux-musl'
+              uses: mlugg/setup-zig@v2
+              with:
+                  version: 0.14.1
+
+            - name: Configure musl toolchain
+              if: matrix.rust_target == 'x86_64-unknown-linux-musl'
+              shell: bash
               run: |
-                  sudo apt-get update
-                  sudo apt-get install -y musl-tools
+                  set -euxo pipefail
+                  mkdir -p "$RUNNER_TEMP/zig-musl-bin"
+                  printf '%s\n' '#!/usr/bin/env bash' 'exec zig cc -target x86_64-linux-musl "$@"' > "$RUNNER_TEMP/zig-musl-bin/zig-musl-cc"
+                  printf '%s\n' '#!/usr/bin/env bash' 'exec zig c++ -target x86_64-linux-musl "$@"' > "$RUNNER_TEMP/zig-musl-bin/zig-musl-c++"
+                  chmod +x "$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" "$RUNNER_TEMP/zig-musl-bin/zig-musl-c++"
+                  echo "XYO_CMAKE_C_COMPILER=$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" >> "$GITHUB_ENV"
+                  echo "XYO_CMAKE_CXX_COMPILER=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
+                  echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
 
             - name: Cache LLVM 21.1.x
               id: cache-llvm
@@ -109,15 +122,28 @@ jobs:
                   LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
                   rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
                   git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
-                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
-                      -DCMAKE_BUILD_TYPE=Release \
-                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
-                      -DLLVM_TARGETS_TO_BUILD="${{ matrix.llvm_targets }}" \
-                      -DLLVM_INCLUDE_TESTS=OFF \
-                      -DLLVM_INCLUDE_BENCHMARKS=OFF \
-                      -DLLVM_INCLUDE_EXAMPLES=OFF \
-                      -DLLVM_BUILD_LLVM_DYLIB=OFF \
+                  cmake_args=(
+                      -DCMAKE_BUILD_TYPE=Release
+                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR"
+                      -DLLVM_TARGETS_TO_BUILD="${{ matrix.llvm_targets }}"
+                      -DLLVM_INCLUDE_TESTS=OFF
+                      -DLLVM_INCLUDE_BENCHMARKS=OFF
+                      -DLLVM_INCLUDE_EXAMPLES=OFF
+                      -DLLVM_BUILD_LLVM_DYLIB=OFF
                       -DBUILD_SHARED_LIBS=OFF
+                      -DLLVM_ENABLE_FFI=OFF
+                      -DLLVM_ENABLE_LIBXML2=OFF
+                      -DLLVM_ENABLE_ZSTD=OFF
+                      -DLLVM_ENABLE_TERMINFO=OFF
+                  )
+                  if [[ -n "${XYO_CMAKE_C_COMPILER:-}" ]]; then
+                      cmake_args+=(
+                          -DCMAKE_C_COMPILER="$XYO_CMAKE_C_COMPILER"
+                          -DCMAKE_CXX_COMPILER="$XYO_CMAKE_CXX_COMPILER"
+                      )
+                  fi
+                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
+                      "${cmake_args[@]}"
                   cmake --build "$LLVM_BUILD_DIR" --target install --parallel
 
             - name: Build LLVM 21.1.x (Windows)
