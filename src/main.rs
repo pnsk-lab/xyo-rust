@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use std::{error::Error, time::Instant};
 
 use crate::cli::{Cli, Command};
-use crate::compiler::compiler::compiler;
+use crate::compiler::compiler::{CompilerOption, compiler};
 use crate::parser::parser::project_parser;
 
 fn main() -> ExitCode {
@@ -23,10 +23,16 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<(), ()> {
     match cli.command {
-        Command::Run { path } => {
+        Command::Run { path, emit_llvm } => {
             let project = handle_error(sb3::read_sb3(&path), "Load error")?;
             let threads = handle_error(project_parser(&project), "Parse error")?;
-            compiler(&project, &threads);
+            compiler(
+                &project,
+                &threads,
+                CompilerOption {
+                    emit_llvm: emit_llvm.map(|v| v.to_str().unwrap().to_string()),
+                },
+            );
         }
         Command::Stats { path } => {
             let s = Instant::now();

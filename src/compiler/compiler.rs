@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use inkwell::{
     AddressSpace,
     context::Context,
@@ -16,7 +18,11 @@ use crate::{
     types::ScratchProject,
 };
 
-pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
+pub struct CompilerOption {
+    pub emit_llvm: Option<String>,
+}
+
+pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>, option: CompilerOption) {
     let context = Context::create();
     let mut builders = Builders::new(&context, project);
     let mut thread_functions = Vec::with_capacity(threads.len());
@@ -24,6 +30,10 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>) {
     threads.iter().for_each(|v| {
         thread_functions.push(generate_thread_ir(&mut builders, v));
     });
+
+    if let Some(emit_llvm) = option.emit_llvm {
+        builders.module.print_to_file(emit_llvm).unwrap();
+    }
 
     jit::run(&builders, &thread_functions);
 }

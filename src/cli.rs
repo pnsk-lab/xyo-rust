@@ -11,7 +11,11 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// run <path>
-    Run { path: PathBuf },
+    Run {
+        path: PathBuf,
+        #[arg(long)]
+        emit_llvm: Option<PathBuf>,
+    },
     /// stats <path>
     Stats { path: PathBuf },
     /// json <path>
