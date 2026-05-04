@@ -234,6 +234,16 @@ CLANGXX=clang++-23 \
 | [対応ブロック一覧](./docs/markdown/blocks.md) | opcode ごとのパーサー / IR 対応状況 |
 | [アーキテクチャ](./docs/markdown/architecture.md) | パイプラインの詳細・モジュール設計 |
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=pnsk-lab%2Fxyo-rust&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pnsk-lab/xyo-rust&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pnsk-lab/xyo-rust&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pnsk-lab/xyo-rust&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## ライセンス
 
 MIT
