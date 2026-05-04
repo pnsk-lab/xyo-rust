@@ -6,7 +6,7 @@
 
 ```bash
 cargo run -- --help
-```text
+```
 
 出力:
 
@@ -14,12 +14,13 @@ cargo run -- --help
 Usage: xyo <COMMAND>
 
 Commands:
-  json   project.json を表示する
-  stats  統計情報を表示する
-  run    解析と IR 生成を実行する
+  run    run <path>
+  stats  stats <path>
+  json   json <path>
   help   Print this message or the help of the given subcommand(s)
 
 Options:
+  -V, --version  Print version
   -h, --help  Print help
 ```
 
@@ -184,6 +185,15 @@ xyo run <path-to-project.sb3>
 7. 状態表示        (各 thread の実行後状態を Debug 形式で表示)
 ```
 
+LLVM IR をファイルに保存したい場合は `--emit-llvm` を指定します。
+
+```bash
+cargo run -- run <path-to-project.sb3> --emit-llvm out.ll
+xyo run <path-to-project.sb3> --emit-llvm out.ll
+```
+
+`--emit-llvm` は IR を保存するためのデバッグ用オプションです。指定しても JIT 実行は省略されず、IR 生成後に各 thread 関数が 1 回ずつ実行されます。
+
 ```warn
 `run` は実行ランタイムそのものではなく、コンパイル経路を JIT までつないだ検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
 ```
@@ -229,7 +239,7 @@ entry:
 
 ### 補足
 
-現時点の `run` は LLVM IR テキストをそのまま保存するコマンドではありません。IR は内部で生成されますが、CLI の標準出力には各 thread の実行後状態だけが表示されます。
+`run` の標準出力には、既定では各 thread の実行後状態だけが表示されます。LLVM IR テキストを確認したい場合は `--emit-llvm <path>` で保存先を指定してください。
 
 ## エラー表示
 
@@ -294,6 +304,7 @@ Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
 | ファイルが正しく読めるか確認 | `json` |
 | どんなブロックが使われているか確認 | `stats` |
 | JIT 実行できるか確認 | `stats` で opcode を確認後 → `run` |
+| 生成された LLVM IR を確認 | `run --emit-llvm out.ll` |
 | Scratch の内部構造を調べる | `json` + `jq` |
 | コンパイルパイプラインをデバッグ | `run` |
 

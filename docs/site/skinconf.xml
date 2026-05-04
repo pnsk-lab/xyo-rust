@@ -30,9 +30,9 @@
 	</nav>
 	<favicon></favicon>
 	<extra-css></extra-css>
-	<skin>simple</skin> <!-- classic or simple -->
+	<skin>dark</skin> <!-- classic or simple -->
 	<copyright>
-		<holder>Example Co, Ltd</holder>
+		<holder>pnsk-lab</holder>
 		<year>2026</year> <!-- Year when you started this project/whatever copyright holder -->
 		<link href="https://github.com/pnsk-lab/" />
 	</copyright>

@@ -360,7 +360,7 @@ pub enum ParserError<'a> {
 
 ## ステージ 4: IR 生成と JIT 実行 (`src/compiler/`)
 
-コンパイラは `Vec<Thread>` を受け取り、各スレッドを LLVM IR の関数として生成したあと、JIT で 1 回ずつ実行して状態を表示します。
+コンパイラは `Vec<Thread>` を受け取り、各スレッドを LLVM IR の関数として生成したあと、JIT で 1 回ずつ実行して状態を表示します。CLI から `run --emit-llvm <path>` を指定した場合は、JIT 実行前にモジュール全体の LLVM IR を指定パスへ保存します。
 
 ### `Builders` 構造体
 

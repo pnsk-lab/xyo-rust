@@ -208,6 +208,12 @@ cargo run -- run <path-to-project.sb3>
 JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
 ```
 
+生成された LLVM IR も確認したい場合は `--emit-llvm` を付けます。IR を保存したあとも JIT 実行は続くため、標準出力には同じように実行後状態が表示されます。
+
+```bash
+cargo run -- run <path-to-project.sb3> --emit-llvm out.ll
+```
+
 ## エラーの見方
 
 読み込みや JSON パースに失敗した場合、標準エラー出力には原因チェーンに加えて、可能なら位置情報や周辺コンテキストも表示されます。

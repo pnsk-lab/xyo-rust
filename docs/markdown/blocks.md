@@ -446,6 +446,9 @@ cargo run -- stats my_project.sb3
 
 # 確認後、IR 生成を試す
 cargo run -- run my_project.sb3
+
+# LLVM IR をファイルに保存して確認する
+cargo run -- run my_project.sb3 --emit-llvm out.ll
 ```
 
 前のページ: [CLI](./cli.md)  
