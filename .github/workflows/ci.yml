@@ -2,7 +2,7 @@ name: CI
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v2
+    LLVM_CACHE_VERSION: v3
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -65,7 +65,11 @@ jobs:
                       -DLLVM_INCLUDE_BENCHMARKS=OFF \
                       -DLLVM_INCLUDE_EXAMPLES=OFF \
                       -DLLVM_BUILD_LLVM_DYLIB=OFF \
-                      -DBUILD_SHARED_LIBS=OFF
+                      -DBUILD_SHARED_LIBS=OFF \
+                      -DLLVM_ENABLE_FFI=OFF \
+                      -DLLVM_ENABLE_LIBXML2=OFF \
+                      -DLLVM_ENABLE_ZSTD=OFF \
+                      -DLLVM_ENABLE_TERMINFO=OFF
                   cmake --build "$LLVM_BUILD_DIR" --target install --parallel
 
             - name: Export LLVM env
@@ -80,6 +84,7 @@ jobs:
               shell: bash
               run: |
                   "$LLVM_CONFIG_PATH" --version
+                  "$LLVM_CONFIG_PATH" --system-libs --link-static
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2

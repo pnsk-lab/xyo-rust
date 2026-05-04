@@ -2,7 +2,7 @@ name: Cache Warmup
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v3
+    LLVM_CACHE_VERSION: v4
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -228,6 +228,7 @@ jobs:
               run: |
                   LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
                   echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
+                  echo "LLVM_CONFIG_PATH=$LLVM_ROOT/bin/llvm-config" >> "$GITHUB_ENV"
                   echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
             - name: Export LLVM env (Windows)
@@ -236,7 +237,25 @@ jobs:
               run: |
                   $llvmRoot = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
                   "LLVM_SYS_211_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  "LLVM_CONFIG_PATH=$llvmRoot\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
                   "$llvmRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+            - name: Verify LLVM link metadata (Unix)
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  "$LLVM_CONFIG_PATH" --version
+                  "$LLVM_CONFIG_PATH" --system-libs --link-static
+                  if [[ "${{ matrix.rust_target }}" == "x86_64-unknown-linux-musl" ]] && "$LLVM_CONFIG_PATH" --system-libs --link-static | grep -Eq '(^|[[:space:]])-lffi($|[[:space:]])'; then
+                      echo "musl LLVM cache was built with libffi enabled; rebuild LLVM with LLVM_ENABLE_FFI=OFF" >&2
+                      exit 1
+                  fi
+
+            - name: Verify LLVM version (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  & "$env:LLVM_CONFIG_PATH" --version
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2

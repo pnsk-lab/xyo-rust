@@ -2,7 +2,7 @@ name: Build
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v3
+    LLVM_CACHE_VERSION: v4
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -253,6 +253,11 @@ jobs:
               shell: bash
               run: |
                   "$LLVM_CONFIG_PATH" --version
+                  "$LLVM_CONFIG_PATH" --system-libs --link-static
+                  if [[ "${{ matrix.rust_target }}" == "x86_64-unknown-linux-musl" ]] && "$LLVM_CONFIG_PATH" --system-libs --link-static | grep -Eq '(^|[[:space:]])-lffi($|[[:space:]])'; then
+                      echo "musl LLVM cache was built with libffi enabled; bump LLVM_CACHE_VERSION or rebuild LLVM with LLVM_ENABLE_FFI=OFF" >&2
+                      exit 1
+                  fi
 
             - name: Verify LLVM version (Windows)
               if: runner.os == 'Windows'
