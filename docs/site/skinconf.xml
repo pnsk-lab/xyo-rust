@@ -27,6 +27,9 @@
 			<link name="Home" href="/" />
 			<link name="pnsk-lab" href="https://github.com/pnsk-lab/" />
 		</group>
+		<group title="nav">
+			<autogenerate path="/" />
+		</group>
 	</nav>
 	<favicon></favicon>
 	<extra-css></extra-css>
