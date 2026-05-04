@@ -7,7 +7,7 @@ use crate::{
     },
     types::{Block, BlockOpCodes, Fields, Input, ScratchProject},
 };
-fn block_fields<'a>(
+fn _block_fields<'a>(
     block: &'a Block,
     missing_fields_error: &'static str,
 ) -> ParseResult<'a, &'a HashMap<String, Fields>> {
