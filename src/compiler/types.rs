@@ -92,6 +92,7 @@ pub struct SpriteStruct {
     pub sprite_size: f64,
     pub sprite_costume_id: i64,
     pub sprite_costumes: *mut CostumeInfo,
+    pub sprite_costume_number: i64,
 }
 
 impl Default for SpriteStruct {
@@ -103,6 +104,7 @@ impl Default for SpriteStruct {
             sprite_size: 100.0,
             sprite_costume_id: 0,
             sprite_costumes: std::ptr::null_mut(),
+            sprite_costume_number: 0,
         }
     }
 }
@@ -126,6 +128,7 @@ pub enum SpriteKeys {
     SpriteSize,
     SpriteCostumeId,
     SpriteCostumes,
+    SpriteCostumeNumber,
 }
 impl From<SpriteKeys> for u32 {
     fn from(field: SpriteKeys) -> Self {
@@ -136,6 +139,7 @@ impl From<SpriteKeys> for u32 {
             SpriteKeys::SpriteSize => 3,
             SpriteKeys::SpriteCostumeId => 4,
             SpriteKeys::SpriteCostumes => 5,
+            SpriteKeys::SpriteCostumeNumber => 6,
         }
     }
 }

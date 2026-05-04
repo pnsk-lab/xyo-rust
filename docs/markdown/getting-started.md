@@ -14,7 +14,9 @@
 | LLVM | 21.1.x | IR 生成バックエンド |
 | `llvm-config` | PATH 上に必要 | ビルドスクリプトが LLVM の設定を取得するため |
 | `clang` | PATH 上に必要 | `bitcodes/c/` の C ソースを bitcode へ変換するため |
-| `llvm-link` / `llvm-dis` | PATH 上にあると便利 | `XYO_EMBED_ICU_BITCODE=1` で vendored ICU を `to_lower.bc` に埋め込むときに使う |
+| `make` / `gmake` | PATH 上にあると便利 | `tools/build_icu_prebuilt.sh` で ICU static archive を構築するときに使う |
+| `python3` | PATH 上にあると便利 | ICU ビルド補助スクリプトの整形処理で使う |
+| `curl` / `wget` | どちらか 1 つあると便利 | `setup.sh` が ICU source archive を取得するときに使う |
 
 まずは次のコマンドでバージョンを確認しておくと安全です。
 
@@ -105,11 +107,7 @@ cargo build --release
 2. **Rust コードのコンパイル**: `inkwell` 経由で LLVM ライブラリとリンクしながら Rust コードをコンパイルします
 3. **バイナリ生成**: `target/release/xyo` (リリースビルド) または `target/debug/xyo` (デバッグビルド) が生成されます
 
-通常運用では、`to_lower.c` は vendored ICU のヘッダだけを使って軽量に再生成します。ICU ソース全体を bitcode 化して `to_lower.bc` に埋め込む重い経路はデフォルトでは無効です。
-
-```bash
-XYO_EMBED_ICU_BITCODE=1 cargo build --release
-```
+`cargo build` は `bitcodes/c/` 配下の補助 C コードもあわせて LLVM bitcode に変換します。`str.c` が ICU の Unicode API を使うため、`XYO_ICU_ROOT` または `XYO_ICU_PREBUILT_DIR` を用意してください。
 
 ### 開発時のビルド
 
@@ -293,7 +291,7 @@ clang --version
 CLANG=clang-21 cargo build
 ```
 
-`cargo build` は `bitcodes/c/` 配下の補助 C コードもあわせて LLVM bitcode に変換します。`to_lower.c` は通常は vendored ICU ヘッダだけを使って軽量に生成し、実際の動作確認は prebuilt ICU static archive を併用するルートを標準にしています。ICU 付き自己完結 bitcode が必要な場合だけ `XYO_EMBED_ICU_BITCODE=1` を付けてください。
+`cargo build` は `bitcodes/c/` 配下の補助 C コードもあわせて LLVM bitcode に変換します。`str.c` は ICU の Unicode API を使うため、`XYO_ICU_ROOT` または `XYO_ICU_PREBUILT_DIR` を用意してください。
 
 既定の ICU source tree が `bitcodes/c/lib/icu/` に無い場合は、`XYO_ICU_ROOT=/path/to/icu` を付けてください。prebuilt archive の配置先を変える場合は `XYO_ICU_PREBUILT_DIR=/path/to/prebuilt` を使えます。
 
@@ -305,15 +303,15 @@ CLANG=clang-21 CLANGXX=clang++-21 ./setup.sh
 
 このコマンドは次をまとめて実行します。
 
-1. `bitcodes/c/lib/icu/` から prebuilt ICU static archive を生成する
-2. `cargo build --release` を実行する
-3. `tools/check_to_lower_native.sh` で `to_lower.ll` の native check を行う
+1. vendored ICU を必要に応じて取得する
+2. prebuilt ICU static archive を構築する
+3. `cargo build --release` を実行する
 
 個別に実行する場合は次を使います。
 
 ```bash
 ./tools/build_icu_prebuilt.sh
-./tools/check_to_lower_native.sh
+cargo build --release
 ```
 
 ## ドキュメントのローカル確認

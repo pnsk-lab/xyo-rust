@@ -452,28 +452,27 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 
 ## ビルドスクリプト (`build.rs`)
 
-`cargo build` 時に `build.rs` が実行され、`bitcodes/c/` にあるトップレベルの C ソースを LLVM bitcode に変換します。
+`cargo build` 時に `build.rs` が実行され、`bitcodes/c/` にあるトップレベルの C ソースを LLVM bitcode と LLVM IR に変換します。各ソースは `clang -emit-llvm -c -O3` で `.bc`、`clang -S -emit-llvm -O3` で `.ll` に変換され、出力は `bitcodes/bc/` と `bitcodes/ll/` に保存されます。生成済み `.bc` は `embedded_bitcodes.rs` にも列挙されます。
 
 現在のターゲット:
 
 | C ソース | 生成物 | 役割 |
 | -------- | ------ | ---- |
-| `bitcodes/c/dtoa.c` | `bitcodes/bc/dtoa.bc`, `bitcodes/ll/dtoa.ll` | 浮動小数点数を文字列に変換するライブラリ |
-| `bitcodes/c/atod.c` | `bitcodes/bc/atod.bc`, `bitcodes/ll/atod.ll` | 文字列を浮動小数点数へ変換する補助ライブラリ |
-| `bitcodes/c/to_lower.c` | `bitcodes/bc/to_lower.bc`, `bitcodes/ll/to_lower.ll` | Scratch 文字列の真偽値判定に使う自己完結の補助ライブラリ |
+| `bitcodes/c/numeric.c` | `bitcodes/bc/numeric.bc`, `bitcodes/ll/numeric.ll` | 数値変換と数値判定のヘルパー |
+| `bitcodes/c/str.c` | `bitcodes/bc/str.bc`, `bitcodes/ll/str.ll` | 文字列比較と真偽値変換のヘルパー |
+| `bitcodes/c/tick.c` | `bitcodes/bc/tick.bc`, `bitcodes/ll/tick.ll` | 単調時計と sleep のヘルパー |
 
-`dtoa.c` は将来、生成した IR とリンクして数値→文字列変換（`(0.1 + 0.2)` の結果を表示するときなど）に使用することを想定しています。`atod.c` と `to_lower.c` は、Scratch 文字列の数値化・真偽値化を補助するために使われます。
+`numeric.c` は `bitcodes/c/lib/dtoa.c` と `bitcodes/c/lib/cutils.c` を取り込み、`xyo_atod` / `xyo_dtoa` / `str_is_num` / `str_is_double` を実装します。`str.c` は ICU の Unicode API を使って `string_to_bool` と文字列比較を実装し、`tick.c` は `xyo_now_ns` / `xyo_sleep_until_ns` を提供します。
 
-`to_lower.c` は vendored ICU と連携する補助ライブラリです。標準運用では `XYO_ICU_ROOT` で指定した ICU source tree、または [`bitcodes/c/lib/icu-prebuilt`](/home/kicky/dev/xyo-rust/bitcodes/c/lib/icu-prebuilt) の `include/` を使って `to_lower.bc` / `to_lower.ll` を軽量生成し、実際の動作確認は同じ ICU から生成した prebuilt static archive を `tools/check_to_lower_native.sh` から native link します。`to_lower.c` と ICU ソース群を個別に bitcode 化して `llvm-link` で自己完結化する重い経路は、`XYO_EMBED_ICU_BITCODE=1` を付けたときだけ有効です。
+`build.rs` は `CLANG`、`PATH` 上の `clang`、`llvm-config --bindir` の順で `clang` を解決し、`bitcodes/c/lib` と ICU の include path を追加して各ソースをコンパイルします。ICU ヘッダは `XYO_ICU_PREBUILT_DIR/include` か `XYO_ICU_ROOT/source/common` から見つけます。
 
 ビルドスクリプトは次の手順で動作します:
 
-1. `clang` の実行パスを解決する（`CLANG` → `PATH` 上の `clang` → `llvm-config --bindir` / `LLVM_CONFIG_PATH` の順）
-2. 通常の C ファイルは `clang -emit-llvm -c` と `clang -S -emit-llvm` で `.bc` / `.ll` を生成する
-3. `to_lower.c` は通常は vendored ICU ヘッダだけを使って軽量に `.bc` / `.ll` を生成する
-4. `XYO_EMBED_ICU_BITCODE=1` のときだけ ICU ソース群も個別に `.bc` 化して `llvm-link` で結合する
-5. 必要に応じて `llvm-dis` で最終的な `.ll` を生成する
-6. 出力を `bitcodes/bc/` と `bitcodes/ll/` に保存する
+1. `CLANG`、`PATH` 上の `clang`、`llvm-config --bindir` の順で `clang` を解決する
+2. `bitcodes/c/` 配下のトップレベル `.c` を列挙する
+3. 各ソースに `-I bitcodes/c/lib` と ICU の include path を足して `clang -emit-llvm -c -O3` と `clang -S -emit-llvm -O3` を実行する
+4. 生成した `.bc` を `bitcodes/bc/`、`.ll` を `bitcodes/ll/` に保存する
+5. `.bc` 一覧をもとに `embedded_bitcodes.rs` を書き出す
 
 ## 制約と今後の方針
 

@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use inkwell::{
     AddressSpace,
     context::Context,

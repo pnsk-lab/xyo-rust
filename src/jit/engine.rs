@@ -132,6 +132,7 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
         state.sprite_size = 100.0;
         state.sprite_costume_id = 1;
         state.sprite_costumes = costume_ptr;
+        state.sprite_costume_number = costume_storage.len() as i64;
         let function: JitFunction<'_, ThreadThunk> =
             unsafe { execution_engine.get_function(function_name) }
                 .unwrap_or_else(|err| panic!("failed to find JIT function {function_name}: {err}"));

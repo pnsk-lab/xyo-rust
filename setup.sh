@@ -24,18 +24,16 @@ pick_tool() {
 
 usage() {
     cat <<EOF
-Usage: $0 [--clean-icu] [--skip-icu] [--skip-check] [--force-fetch-icu]
+Usage: $0 [--clean-icu] [--skip-icu] [--force-fetch-icu]
 
 Default flow:
   1. Fetch vendored ICU into bitcodes/c/lib/icu if missing
   2. Build vendored ICU static archives into bitcodes/c/lib/icu-prebuilt
   3. Run cargo build --release
-  4. Run tools/check_to_lower_native.sh
 
 Options:
   --clean-icu       Rebuild prebuilt ICU from scratch
   --skip-icu        Skip ICU fetch + prebuilt build
-  --skip-check      Skip native to_lower.ll check
   --force-fetch-icu Re-fetch vendored ICU source archive
 
 Environment:
@@ -44,10 +42,9 @@ Environment:
   LLVM_CONFIG_PATH  Optional LLVM config path for build.rs
   XYO_ICU_ROOT      ICU source root (default: bitcodes/c/lib/icu)
   XYO_ICU_PREBUILT_DIR  Prebuilt ICU install root (default: bitcodes/c/lib/icu-prebuilt)
-  XYO_ICU_VERSION   ICU version to fetch when vendoring (default: 77.1)
+    XYO_ICU_VERSION   ICU version to fetch when vendoring (default: 78.3)
   XYO_ICU_URL       Explicit ICU source archive URL override
   XYO_ICU_ARCHIVE   Cache path for downloaded ICU archive
-  XYO_EMBED_ICU_BITCODE=1  Opt in to the heavy self-contained to_lower.bc build
 EOF
 }
 
