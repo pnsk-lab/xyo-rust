@@ -92,6 +92,10 @@ jobs:
                   chmod +x "$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" "$RUNNER_TEMP/zig-musl-bin/zig-musl-c++"
                   echo "XYO_CMAKE_C_COMPILER=$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" >> "$GITHUB_ENV"
                   echo "XYO_CMAKE_CXX_COMPILER=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
+                  echo "CC_x86_64_unknown_linux_musl=$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" >> "$GITHUB_ENV"
+                  echo "CXX_x86_64_unknown_linux_musl=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
+                  echo "CLANG=$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" >> "$GITHUB_ENV"
+                  echo "CLANGXX=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
                   echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
 
             - name: Cache LLVM 21.1.x
