@@ -79,8 +79,60 @@ jobs:
               run: |
                   set -euxo pipefail
                   mkdir -p "$RUNNER_TEMP/zig-musl-bin"
-                  printf '%s\n' '#!/usr/bin/env bash' 'exec zig cc -target x86_64-linux-musl "$@"' > "$RUNNER_TEMP/zig-musl-bin/zig-musl-cc"
-                  printf '%s\n' '#!/usr/bin/env bash' 'exec zig c++ -target x86_64-linux-musl "$@"' > "$RUNNER_TEMP/zig-musl-bin/zig-musl-c++"
+                  cat > "$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" <<'EOF'
+                  #!/usr/bin/env bash
+                  set -euo pipefail
+
+                  args=()
+                  while [[ $# -gt 0 ]]; do
+                      case "$1" in
+                      --target=x86_64-unknown-linux-musl|-target=x86_64-unknown-linux-musl)
+                          shift
+                          ;;
+                      --target|-target)
+                          if [[ "${2:-}" == "x86_64-unknown-linux-musl" ]]; then
+                              shift 2
+                          else
+                              args+=("$1")
+                              shift
+                          fi
+                          ;;
+                      *)
+                          args+=("$1")
+                          shift
+                          ;;
+                      esac
+                  done
+
+                  exec zig cc -target x86_64-linux-musl "${args[@]}"
+                  EOF
+                  cat > "$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" <<'EOF'
+                  #!/usr/bin/env bash
+                  set -euo pipefail
+
+                  args=()
+                  while [[ $# -gt 0 ]]; do
+                      case "$1" in
+                      --target=x86_64-unknown-linux-musl|-target=x86_64-unknown-linux-musl)
+                          shift
+                          ;;
+                      --target|-target)
+                          if [[ "${2:-}" == "x86_64-unknown-linux-musl" ]]; then
+                              shift 2
+                          else
+                              args+=("$1")
+                              shift
+                          fi
+                          ;;
+                      *)
+                          args+=("$1")
+                          shift
+                          ;;
+                      esac
+                  done
+
+                  exec zig c++ -target x86_64-linux-musl "${args[@]}"
+                  EOF
                   chmod +x "$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" "$RUNNER_TEMP/zig-musl-bin/zig-musl-c++"
                   echo "XYO_CMAKE_C_COMPILER=$RUNNER_TEMP/zig-musl-bin/zig-musl-cc" >> "$GITHUB_ENV"
                   echo "XYO_CMAKE_CXX_COMPILER=$RUNNER_TEMP/zig-musl-bin/zig-musl-c++" >> "$GITHUB_ENV"
