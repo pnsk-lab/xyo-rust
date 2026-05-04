@@ -30,7 +30,7 @@
 	</nav>
 	<favicon></favicon>
 	<extra-css></extra-css>
-	<skin>dark</skin> <!-- classic or simple -->
+	<skin>classic</skin> <!-- classic or simple -->
 	<copyright>
 		<holder>pnsk-lab</holder>
 		<year>2026</year> <!-- Year when you started this project/whatever copyright holder -->
