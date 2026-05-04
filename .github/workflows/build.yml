@@ -221,6 +221,26 @@ jobs:
                       ./setup.sh --clean-icu
                   fi
 
+            - name: Cache ICU runtime (Linux)
+              if: runner.os == 'Linux'
+              id: cache-icu-runtime
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      target/icu-runtime
+                      target/icu-runtime-build
+                  key: icu-runtime-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+
+            - name: Build bundled ICU runtime (Linux)
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  if [[ "${{ steps.cache-icu-runtime.outputs.cache-hit }}" == "true" ]]; then
+                      ./tools/build_icu_runtime.sh
+                  else
+                      ./tools/build_icu_runtime.sh --clean
+                  fi
+
             - name: Package release artifact (Linux)
               if: runner.os == 'Linux'
               shell: bash
