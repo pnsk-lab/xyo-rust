@@ -17,7 +17,6 @@ rustflags = [
 linker = "musl-gcc"
 rustflags = [
   "-C", "link-arg=-rdynamic",
-  "-C", "link-arg=-Wl,--export-dynamic-symbol=rt_*",
 ]
 
 [target.aarch64-apple-darwin]
