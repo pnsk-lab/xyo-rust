@@ -325,12 +325,12 @@ jobs:
                   distro: ${{ matrix.distro }}
                   githubToken: ${{ github.token }}
                   env: |
-                      ARTIFACT_NAME: ${{ matrix.artifact_name }}
-                      ICU_CACHE_HIT: ${{ steps.cache-icu-prebuilt.outputs.cache-hit }}
-                      ICU_RUNTIME_CACHE_HIT: ${{ steps.cache-icu-runtime.outputs.cache-hit }}
-                      LLVM_CACHE_HIT: ${{ steps.cache-llvm.outputs.cache-hit }}
-                      LLVM_TARGETS: ${{ matrix.llvm_targets }}
-                      LLVM_VERSION: ${{ env.LLVM_VERSION }}
+                      ARTIFACT_NAME: "${{ matrix.artifact_name }}"
+                      ICU_CACHE_HIT: "${{ steps.cache-icu-prebuilt.outputs.cache-hit }}"
+                      ICU_RUNTIME_CACHE_HIT: "${{ steps.cache-icu-runtime.outputs.cache-hit }}"
+                      LLVM_CACHE_HIT: "${{ steps.cache-llvm.outputs.cache-hit }}"
+                      LLVM_TARGETS: "${{ matrix.llvm_targets }}"
+                      LLVM_VERSION: "${{ env.LLVM_VERSION }}"
                   dockerRunArgs: |
                       --volume "${PWD}/artifacts:/artifacts"
                   setup: |
