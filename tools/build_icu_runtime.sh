@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ICU_ROOT="${XYO_ICU_ROOT:-${ROOT_DIR}/bitcodes/c/lib/icu}"
 ICU_SOURCE_DIR="${ICU_ROOT}/source"
-BUILD_DIR="${ROOT_DIR}/target/icu-runtime-build"
+BUILD_DIR="${XYO_ICU_RUNTIME_BUILD_DIR:-${ROOT_DIR}/target/icu-runtime-build}"
 PREFIX_DIR="${XYO_ICU_RUNTIME_DIR:-${ROOT_DIR}/target/icu-runtime}"
 
 pick_tool() {
@@ -36,6 +36,7 @@ Build vendored ICU as shared runtime libraries under:
 Environment:
   XYO_ICU_ROOT         ICU source root      (default: bitcodes/c/lib/icu)
   XYO_ICU_RUNTIME_DIR  Install prefix       (default: target/icu-runtime)
+  XYO_ICU_RUNTIME_BUILD_DIR  Build directory (default: target/icu-runtime-build)
   CLANG                Preferred C compiler (default: clang-23/22/21/clang)
   CLANGXX              Preferred C++ compiler
 EOF
@@ -117,6 +118,7 @@ echo "using CLANGXX=${CLANGXX}"
 echo "using MAKE=${MAKE_TOOL}"
 echo "using JOBS=${JOBS}"
 echo "using ICU_ROOT=${ICU_ROOT}"
+echo "using XYO_ICU_RUNTIME_BUILD_DIR=${BUILD_DIR}"
 echo "using XYO_ICU_RUNTIME_DIR=${PREFIX_DIR}"
 
 if [[ ! -f "${BUILD_DIR}/Makefile" ]]; then

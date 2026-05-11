@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ICU_ROOT="${XYO_ICU_ROOT:-${ROOT_DIR}/bitcodes/c/lib/icu}"
 ICU_SOURCE_DIR="${ICU_ROOT}/source"
-BUILD_DIR="${ROOT_DIR}/target/icu-prebuilt-build"
+BUILD_DIR="${XYO_ICU_PREBUILT_BUILD_DIR:-${ROOT_DIR}/target/icu-prebuilt-build}"
 PREFIX_DIR="${XYO_ICU_PREBUILT_DIR:-${ROOT_DIR}/bitcodes/c/lib/icu-prebuilt}"
 
 pick_tool() {
@@ -36,6 +36,7 @@ Build vendored ICU as static archives under:
 Environment:
   XYO_ICU_ROOT      ICU source root      (default: bitcodes/c/lib/icu)
   XYO_ICU_PREBUILT_DIR  Install prefix   (default: bitcodes/c/lib/icu-prebuilt)
+  XYO_ICU_PREBUILT_BUILD_DIR  Build directory (default: target/icu-prebuilt-build)
   CLANG      Preferred C compiler    (default: clang-23/22/21/clang)
   CLANGXX    Preferred C++ compiler  (default: clang++-23/22/21/clang++)
   AR         Archiver                (default: ar)
@@ -123,6 +124,7 @@ echo "using RANLIB=${RANLIB_TOOL}"
 echo "using MAKE=${MAKE_TOOL}"
 echo "using JOBS=${JOBS}"
 echo "using ICU_ROOT=${ICU_ROOT}"
+echo "using ICU_PREBUILT_BUILD_DIR=${BUILD_DIR}"
 echo "using ICU_PREBUILT_DIR=${PREFIX_DIR}"
 
 if [[ ! -f "${BUILD_DIR}/Makefile" ]]; then
