@@ -13,6 +13,7 @@ on:
 
 permissions:
     contents: read
+    packages: write
 
 jobs:
     warm-cache:
@@ -216,3 +217,138 @@ jobs:
                   } else {
                     ./setup.ps1 -CleanIcu -SkipCheck -VcpkgTriplet "${{ matrix.vcpkg_triplet }}"
                   }
+
+    warm-cache-linux-emulated:
+        name: Warm Cache Linux (${{ matrix.arch }})
+        runs-on: ubuntu-24.04
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - arch: aarch64
+                      distro: ubuntu24.04
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                    - arch: armv7
+                      distro: ubuntu24.04
+                      llvm_targets: X86;ARM;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-arm-aarch64-riscv-wasm
+                    - arch: ppc64le
+                      distro: ubuntu24.04
+                      llvm_targets: X86;AArch64;PowerPC;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-powerpc-riscv-wasm
+                    - arch: s390x
+                      distro: ubuntu24.04
+                      llvm_targets: X86;AArch64;RISCV;SystemZ;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-systemz-wasm
+                    - arch: riscv64
+                      distro: ubuntu24.04
+                      llvm_targets: X86;AArch64;RISCV;WebAssembly
+                      llvm_cache_targets: x86-aarch64-riscv-wasm
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Cache LLVM 21.1.x
+              id: cache-llvm
+              uses: actions/cache@v4
+              with:
+                  path: .llvm-emulated/${{ matrix.arch }}
+                  key: llvm-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Cache ICU prebuilt
+              id: cache-icu-prebuilt
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      bitcodes/c/lib/icu
+                      bitcodes/c/lib/icu-prebuilt-${{ matrix.arch }}
+                      target/icu-prebuilt-build-${{ matrix.arch }}
+                  key: icu-prebuilt-linux-${{ matrix.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+
+            - name: Cache ICU runtime
+              id: cache-icu-runtime
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      target/icu-runtime-${{ matrix.arch }}
+                      target/icu-runtime-build-${{ matrix.arch }}
+                  key: icu-runtime-linux-${{ matrix.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+
+            - name: Warm cache on ${{ matrix.arch }}
+              uses: uraimo/run-on-arch-action@v3
+              with:
+                  arch: ${{ matrix.arch }}
+                  distro: ${{ matrix.distro }}
+                  githubToken: ${{ github.token }}
+                  env: |
+                      ICU_CACHE_HIT: ${{ steps.cache-icu-prebuilt.outputs.cache-hit }}
+                      ICU_RUNTIME_CACHE_HIT: ${{ steps.cache-icu-runtime.outputs.cache-hit }}
+                      LLVM_CACHE_HIT: ${{ steps.cache-llvm.outputs.cache-hit }}
+                      LLVM_TARGETS: ${{ matrix.llvm_targets }}
+                      LLVM_VERSION: ${{ env.LLVM_VERSION }}
+                  install: |
+                      apt-get update -q -y
+                      DEBIAN_FRONTEND=noninteractive apt-get install -q -y \
+                        build-essential \
+                        ca-certificates \
+                        clang \
+                        cmake \
+                        curl \
+                        git \
+                        gzip \
+                        ninja-build \
+                        perl \
+                        pkg-config \
+                        python3 \
+                        tar
+                  run: |
+                      set -euxo pipefail
+
+                      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+                        | sh -s -- -y --profile minimal --default-toolchain stable
+                      . "$HOME/.cargo/env"
+
+                      export LLVM_ROOT="$PWD/.llvm-emulated/${{ matrix.arch }}"
+                      if [[ "${LLVM_CACHE_HIT}" != "true" ]]; then
+                          LLVM_SOURCE_DIR="$PWD/target/llvm-project-${{ matrix.arch }}"
+                          LLVM_BUILD_DIR="$PWD/target/llvm-build-${{ matrix.arch }}"
+                          rm -rf "$LLVM_ROOT" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
+                          git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
+                          cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
+                              -DCMAKE_BUILD_TYPE=Release \
+                              -DCMAKE_INSTALL_PREFIX="$LLVM_ROOT" \
+                              -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}" \
+                              -DLLVM_INCLUDE_TESTS=OFF \
+                              -DLLVM_INCLUDE_BENCHMARKS=OFF \
+                              -DLLVM_INCLUDE_EXAMPLES=OFF \
+                              -DLLVM_BUILD_LLVM_DYLIB=OFF \
+                              -DBUILD_SHARED_LIBS=OFF \
+                              -DLLVM_ENABLE_FFI=OFF \
+                              -DLLVM_ENABLE_LIBXML2=OFF \
+                              -DLLVM_ENABLE_ZSTD=OFF \
+                              -DLLVM_ENABLE_TERMINFO=OFF
+                          cmake --build "$LLVM_BUILD_DIR" --target install --parallel
+                      fi
+
+                      export LLVM_SYS_211_PREFIX="$LLVM_ROOT"
+                      export LLVM_CONFIG_PATH="$LLVM_ROOT/bin/llvm-config"
+                      export PATH="$LLVM_ROOT/bin:$PATH"
+                      "$LLVM_CONFIG_PATH" --version
+
+                      export XYO_ICU_PREBUILT_DIR="$PWD/bitcodes/c/lib/icu-prebuilt-${{ matrix.arch }}"
+                      export XYO_ICU_PREBUILT_BUILD_DIR="$PWD/target/icu-prebuilt-build-${{ matrix.arch }}"
+                      if [[ "${ICU_CACHE_HIT}" == "true" ]]; then
+                          ./setup.sh
+                      else
+                          ./setup.sh --clean-icu
+                      fi
+
+                      export XYO_ICU_RUNTIME_DIR="$PWD/target/icu-runtime-${{ matrix.arch }}"
+                      export XYO_ICU_RUNTIME_BUILD_DIR="$PWD/target/icu-runtime-build-${{ matrix.arch }}"
+                      if [[ "${ICU_RUNTIME_CACHE_HIT}" == "true" ]]; then
+                          ./tools/build_icu_runtime.sh
+                      else
+                          ./tools/build_icu_runtime.sh --clean
+                      fi
