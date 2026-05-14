@@ -2,7 +2,7 @@ name: Cache Warmup
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v4
+    LLVM_CACHE_VERSION: v5
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -27,32 +27,32 @@ jobs:
                 include:
                     - os: ubuntu-24.04
                       rust_target: x86_64-unknown-linux-gnu
-                      llvm_targets: X86;AArch64;RISCV;WebAssembly
-                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                      llvm_targets: X86;WebAssembly
+                      llvm_cache_targets: x86-wasm
                     - os: ubuntu-24.04-arm
                       rust_target: aarch64-unknown-linux-gnu
-                      llvm_targets: X86;AArch64;RISCV;WebAssembly
-                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                      llvm_targets: AArch64;WebAssembly
+                      llvm_cache_targets: aarch64-wasm
                     - os: macos-15-intel
                       rust_target: x86_64-apple-darwin
-                      llvm_targets: X86;AArch64;WebAssembly
-                      llvm_cache_targets: x86-aarch64-wasm
+                      llvm_targets: X86;WebAssembly
+                      llvm_cache_targets: x86-wasm
                     - os: macos-15
                       rust_target: aarch64-apple-darwin
-                      llvm_targets: X86;AArch64;WebAssembly
-                      llvm_cache_targets: x86-aarch64-wasm
+                      llvm_targets: AArch64;WebAssembly
+                      llvm_cache_targets: aarch64-wasm
                     - os: windows-latest
                       rust_target: x86_64-pc-windows-msvc
                       cmake_arch: x64
                       vcpkg_triplet: x64-windows
-                      llvm_targets: X86;AArch64;WebAssembly
-                      llvm_cache_targets: x86-aarch64-wasm
+                      llvm_targets: X86;WebAssembly
+                      llvm_cache_targets: x86-wasm
                     - os: windows-11-arm
                       rust_target: aarch64-pc-windows-msvc
                       cmake_arch: ARM64
                       vcpkg_triplet: arm64-windows
-                      llvm_targets: X86;AArch64;RISCV;WebAssembly
-                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                      llvm_targets: AArch64;WebAssembly
+                      llvm_cache_targets: aarch64-wasm
 
         steps:
             - name: Checkout
@@ -227,24 +227,24 @@ jobs:
                 include:
                     - arch: aarch64
                       distro: ubuntu24.04
-                      llvm_targets: X86;AArch64;RISCV;WebAssembly
-                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                      llvm_targets: AArch64;WebAssembly
+                      llvm_cache_targets: aarch64-wasm
                     - arch: armv7
                       distro: ubuntu24.04
-                      llvm_targets: X86;ARM;AArch64;RISCV;WebAssembly
-                      llvm_cache_targets: x86-arm-aarch64-riscv-wasm
+                      llvm_targets: ARM;WebAssembly
+                      llvm_cache_targets: arm-wasm
                     - arch: ppc64le
                       distro: ubuntu24.04
-                      llvm_targets: X86;AArch64;PowerPC;RISCV;WebAssembly
-                      llvm_cache_targets: x86-aarch64-powerpc-riscv-wasm
+                      llvm_targets: PowerPC;WebAssembly
+                      llvm_cache_targets: powerpc-wasm
                     - arch: s390x
                       distro: ubuntu24.04
-                      llvm_targets: X86;AArch64;RISCV;SystemZ;WebAssembly
-                      llvm_cache_targets: x86-aarch64-riscv-systemz-wasm
+                      llvm_targets: SystemZ;WebAssembly
+                      llvm_cache_targets: systemz-wasm
                     - arch: riscv64
                       distro: ubuntu24.04
-                      llvm_targets: X86;AArch64;RISCV;WebAssembly
-                      llvm_cache_targets: x86-aarch64-riscv-wasm
+                      llvm_targets: RISCV;WebAssembly
+                      llvm_cache_targets: riscv-wasm
 
         steps:
             - name: Checkout
@@ -276,6 +276,17 @@ jobs:
                       target/icu-runtime-build-${{ matrix.arch }}
                   key: icu-runtime-linux-${{ matrix.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
 
+            - name: Cache cargo build outputs
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      .cargo-home/${{ matrix.arch }}
+                      .rustup-home/${{ matrix.arch }}
+                      target/cargo-${{ matrix.arch }}
+                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ hashFiles('Cargo.lock') }}
+                  restore-keys: |
+                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-
+
             - name: Warm cache on ${{ matrix.arch }}
               uses: uraimo/run-on-arch-action@v3
               with:
@@ -306,9 +317,13 @@ jobs:
                   run: |
                       set -euxo pipefail
 
+                      export CARGO_HOME="$PWD/.cargo-home/${{ matrix.arch }}"
+                      export CARGO_TARGET_DIR="$PWD/target/cargo-${{ matrix.arch }}"
+                      export RUSTUP_HOME="$PWD/.rustup-home/${{ matrix.arch }}"
+                      mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$RUSTUP_HOME"
                       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
                         | sh -s -- -y --profile minimal --default-toolchain stable
-                      . "$HOME/.cargo/env"
+                      . "$CARGO_HOME/env"
 
                       export LLVM_ROOT="$PWD/.llvm-emulated/${{ matrix.arch }}"
                       if [[ "${LLVM_CACHE_HIT}" != "true" ]]; then
