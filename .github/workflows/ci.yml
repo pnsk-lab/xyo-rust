@@ -17,10 +17,149 @@ on:
 
 permissions:
     contents: read
+    id-token: write
 
 jobs:
+    start-ec2-spot-runner:
+        name: Start EC2 Spot runner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        runs-on: ubuntu-latest
+        outputs:
+            instance_id: ${{ steps.start.outputs.instance_id }}
+            runner_label: ${{ steps.start.outputs.runner_label }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+                  aws-region: ${{ vars.AWS_REGION }}
+
+            - name: Start EC2 Spot runner
+              id: start
+              shell: bash
+              env:
+                  AWS_REGION: ${{ vars.AWS_REGION }}
+                  AWS_SPOT_SUBNET_ID: ${{ vars.AWS_SPOT_SUBNET_ID }}
+                  AWS_SPOT_SECURITY_GROUP_ID: ${{ vars.AWS_SPOT_SECURITY_GROUP_ID }}
+                  AWS_SPOT_INSTANCE_TYPE: ${{ vars.AWS_SPOT_INSTANCE_TYPE }}
+                  AWS_SPOT_ROOT_VOLUME_SIZE: ${{ vars.AWS_SPOT_ROOT_VOLUME_SIZE }}
+                  AWS_SPOT_AMI_ID: ${{ vars.AWS_SPOT_AMI_ID }}
+                  AWS_SPOT_INSTANCE_PROFILE: ${{ vars.AWS_SPOT_INSTANCE_PROFILE }}
+                  GH_RUNNER_PAT: ${{ secrets.GH_RUNNER_PAT }}
+              run: ./.github/scripts/start-ec2-spot-runner.sh
+
+            - name: Wait for EC2 Spot runner
+              id: wait
+              continue-on-error: true
+              shell: bash
+              env:
+                  GH_RUNNER_PAT: ${{ secrets.GH_RUNNER_PAT }}
+                  RUNNER_LABEL: ${{ steps.start.outputs.runner_label }}
+              run: ./.github/scripts/wait-for-ec2-spot-runner.sh
+
+            - name: Fail if EC2 Spot runner did not register
+              if: steps.wait.outcome != 'success'
+              shell: bash
+              run: exit 1
+
     test:
+        name: Test (EC2 Spot)
+        needs: start-ec2-spot-runner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        runs-on:
+            - self-hosted
+            - linux
+            - x64
+            - xyo-ec2-spot
+            - ${{ needs.start-ec2-spot-runner.outputs.runner_label }}
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache LLVM 21.1.x
+              id: cache-llvm
+              uses: actions/cache@v4
+              with:
+                  path: .llvm/${{ runner.os }}-${{ runner.arch }}
+                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-x86-aarch64-riscv-wasm-${{ env.LLVM_CACHE_VERSION }}
+
+            - name: Cache ICU prebuilt
+              id: cache-icu-prebuilt
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      bitcodes/c/lib/icu
+                      bitcodes/c/lib/icu-prebuilt
+                      target/icu-prebuilt-build
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+
+            - name: Build LLVM 21.1.x
+              if: steps.cache-llvm.outputs.cache-hit != 'true'
+              shell: bash
+              run: |
+                  set -euxo pipefail
+                  LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
+                  LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
+                  LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
+                  rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
+                  git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
+                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR" \
+                      -DLLVM_TARGETS_TO_BUILD="X86;AArch64;RISCV;WebAssembly" \
+                      -DLLVM_INCLUDE_TESTS=OFF \
+                      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+                      -DLLVM_INCLUDE_EXAMPLES=OFF \
+                      -DLLVM_BUILD_LLVM_DYLIB=OFF \
+                      -DBUILD_SHARED_LIBS=OFF \
+                      -DLLVM_ENABLE_FFI=OFF \
+                      -DLLVM_ENABLE_LIBXML2=OFF \
+                      -DLLVM_ENABLE_ZSTD=OFF \
+                      -DLLVM_ENABLE_TERMINFO=OFF
+                  cmake --build "$LLVM_BUILD_DIR" --target install --parallel
+
+            - name: Export LLVM env
+              shell: bash
+              run: |
+                  LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}"
+                  echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
+                  echo "LLVM_CONFIG_PATH=$LLVM_ROOT/bin/llvm-config" >> "$GITHUB_ENV"
+                  echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+
+            - name: Verify LLVM version
+              shell: bash
+              run: |
+                  "$LLVM_CONFIG_PATH" --version
+                  "$LLVM_CONFIG_PATH" --system-libs --link-static
+
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+              with:
+                  prefix-key: v1-rust
+                  cache-bin: "false"
+
+            - name: Setup and build
+              shell: bash
+              run: |
+                  if [[ "${{ steps.cache-icu-prebuilt.outputs.cache-hit }}" == "true" ]]; then
+                      ./setup.sh
+                  else
+                      ./setup.sh --clean-icu
+                  fi
+
+            - name: Test
+              run: cargo test --locked
+
+    test-github-hosted:
         name: Test (ubuntu-latest)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         runs-on: ubuntu-latest
 
         steps:
@@ -88,6 +227,9 @@ jobs:
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
+              with:
+                  prefix-key: v1-rust
+                  cache-bin: "false"
 
             - name: Setup and build
               shell: bash
@@ -100,3 +242,27 @@ jobs:
 
             - name: Test
               run: cargo test --locked
+
+    stop-ec2-spot-runner:
+        name: Stop EC2 Spot runner
+        runs-on: ubuntu-latest
+        needs:
+            - start-ec2-spot-runner
+            - test
+        if: always() && needs.start-ec2-spot-runner.outputs.instance_id != ''
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+                  aws-region: ${{ vars.AWS_REGION }}
+
+            - name: Terminate EC2 Spot runner
+              shell: bash
+              env:
+                  AWS_REGION: ${{ vars.AWS_REGION }}
+                  INSTANCE_ID: ${{ needs.start-ec2-spot-runner.outputs.instance_id }}
+              run: ./.github/scripts/stop-ec2-spot-runner.sh
