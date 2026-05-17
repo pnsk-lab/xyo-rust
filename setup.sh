@@ -148,7 +148,7 @@ fetch_icu_if_needed() {
     mkdir -p "${tmp_extract_dir}"
 
     echo "fetching ICU ${icu_version} from ${icu_url}"
-    if [[ "${downloader}" == "curl" ]]; then
+    if [[ "${downloader##*/}" == "curl" ]]; then
         curl -L --fail --output "${archive_path}" "${icu_url}"
     else
         wget -O "${archive_path}" "${icu_url}"

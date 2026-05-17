@@ -5,6 +5,7 @@ env:
     LLVM_CACHE_VERSION: v7
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
+    VCPKG_CACHE_VERSION: v1
 
 on:
     schedule:
@@ -74,7 +75,7 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ${{ runner.temp }}/vcpkg
-                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vcpkg_triplet }}-${{ env.ICU_VERSION }}-${{ env.ICU_CACHE_VERSION }}
+                  key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vcpkg_triplet }}-${{ env.ICU_VERSION }}-${{ env.VCPKG_CACHE_VERSION }}
 
             - name: Install LLVM 21.1.x (prebuilt)
               if: runner.os != 'Windows'

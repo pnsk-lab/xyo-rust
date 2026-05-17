@@ -89,9 +89,39 @@ function Export-GitHubEnv {
 }
 
 $triplet = Get-DefaultTriplet -RunnerArch $env:RUNNER_ARCH -ExplicitTriplet $VcpkgTriplet
+if ($triplet.EndsWith('-static')) {
+    $staticTriplet = $triplet
+} else {
+    $staticTriplet = "$triplet-static"
+}
 $vcpkgRoot = Get-VcpkgRoot
 $vcpkgExe = Join-Path $vcpkgRoot 'vcpkg.exe'
 $icuInstallRoot = Join-Path $vcpkgRoot "installed/$triplet"
+# LLVM's Windows release binaries still reference libxml2 at link time, so we
+# keep a static copy available alongside the ICU packages.
+$libxml2InstallRoot = Join-Path $vcpkgRoot "installed/$staticTriplet"
+
+function Ensure-LibXml2LibraryAliases {
+    param(
+        [string]$LibDir
+    )
+
+    if (-not (Test-Path $LibDir)) {
+        return
+    }
+
+    $libXml2s = Join-Path $LibDir 'libxml2s.lib'
+    $xml2s = Join-Path $LibDir 'xml2s.lib'
+
+    if ((Test-Path $libXml2s) -and (-not (Test-Path $xml2s))) {
+        Copy-Item -LiteralPath $libXml2s -Destination $xml2s -Force
+        return
+    }
+
+    if ((Test-Path $xml2s) -and (-not (Test-Path $libXml2s))) {
+        Copy-Item -LiteralPath $xml2s -Destination $libXml2s -Force
+    }
+}
 
 if ($ForceFetchIcu) {
     Write-Host 'ForceFetchIcu is not used on Windows; proceeding with vcpkg install.'
@@ -107,13 +137,26 @@ if (-not $SkipIcu) {
     & $vcpkgExe install "icu:$triplet"
 }
 
+if (-not (Test-Path $libxml2InstallRoot)) {
+    $vcpkgExe = Ensure-Vcpkg -Root $vcpkgRoot
+    & $vcpkgExe install "libxml2:$staticTriplet"
+}
+
 if (-not (Test-Path $icuInstallRoot)) {
     throw "ICU prebuilt directory not found: $icuInstallRoot"
 }
 
+Ensure-LibXml2LibraryAliases -LibDir (Join-Path $libxml2InstallRoot 'lib')
+
+$libxml2LibDir = Join-Path $libxml2InstallRoot 'lib'
 $env:XYO_ICU_PREBUILT_DIR = $icuInstallRoot
 $env:XYO_ICU_NATIVE_LIB_DIR = Join-Path $icuInstallRoot 'lib'
 $env:XYO_ICU_RUNTIME_DIR = $icuInstallRoot
+if ([string]::IsNullOrWhiteSpace($env:LIB)) {
+    $env:LIB = $libxml2LibDir
+} else {
+    $env:LIB = "$libxml2LibDir;$env:LIB"
+}
 
 Export-GitHubEnv -Name 'XYO_ICU_PREBUILT_DIR' -Value $env:XYO_ICU_PREBUILT_DIR
 Export-GitHubEnv -Name 'XYO_ICU_NATIVE_LIB_DIR' -Value $env:XYO_ICU_NATIVE_LIB_DIR
