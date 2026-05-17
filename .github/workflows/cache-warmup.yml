@@ -2,7 +2,7 @@ name: Cache Warmup
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v6
+    LLVM_CACHE_VERSION: v7
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -91,7 +91,7 @@ jobs:
                   $llvmRootDir = Join-Path $env:GITHUB_WORKSPACE '.llvm'
                   $llvmInstallDir = Join-Path $llvmRootDir "$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
                   $env:LLVM_INSTALL_DIR = $llvmInstallDir
-                  ./tools/install_llvm_prebuilt.ps1
+                  ./tools/install_llvm_prebuilt.ps1 -TargetArch "${{ matrix.rust_target }}"
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
@@ -124,6 +124,7 @@ jobs:
               shell: pwsh
               run: |
                   & "$env:LLVM_CONFIG_PATH" --version
+                  & "$env:LLVM_CONFIG_PATH" --host-target
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2

@@ -1,5 +1,6 @@
 param(
-    [string]$InstallDir
+    [string]$InstallDir,
+    [string]$TargetArch
 )
 
 Set-StrictMode -Version Latest
@@ -8,21 +9,93 @@ $ErrorActionPreference = 'Stop'
 $rootDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $version = if (-not [string]::IsNullOrWhiteSpace($env:LLVM_VERSION)) { $env:LLVM_VERSION } else { '21.1.8' }
 
+function Get-RequestedArch {
+    param(
+        [string]$ExplicitArch
+    )
+
+    $candidates = @(
+        $ExplicitArch,
+        $env:LLVM_TARGET_ARCH,
+        $env:CARGO_BUILD_TARGET,
+        $env:RUNNER_ARCH,
+        $env:PROCESSOR_ARCHITECTURE
+    )
+
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+
+        $normalized = $candidate.ToLowerInvariant()
+        if ($normalized -match '^(aarch64|arm64)(-|$)' -or $normalized -eq 'arm64') {
+            return 'ARM64'
+        }
+
+        if ($normalized -match '^(x86_64|amd64|x64)(-|$)' -or $normalized -in @('amd64', 'x64')) {
+            return 'AMD64'
+        }
+    }
+
+    throw 'unable to determine Windows LLVM target architecture'
+}
+
+$arch = Get-RequestedArch -ExplicitArch $TargetArch
+Write-Host "using LLVM_TARGET_ARCH=$arch"
+
+function Get-ExpectedHostTarget {
+    param(
+        [string]$Arch
+    )
+
+    switch ($Arch) {
+        'AMD64' { return 'x86_64-pc-windows-msvc' }
+        'ARM64' { return 'aarch64-pc-windows-msvc' }
+        default { throw "unsupported Windows architecture for prebuilt LLVM: $Arch" }
+    }
+}
+
+function Test-LlvmInstallArch {
+    param(
+        [string]$LlvmConfigPath,
+        [string]$Arch
+    )
+
+    $expectedHostTarget = Get-ExpectedHostTarget -Arch $Arch
+    try {
+        $actualHostTarget = (& $LlvmConfigPath --host-target).Trim()
+    }
+    catch {
+        return $false
+    }
+
+    if ($actualHostTarget -ne $expectedHostTarget) {
+        Write-Host "LLVM host target mismatch: expected $expectedHostTarget, found $actualHostTarget"
+        return $false
+    }
+
+    return $true
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = $env:LLVM_INSTALL_DIR
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-    $InstallDir = Join-Path (Join-Path $rootDir '.llvm') $env:PROCESSOR_ARCHITECTURE
+    $InstallDir = Join-Path (Join-Path $rootDir '.llvm') $arch
 }
 
 $llvmConfigExe = Join-Path (Join-Path $InstallDir 'bin') 'llvm-config.exe'
 if (Test-Path $llvmConfigExe) {
-    Write-Host "LLVM already installed at $InstallDir"
-    exit 0
+    if (Test-LlvmInstallArch -LlvmConfigPath $llvmConfigExe -Arch $arch) {
+        Write-Host "LLVM already installed at $InstallDir"
+        exit 0
+    }
+
+    Write-Host "removing LLVM install with the wrong host target: $InstallDir"
+    Remove-Item $InstallDir -Recurse -Force
 }
 
-$arch = ($env:PROCESSOR_ARCHITECTURE ?? '').ToUpperInvariant()
 switch ($arch) {
     'AMD64' {
         $assetName = "clang+llvm-$version-x86_64-pc-windows-msvc.tar.xz"
@@ -37,7 +110,8 @@ switch ($arch) {
     }
 }
 
-$tmpDir = Join-Path $env:RUNNER_TEMP "llvm-prebuilt-$arch"
+$tmpRoot = if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$tmpDir = Join-Path $tmpRoot "llvm-prebuilt-$arch"
 if (Test-Path $tmpDir) {
     Remove-Item $tmpDir -Recurse -Force
 }
@@ -73,6 +147,10 @@ Get-ChildItem -Force $sourceRoot | ForEach-Object {
 
 if (-not (Test-Path $llvmConfigExe)) {
     throw "failed to install LLVM into $InstallDir"
+}
+
+if (-not (Test-LlvmInstallArch -LlvmConfigPath $llvmConfigExe -Arch $arch)) {
+    throw "LLVM archive architecture does not match requested $arch"
 }
 
 Write-Host "installed LLVM $version into $InstallDir"
