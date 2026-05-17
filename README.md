@@ -172,7 +172,7 @@ xyo-rust/
 
 | ワークフロー | トリガー | 内容 |
 | ------------ | -------- | ---- |
-| `ci.yml` | `push` / `pull_request` / `workflow_dispatch` | Ubuntu 上で `cargo test` を回す通常 CI |
+| `ci.yml` | `push` / `pull_request` / `workflow_dispatch` | Ubuntu 上で `cargo test` と s390x の emulated test を回す通常 CI |
 | `build.yml` | GitHub Release 用の tag push | Rust バイナリのマルチプラットフォームビルド |
 | `pages.yml` | ドキュメント更新時の push | ドキュメントを GitHub Pages へデプロイ |
 
