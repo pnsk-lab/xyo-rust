@@ -134,9 +134,8 @@ fn resolve_icu_root(input_dir: &Path) -> Option<PathBuf> {
 
 fn resolve_clang() -> Option<PathBuf> {
     if let Ok(clang) = env::var("CLANG") {
-        let path = PathBuf::from(clang);
-        if path.is_file() {
-            return Some(path);
+        if command_exists(&clang) {
+            return Some(PathBuf::from(clang));
         }
     }
 

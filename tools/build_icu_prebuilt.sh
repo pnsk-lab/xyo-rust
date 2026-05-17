@@ -10,20 +10,52 @@ PREFIX_DIR="${XYO_ICU_PREBUILT_DIR:-${ROOT_DIR}/bitcodes/c/lib/icu-prebuilt}"
 pick_tool() {
     local preferred="${1:-}"
     shift
-    if [[ -n "${preferred}" ]] && command -v "${preferred}" >/dev/null 2>&1; then
-        printf '%s\n' "${preferred}"
-        return 0
+    local candidate resolved
+
+    if [[ -n "${preferred}" ]]; then
+        resolved="$(command -v "${preferred}" 2>/dev/null || true)"
+        if [[ -n "${resolved}" && "${resolved}" == */* ]]; then
+            printf '%s\n' "${resolved}"
+            return 0
+        fi
+        return 1
     fi
 
-    local candidate
     for candidate in "$@"; do
-        if command -v "${candidate}" >/dev/null 2>&1; then
-            printf '%s\n' "${candidate}"
+        resolved="$(command -v "${candidate}" 2>/dev/null || true)"
+        if [[ -n "${resolved}" && "${resolved}" == */* ]]; then
+            printf '%s\n' "${resolved}"
             return 0
         fi
     done
 
     return 1
+}
+
+configure_macos_sdkroot() {
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        return 0
+    fi
+
+    if [[ -n "${SDKROOT:-}" ]]; then
+        return 0
+    fi
+
+    if ! command -v xcrun >/dev/null 2>&1; then
+        echo "xcrun is required on macOS to locate the active SDK" >&2
+        return 1
+    fi
+
+    local sdkroot
+    sdkroot="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+    if [[ -z "${sdkroot}" || ! -d "${sdkroot}" ]]; then
+        echo "failed to determine macOS SDKROOT; install Xcode Command Line Tools or set SDKROOT" >&2
+        return 1
+    fi
+
+    SDKROOT="${sdkroot}"
+    export SDKROOT
+    return 0
 }
 
 usage() {
@@ -39,6 +71,7 @@ Environment:
   XYO_ICU_PREBUILT_BUILD_DIR  Build directory (default: target/icu-prebuilt-build)
   CLANG      Preferred C compiler    (default: clang-23/22/21/clang)
   CLANGXX    Preferred C++ compiler  (default: clang++-23/22/21/clang++)
+  SDKROOT    macOS SDK root (optional; auto-detected if unset)
   AR         Archiver                (default: ar)
   RANLIB     Ranlib                  (default: ranlib)
 EOF
@@ -101,11 +134,35 @@ if [[ ! -d "${ICU_SOURCE_DIR}" ]]; then
     exit 1
 fi
 
-CLANG="${CLANG:-$(pick_tool "" clang-23 clang-22 clang-21 clang)}"
-CLANGXX="${CLANGXX:-$(pick_tool "" clang++-23 clang++-22 clang++-21 clang++)}"
-AR_TOOL="${AR:-$(pick_tool "" ar llvm-ar-23 llvm-ar-22 llvm-ar-21 llvm-ar)}"
-RANLIB_TOOL="${RANLIB:-$(pick_tool "" ranlib llvm-ranlib-23 llvm-ranlib-22 llvm-ranlib-21 llvm-ranlib)}"
-MAKE_TOOL="$(pick_tool "" make gmake)"
+CLANG="${CLANG:-}"
+CLANGXX="${CLANGXX:-}"
+AR="${AR:-}"
+RANLIB="${RANLIB:-}"
+
+if ! CLANG="$(pick_tool "${CLANG}" clang-23 clang-22 clang-21 clang)"; then
+    echo "unable to find a usable C compiler; set CLANG explicitly" >&2
+    exit 1
+fi
+if ! CLANGXX="$(pick_tool "${CLANGXX}" clang++-23 clang++-22 clang++-21 clang++)"; then
+    echo "unable to find a usable C++ compiler; set CLANGXX explicitly" >&2
+    exit 1
+fi
+if ! AR_TOOL="$(pick_tool "${AR}" ar llvm-ar-23 llvm-ar-22 llvm-ar-21 llvm-ar)"; then
+    echo "unable to find a usable archiver; set AR explicitly" >&2
+    exit 1
+fi
+if ! RANLIB_TOOL="$(pick_tool "${RANLIB}" ranlib llvm-ranlib-23 llvm-ranlib-22 llvm-ranlib-21 llvm-ranlib)"; then
+    echo "unable to find a usable ranlib; set RANLIB explicitly" >&2
+    exit 1
+fi
+if ! MAKE_TOOL="$(pick_tool "" make gmake)"; then
+    echo "unable to find make or gmake" >&2
+    exit 1
+fi
+
+if ! configure_macos_sdkroot; then
+    exit 1
+fi
 
 if [[ -z "${JOBS}" ]]; then
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '4\n')"
@@ -126,6 +183,9 @@ echo "using JOBS=${JOBS}"
 echo "using ICU_ROOT=${ICU_ROOT}"
 echo "using ICU_PREBUILT_BUILD_DIR=${BUILD_DIR}"
 echo "using ICU_PREBUILT_DIR=${PREFIX_DIR}"
+if [[ -n "${SDKROOT:-}" ]]; then
+    echo "using SDKROOT=${SDKROOT}"
+fi
 
 if [[ ! -f "${BUILD_DIR}/Makefile" ]]; then
     normalize_shell_helpers
@@ -139,7 +199,7 @@ dst.write_bytes(src.read_bytes().replace(b"\r\n", b"\n"))
 PY
     chmod +x "${NORMALIZED_CONFIGURE}"
 
-    (
+    if ! (
         cd "${BUILD_DIR}"
         CC="${CLANG}" \
         CXX="${CLANGXX}" \
@@ -155,7 +215,13 @@ PY
             --disable-extras \
             --disable-tools \
             --with-data-packaging=archive
-    )
+    ); then
+        if [[ -f "${BUILD_DIR}/config.log" ]]; then
+            echo "ICU configure failed; tail of ${BUILD_DIR}/config.log:" >&2
+            tail -n 120 "${BUILD_DIR}/config.log" >&2 || true
+        fi
+        exit 1
+    fi
 fi
 
 "${MAKE_TOOL}" -C "${BUILD_DIR}" -j "${JOBS}"

@@ -6,20 +6,52 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pick_tool() {
     local preferred="${1:-}"
     shift
-    if [[ -n "${preferred}" ]] && command -v "${preferred}" >/dev/null 2>&1; then
-        printf '%s\n' "${preferred}"
-        return 0
+    local candidate resolved
+
+    if [[ -n "${preferred}" ]]; then
+        resolved="$(command -v "${preferred}" 2>/dev/null || true)"
+        if [[ -n "${resolved}" && "${resolved}" == */* ]]; then
+            printf '%s\n' "${resolved}"
+            return 0
+        fi
+        return 1
     fi
 
-    local candidate
     for candidate in "$@"; do
-        if command -v "${candidate}" >/dev/null 2>&1; then
-            printf '%s\n' "${candidate}"
+        resolved="$(command -v "${candidate}" 2>/dev/null || true)"
+        if [[ -n "${resolved}" && "${resolved}" == */* ]]; then
+            printf '%s\n' "${resolved}"
             return 0
         fi
     done
 
     return 1
+}
+
+configure_macos_sdkroot() {
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        return 0
+    fi
+
+    if [[ -n "${SDKROOT:-}" ]]; then
+        return 0
+    fi
+
+    if ! command -v xcrun >/dev/null 2>&1; then
+        echo "xcrun is required on macOS to locate the active SDK" >&2
+        return 1
+    fi
+
+    local sdkroot
+    sdkroot="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+    if [[ -z "${sdkroot}" || ! -d "${sdkroot}" ]]; then
+        echo "failed to determine macOS SDKROOT; install Xcode Command Line Tools or set SDKROOT" >&2
+        return 1
+    fi
+
+    SDKROOT="${sdkroot}"
+    export SDKROOT
+    return 0
 }
 
 usage() {
@@ -39,6 +71,7 @@ Options:
 Environment:
   CLANG             Preferred C compiler
   CLANGXX           Preferred C++ compiler
+  SDKROOT           macOS SDK root (optional; auto-detected if unset)
   LLVM_CONFIG_PATH  Optional LLVM config path for build.rs
   XYO_ICU_ROOT      ICU source root (default: bitcodes/c/lib/icu)
   XYO_ICU_PREBUILT_DIR  Prebuilt ICU install root (default: bitcodes/c/lib/icu-prebuilt)
@@ -142,13 +175,24 @@ fetch_icu_if_needed() {
     rm -rf "${tmp_extract_dir}"
 }
 
-CLANG="${CLANG:-$(pick_tool "" clang-23 clang-22 clang-21 clang)}"
-CLANGXX="${CLANGXX:-$(pick_tool "" clang++-23 clang++-22 clang++-21 clang++)}"
+CLANG="${CLANG:-}"
+CLANGXX="${CLANGXX:-}"
+if ! CLANG="$(pick_tool "${CLANG}" clang-23 clang-22 clang-21 clang)"; then
+    echo "unable to find a usable C compiler; set CLANG explicitly" >&2
+    exit 1
+fi
+if ! CLANGXX="$(pick_tool "${CLANGXX}" clang++-23 clang++-22 clang++-21 clang++)"; then
+    echo "unable to find a usable C++ compiler; set CLANGXX explicitly" >&2
+    exit 1
+fi
 DEFAULT_XYO_ICU_ROOT="${ROOT_DIR}/bitcodes/c/lib/icu"
 XYO_ICU_PREBUILT_DIR="${XYO_ICU_PREBUILT_DIR:-${ROOT_DIR}/bitcodes/c/lib/icu-prebuilt}"
 export CLANG
 export CLANGXX
 export XYO_ICU_PREBUILT_DIR
+if ! configure_macos_sdkroot; then
+    exit 1
+fi
 
 if [[ -n "${XYO_ICU_ROOT:-}" ]]; then
     export XYO_ICU_ROOT
@@ -174,6 +218,9 @@ fi
 
 echo "using CLANG=${CLANG}"
 echo "using CLANGXX=${CLANGXX}"
+if [[ -n "${SDKROOT:-}" ]]; then
+    echo "using SDKROOT=${SDKROOT}"
+fi
 if [[ -n "${XYO_ICU_ROOT:-}" ]]; then
     echo "using XYO_ICU_ROOT=${XYO_ICU_ROOT}"
 else

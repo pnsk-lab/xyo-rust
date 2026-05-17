@@ -75,6 +75,7 @@ brew install llvm@21
 export PATH="$(brew --prefix llvm@21)/bin:$PATH"
 export LLVM_CONFIG_PATH="$(brew --prefix llvm@21)/bin/llvm-config"
 export CLANG="$(brew --prefix llvm@21)/bin/clang"
+export CLANGXX="$(brew --prefix llvm@21)/bin/clang++"
 
 # 確認
 llvm-config --version
@@ -108,6 +109,18 @@ cargo build --release
 3. **バイナリ生成**: `target/release/xyo` (リリースビルド) または `target/debug/xyo` (デバッグビルド) が生成されます
 
 `cargo build` は `bitcodes/c/` 配下の補助 C コードもあわせて LLVM bitcode に変換します。`str.c` が ICU の Unicode API を使うため、`XYO_ICU_ROOT` または `XYO_ICU_PREBUILT_DIR` を用意してください。
+
+### `configure` が `C compiler cannot create executables` を返す (macOS)
+
+Xcode Command Line Tools か macOS SDK が見えていないと、ICU の `configure` が最初のリンクテストで失敗することがあります。
+
+```bash
+xcode-select -p
+xcrun --sdk macosx --show-sdk-path
+export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+```
+
+`setup.sh` と `tools/build_icu_prebuilt.sh`、`tools/build_icu_runtime.sh` は macOS で `SDKROOT` が未設定なら自動検出を試みますが、SDK の場所を手動で固定したい場合は上の `export` を使えます。
 
 ### 開発時のビルド
 
