@@ -51,6 +51,14 @@ jobs:
             - name: Add Rust target
               run: rustup target add ${{ matrix.rust_target }}
 
+            - name: Install libzstd-dev
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  set -euxo pipefail
+                  sudo apt-get update -q -y
+                  sudo apt-get install -q -y libzstd-dev
+
             - name: Cache LLVM 21.1.x (prebuilt)
               id: cache-llvm
               uses: actions/cache@v4
@@ -243,6 +251,7 @@ jobs:
                         curl \
                         git \
                         gzip \
+                        libzstd-dev \
                         ninja-build \
                         perl \
                         pkg-config \

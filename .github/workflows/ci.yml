@@ -30,6 +30,13 @@ jobs:
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
 
+            - name: Install libzstd-dev
+              shell: bash
+              run: |
+                  set -euxo pipefail
+                  sudo apt-get update -q -y
+                  sudo apt-get install -q -y libzstd-dev
+
             - name: Cache LLVM 21.1.x (prebuilt)
               id: cache-llvm
               uses: actions/cache@v4
@@ -142,6 +149,7 @@ jobs:
                         curl \
                         git \
                         gzip \
+                        libzstd-dev \
                         ninja-build \
                         perl \
                         pkg-config \

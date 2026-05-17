@@ -98,28 +98,68 @@ $vcpkgRoot = Get-VcpkgRoot
 $vcpkgExe = Join-Path $vcpkgRoot 'vcpkg.exe'
 $icuInstallRoot = Join-Path $vcpkgRoot "installed/$triplet"
 # LLVM's Windows release binaries still reference libxml2 at link time, so we
-# keep a static copy available alongside the ICU packages.
+# keep a static copy available alongside the ICU packages and mirror whichever
+# library name vcpkg emitted into the names LLVM expects.
 $libxml2InstallRoot = Join-Path $vcpkgRoot "installed/$staticTriplet"
+$libxml2PackageRoot = Join-Path $vcpkgRoot "packages/libxml2_$staticTriplet"
+
+function Get-LibXml2LibraryDirs {
+    param(
+        [string[]]$CandidateDirs
+    )
+
+    $existingDirs = @()
+    foreach ($CandidateDir in $CandidateDirs) {
+        if (-not [string]::IsNullOrWhiteSpace($CandidateDir) -and (Test-Path $CandidateDir)) {
+            $existingDirs += $CandidateDir
+        }
+    }
+
+    return $existingDirs
+}
 
 function Ensure-LibXml2LibraryAliases {
     param(
-        [string]$LibDir
+        [string[]]$LibDirs
     )
 
-    if (-not (Test-Path $LibDir)) {
-        return
-    }
+    $sourceNames = @(
+        'libxml2s.lib',
+        'xml2s.lib',
+        'libxml2.lib',
+        'xml2.lib',
+        'libxml2d.lib',
+        'xml2d.lib'
+    )
+    $targetNames = @(
+        'libxml2s.lib',
+        'xml2s.lib'
+    )
 
-    $libXml2s = Join-Path $LibDir 'libxml2s.lib'
-    $xml2s = Join-Path $LibDir 'xml2s.lib'
+    foreach ($LibDir in $LibDirs) {
+        if (-not (Test-Path $LibDir)) {
+            continue
+        }
 
-    if ((Test-Path $libXml2s) -and (-not (Test-Path $xml2s))) {
-        Copy-Item -LiteralPath $libXml2s -Destination $xml2s -Force
-        return
-    }
+        $sourcePath = $null
+        foreach ($sourceName in $sourceNames) {
+            $candidatePath = Join-Path $LibDir $sourceName
+            if (Test-Path $candidatePath) {
+                $sourcePath = $candidatePath
+                break
+            }
+        }
 
-    if ((Test-Path $xml2s) -and (-not (Test-Path $libXml2s))) {
-        Copy-Item -LiteralPath $xml2s -Destination $libXml2s -Force
+        if ($null -eq $sourcePath) {
+            continue
+        }
+
+        foreach ($targetName in $targetNames) {
+            $targetPath = Join-Path $LibDir $targetName
+            if (-not (Test-Path $targetPath)) {
+                Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+            }
+        }
     }
 }
 
@@ -146,16 +186,24 @@ if (-not (Test-Path $icuInstallRoot)) {
     throw "ICU prebuilt directory not found: $icuInstallRoot"
 }
 
-Ensure-LibXml2LibraryAliases -LibDir (Join-Path $libxml2InstallRoot 'lib')
+$libxml2LibDirs = Get-LibXml2LibraryDirs -CandidateDirs @(
+    (Join-Path $libxml2InstallRoot 'lib')
+    (Join-Path $libxml2PackageRoot 'lib')
+)
+Ensure-LibXml2LibraryAliases -LibDirs $libxml2LibDirs
 
-$libxml2LibDir = Join-Path $libxml2InstallRoot 'lib'
+if ($libxml2LibDirs.Count -eq 0) {
+    throw "libxml2 library directory not found under $libxml2InstallRoot or $libxml2PackageRoot"
+}
+
+$libxml2LibSearchPath = ($libxml2LibDirs -join ';')
 $env:XYO_ICU_PREBUILT_DIR = $icuInstallRoot
 $env:XYO_ICU_NATIVE_LIB_DIR = Join-Path $icuInstallRoot 'lib'
 $env:XYO_ICU_RUNTIME_DIR = $icuInstallRoot
 if ([string]::IsNullOrWhiteSpace($env:LIB)) {
-    $env:LIB = $libxml2LibDir
+    $env:LIB = $libxml2LibSearchPath
 } else {
-    $env:LIB = "$libxml2LibDir;$env:LIB"
+    $env:LIB = "$libxml2LibSearchPath;$env:LIB"
 }
 
 Export-GitHubEnv -Name 'XYO_ICU_PREBUILT_DIR' -Value $env:XYO_ICU_PREBUILT_DIR

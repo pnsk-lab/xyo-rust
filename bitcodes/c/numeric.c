@@ -14,6 +14,54 @@ struct xyo_string_struct
     uint64_t hash_2;
 };
 
+static uint64_t add_mod_u64(uint64_t lhs, uint64_t rhs, uint64_t mod)
+{
+    if (mod == 0)
+    {
+        return 0;
+    }
+
+    lhs %= mod;
+    rhs %= mod;
+
+    if (lhs >= mod - rhs)
+    {
+        return lhs - (mod - rhs);
+    }
+
+    return lhs + rhs;
+}
+
+static uint64_t mul_mod_u64(uint64_t lhs, uint64_t rhs, uint64_t mod)
+{
+    if (mod == 0)
+    {
+        return 0;
+    }
+
+#if defined(__SIZEOF_INT128__)
+    return (uint64_t)(((__uint128_t)lhs * rhs) % mod);
+#else
+    uint64_t result = 0;
+    lhs %= mod;
+
+    while (rhs != 0)
+    {
+        if ((rhs & 1) != 0)
+        {
+            result = add_mod_u64(result, lhs, mod);
+        }
+        rhs >>= 1;
+        if (rhs != 0)
+        {
+            lhs = add_mod_u64(lhs, lhs, mod);
+        }
+    }
+
+    return result;
+#endif
+}
+
 static bool is_ecma_ws_or_lt_u16(uint16_t c)
 {
     switch (c)
@@ -105,17 +153,17 @@ struct xyo_string_struct *xyo_dtoa(double n, uint64_t hash_seed_1, uint64_t hash
     struct xyo_string_struct *result = malloc(sizeof(struct xyo_string_struct) + length * sizeof(uint16_t));
     result->length = length;
     result->data = (uint16_t *)(result + 1);
-    __uint128_t hash_1 = 0;
-    __uint128_t hash_2 = 0;
+    uint64_t hash_1 = 0;
+    uint64_t hash_2 = 0;
     for (uint64_t i = 0; i < length; i++)
     {
         uint16_t c = (uint16_t)buf[i];
         result->data[i] = c;
-        hash_1 = (hash_1 * hash_base_1 + c) % hash_seed_1;
-        hash_2 = (hash_2 * hash_base_2 + c) % hash_seed_2;
+        hash_1 = add_mod_u64(mul_mod_u64(hash_1, hash_base_1, hash_seed_1), c, hash_seed_1);
+        hash_2 = add_mod_u64(mul_mod_u64(hash_2, hash_base_2, hash_seed_2), c, hash_seed_2);
     }
-    result->hash_1 = (uint64_t)hash_1;
-    result->hash_2 = (uint64_t)hash_2;
+    result->hash_1 = hash_1;
+    result->hash_2 = hash_2;
 
     return result;
 }
