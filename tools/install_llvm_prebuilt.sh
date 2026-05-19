@@ -44,6 +44,19 @@ copy_tree() {
     fi
 }
 
+copy_resolved_include_dir() {
+    local source_dir="$1"
+    local include_name="$2"
+
+    if [[ -z "${source_dir}" || ! -d "${source_dir}" ]]; then
+        return 0
+    fi
+
+    rm -rf "${LLVM_INSTALL_DIR}/include/${include_name}"
+    mkdir -p "${LLVM_INSTALL_DIR}/include/${include_name}"
+    cp -a "${source_dir}/." "${LLVM_INSTALL_DIR}/include/${include_name}/"
+}
+
 install_from_archive() {
     local asset_name="$1"
     local archive_url="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${asset_name}"
@@ -114,20 +127,19 @@ install_s390x() {
     run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -q -y
     run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -q -y llvm-21 llvm-21-dev clang-21
 
+    local llvm_include_dir
     local llvm_c_include_dir
+    llvm_include_dir="$(readlink -f "$(llvm-config-21 --includedir)/llvm" 2>/dev/null || true)"
     llvm_c_include_dir="$(readlink -f "$(llvm-config-21 --includedir)/llvm-c" 2>/dev/null || true)"
 
     local source_root
     source_root="$(llvm-config-21 --prefix)"
     copy_tree "${source_root}" "${LLVM_INSTALL_DIR}"
 
-    # Debian's llvm-c headers are usually symlinked out of the LLVM prefix.
+    # Debian's LLVM headers are usually symlinked out of the LLVM prefix.
     # Make the copied install self-contained so llvm-sys can find them.
-    if [[ -n "${llvm_c_include_dir}" && -d "${llvm_c_include_dir}" ]]; then
-        rm -rf "${LLVM_INSTALL_DIR}/include/llvm-c"
-        mkdir -p "${LLVM_INSTALL_DIR}/include/llvm-c"
-        cp -a "${llvm_c_include_dir}/." "${LLVM_INSTALL_DIR}/include/llvm-c/"
-    fi
+    copy_resolved_include_dir "${llvm_include_dir}" "llvm"
+    copy_resolved_include_dir "${llvm_c_include_dir}" "llvm-c"
 }
 
 case "$(uname -s)-$(uname -m)" in

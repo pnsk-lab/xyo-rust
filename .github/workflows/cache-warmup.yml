@@ -2,7 +2,7 @@ name: Cache Warmup
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v8
+    LLVM_CACHE_VERSION: v9
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
     VCPKG_CACHE_VERSION: v1
@@ -28,32 +28,18 @@ jobs:
                 include:
                     - os: ubuntu-24.04
                       rust_target: x86_64-unknown-linux-gnu
-                      llvm_targets: X86;WebAssembly
-                      llvm_cache_targets: x86-wasm
                     - os: ubuntu-24.04-arm
                       rust_target: aarch64-unknown-linux-gnu
-                      llvm_targets: AArch64;WebAssembly
-                      llvm_cache_targets: aarch64-wasm
                     - os: macos-15-intel
                       rust_target: x86_64-apple-darwin
-                      llvm_targets: X86;WebAssembly
-                      llvm_cache_targets: x86-wasm
                     - os: macos-15
                       rust_target: aarch64-apple-darwin
-                      llvm_targets: AArch64;WebAssembly
-                      llvm_cache_targets: aarch64-wasm
                     - os: windows-latest
                       rust_target: x86_64-pc-windows-msvc
-                      cmake_arch: x64
                       vcpkg_triplet: x64-windows
-                      llvm_targets: X86;WebAssembly
-                      llvm_cache_targets: x86-wasm
                     - os: windows-11-arm
                       rust_target: aarch64-pc-windows-msvc
-                      cmake_arch: ARM64
                       vcpkg_triplet: arm64-windows
-                      llvm_targets: AArch64;WebAssembly
-                      llvm_cache_targets: aarch64-wasm
 
         steps:
             - name: Checkout
@@ -73,12 +59,12 @@ jobs:
                   sudo apt-get update -q -y
                   sudo apt-get install -q -y libzstd-dev
 
-            - name: Cache LLVM 21.1.x
+            - name: Cache LLVM 21.1.x (prebuilt)
               id: cache-llvm
               uses: actions/cache@v4
               with:
                   path: .llvm/${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}
-                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
+                  key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust_target }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}
 
             - name: Cache ICU prebuilt (Unix)
               if: runner.os != 'Windows'
@@ -99,59 +85,22 @@ jobs:
                   path: ${{ runner.temp }}/vcpkg
                   key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vcpkg_triplet }}-${{ env.ICU_VERSION }}-${{ env.VCPKG_CACHE_VERSION }}
 
-            - name: Build LLVM 21.1.x (Unix)
-              if: runner.os != 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
+            - name: Install LLVM 21.1.x (prebuilt)
+              if: runner.os != 'Windows'
               shell: bash
               run: |
                   set -euxo pipefail
                   LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
-                  LLVM_SOURCE_DIR="$RUNNER_TEMP/llvm-project"
-                  LLVM_BUILD_DIR="$RUNNER_TEMP/llvm-build"
-                  rm -rf "$LLVM_INSTALL_DIR" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
-                  git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
-                  cmake_args=(
-                      -DCMAKE_BUILD_TYPE=Release
-                      -DCMAKE_INSTALL_PREFIX="$LLVM_INSTALL_DIR"
-                      -DLLVM_TARGETS_TO_BUILD="${{ matrix.llvm_targets }}"
-                      -DLLVM_INCLUDE_TESTS=OFF
-                      -DLLVM_INCLUDE_BENCHMARKS=OFF
-                      -DLLVM_INCLUDE_EXAMPLES=OFF
-                      -DLLVM_BUILD_LLVM_DYLIB=OFF
-                      -DBUILD_SHARED_LIBS=OFF
-                      -DLLVM_ENABLE_FFI=OFF
-                      -DLLVM_ENABLE_LIBXML2=OFF
-                      -DLLVM_ENABLE_ZSTD=OFF
-                      -DLLVM_ENABLE_TERMINFO=OFF
-                  )
-                  if [[ -n "${XYO_CMAKE_C_COMPILER:-}" ]]; then
-                      cmake_args+=(
-                          -DCMAKE_C_COMPILER="$XYO_CMAKE_C_COMPILER"
-                          -DCMAKE_CXX_COMPILER="$XYO_CMAKE_CXX_COMPILER"
-                      )
-                  fi
-                  cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
-                      "${cmake_args[@]}"
-                  cmake --build "$LLVM_BUILD_DIR" --target install --parallel
+                  LLVM_INSTALL_DIR="$LLVM_INSTALL_DIR" ./tools/install_llvm_prebuilt.sh
 
-            - name: Build LLVM 21.1.x (Windows)
-              if: runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
+            - name: Install LLVM 21.1.x (prebuilt, Windows)
+              if: runner.os == 'Windows'
               shell: pwsh
               run: |
-                  $llvmInstallDir = Join-Path $env:GITHUB_WORKSPACE ".llvm\$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
-                  $llvmSourceDir = Join-Path $env:RUNNER_TEMP 'llvm-project'
-                  $llvmBuildDir = Join-Path $env:RUNNER_TEMP 'llvm-build'
-                  if (Test-Path $llvmInstallDir) {
-                    Remove-Item $llvmInstallDir -Recurse -Force
-                  }
-                  if (Test-Path $llvmSourceDir) {
-                    Remove-Item $llvmSourceDir -Recurse -Force
-                  }
-                  if (Test-Path $llvmBuildDir) {
-                    Remove-Item $llvmBuildDir -Recurse -Force
-                  }
-                  git clone --depth 1 --branch "llvmorg-$env:LLVM_VERSION" https://github.com/llvm/llvm-project.git $llvmSourceDir
-                  cmake -S "$llvmSourceDir\llvm" -B $llvmBuildDir -G "Visual Studio 17 2022" -A "${{ matrix.cmake_arch }}" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$llvmInstallDir" -DLLVM_TARGETS_TO_BUILD="${{ matrix.llvm_targets }}" -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_BUILD_LLVM_DYLIB=OFF -DBUILD_SHARED_LIBS=OFF
-                  cmake --build $llvmBuildDir --config Release --target INSTALL -- /m
+                  $llvmRootDir = Join-Path $env:GITHUB_WORKSPACE '.llvm'
+                  $llvmInstallDir = Join-Path $llvmRootDir "$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
+                  $env:LLVM_INSTALL_DIR = $llvmInstallDir
+                  ./tools/install_llvm_prebuilt.ps1 -TargetArch "${{ matrix.rust_target }}"
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
@@ -238,27 +187,21 @@ jobs:
                 include:
                     - arch: aarch64
                       distro: ubuntu24.04
-                      llvm_targets: AArch64;WebAssembly
-                      llvm_cache_targets: aarch64-wasm
                     - arch: armv7
                       distro: ubuntu24.04
-                      llvm_targets: ARM;WebAssembly
-                      llvm_cache_targets: arm-wasm
                     - arch: s390x
                       distro: ubuntu24.04
-                      llvm_targets: SystemZ;WebAssembly
-                      llvm_cache_targets: systemz-wasm
 
         steps:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Cache LLVM 21.1.x
+            - name: Cache LLVM 21.1.x (prebuilt)
               id: cache-llvm
               uses: actions/cache@v4
               with:
                   path: .llvm-emulated/${{ matrix.arch }}
-                  key: llvm-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ env.LLVM_CACHE_VERSION }}
+                  key: llvm-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}
 
             - name: Cache ICU prebuilt
               id: cache-icu-prebuilt
@@ -286,9 +229,9 @@ jobs:
                       .cargo-home/${{ matrix.arch }}
                       .rustup-home/${{ matrix.arch }}
                       target/cargo-${{ matrix.arch }}
-                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-${{ hashFiles('Cargo.lock') }}
+                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ hashFiles('Cargo.lock') }}
                   restore-keys: |
-                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ matrix.llvm_cache_targets }}-
+                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-
 
             - name: Warm cache on ${{ matrix.arch }}
               uses: uraimo/run-on-arch-action@v3
@@ -299,9 +242,6 @@ jobs:
                   env: |
                       ICU_CACHE_HIT: "${{ steps.cache-icu-prebuilt.outputs.cache-hit }}"
                       ICU_RUNTIME_CACHE_HIT: "${{ steps.cache-icu-runtime.outputs.cache-hit }}"
-                      LLVM_CACHE_HIT: "${{ steps.cache-llvm.outputs.cache-hit }}"
-                      LLVM_TARGETS: "${{ matrix.llvm_targets }}"
-                      LLVM_VERSION: "${{ env.LLVM_VERSION }}"
                   install: |
                       apt-get update -q -y
                       DEBIAN_FRONTEND=noninteractive apt-get install -q -y \
@@ -330,27 +270,7 @@ jobs:
                       . "$CARGO_HOME/env"
 
                       export LLVM_ROOT="$PWD/.llvm-emulated/${{ matrix.arch }}"
-                      if [[ "${LLVM_CACHE_HIT}" != "true" ]]; then
-                          LLVM_SOURCE_DIR="$PWD/target/llvm-project-${{ matrix.arch }}"
-                          LLVM_BUILD_DIR="$PWD/target/llvm-build-${{ matrix.arch }}"
-                          rm -rf "$LLVM_ROOT" "$LLVM_SOURCE_DIR" "$LLVM_BUILD_DIR"
-                          git clone --depth 1 --branch "llvmorg-${LLVM_VERSION}" https://github.com/llvm/llvm-project.git "$LLVM_SOURCE_DIR"
-                          cmake -S "$LLVM_SOURCE_DIR/llvm" -B "$LLVM_BUILD_DIR" -G Ninja \
-                              -DCMAKE_BUILD_TYPE=Release \
-                              -DCMAKE_INSTALL_PREFIX="$LLVM_ROOT" \
-                              -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}" \
-                              -DLLVM_INCLUDE_TESTS=OFF \
-                              -DLLVM_INCLUDE_BENCHMARKS=OFF \
-                              -DLLVM_INCLUDE_EXAMPLES=OFF \
-                              -DLLVM_BUILD_LLVM_DYLIB=OFF \
-                              -DBUILD_SHARED_LIBS=OFF \
-                              -DLLVM_ENABLE_FFI=OFF \
-                              -DLLVM_ENABLE_LIBXML2=OFF \
-                              -DLLVM_ENABLE_ZSTD=OFF \
-                              -DLLVM_ENABLE_TERMINFO=OFF
-                          cmake --build "$LLVM_BUILD_DIR" --target install --parallel
-                      fi
-
+                      LLVM_INSTALL_DIR="$LLVM_ROOT" ./tools/install_llvm_prebuilt.sh
                       export LLVM_SYS_211_PREFIX="$LLVM_ROOT"
                       export LLVM_CONFIG_PATH="$LLVM_ROOT/bin/llvm-config"
                       export PATH="$LLVM_ROOT/bin:$PATH"
