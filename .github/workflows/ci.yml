@@ -2,7 +2,7 @@ name: CI
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v9
+    LLVM_CACHE_VERSION: v10
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
 
@@ -30,21 +30,21 @@ jobs:
             - name: Setup Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Install libzstd-dev
+            - name: Install LLVM link dependencies
               shell: bash
               run: |
                   set -euxo pipefail
                   sudo apt-get update -q -y
-                  sudo apt-get install -q -y libzstd-dev
+                  sudo apt-get install -q -y libffi-dev libxml2-dev libzstd-dev zlib1g-dev
 
-            - name: Cache LLVM 21.1.x (prebuilt)
+            - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
               with:
                   path: .llvm/${{ runner.os }}-${{ runner.arch }}
                   key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}
 
-            - name: Install LLVM 21.1.x (prebuilt)
+            - name: Install LLVM 21.1.x
               shell: bash
               run: |
                   set -euxo pipefail
@@ -77,6 +77,8 @@ jobs:
 
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
+              with:
+                  key: llvm-${{ env.LLVM_CACHE_VERSION }}
 
             - name: Setup and build
               shell: bash
@@ -104,7 +106,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Cache LLVM 21.1.x (prebuilt)
+            - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
               with:
@@ -128,9 +130,9 @@ jobs:
                       .cargo-home/${{ matrix.arch }}
                       .rustup-home/${{ matrix.arch }}
                       target/cargo-${{ matrix.arch }}
-                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ hashFiles('Cargo.lock') }}
+                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}-${{ hashFiles('Cargo.lock') }}
                   restore-keys: |
-                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-
+                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}-
 
             - name: Test on ${{ matrix.arch }}
               uses: uraimo/run-on-arch-action@v3
@@ -150,12 +152,15 @@ jobs:
                         curl \
                         git \
                         gzip \
+                        libffi-dev \
+                        libxml2-dev \
                         libzstd-dev \
                         ninja-build \
                         perl \
                         pkg-config \
                         python3 \
-                        tar
+                        tar \
+                        zlib1g-dev
                   run: |
                       set -euxo pipefail
 
@@ -173,6 +178,7 @@ jobs:
                       export LLVM_CONFIG_PATH="$LLVM_ROOT/bin/llvm-config"
                       export PATH="$LLVM_ROOT/bin:$PATH"
                       "$LLVM_CONFIG_PATH" --version
+                      "$LLVM_CONFIG_PATH" --system-libs --link-static
 
                       export XYO_ICU_PREBUILT_DIR="$PWD/bitcodes/c/lib/icu-prebuilt-${{ matrix.arch }}"
                       export XYO_ICU_PREBUILT_BUILD_DIR="$PWD/target/icu-prebuilt-build-${{ matrix.arch }}"

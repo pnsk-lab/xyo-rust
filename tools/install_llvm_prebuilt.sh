@@ -101,7 +101,7 @@ install_from_brew() {
     copy_tree "$(brew --prefix llvm@21)" "${LLVM_INSTALL_DIR}"
 }
 
-install_s390x() {
+install_from_apt_llvm() {
     local os_release="/etc/os-release"
     local codename="noble"
     if [[ -f "${os_release}" ]]; then
@@ -125,7 +125,15 @@ install_s390x() {
     fi
 
     run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update -q -y
-    run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -q -y llvm-21 llvm-21-dev clang-21
+    run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -q -y \
+        clang-21 \
+        libffi-dev \
+        libpolly-21-dev \
+        libxml2-dev \
+        libzstd-dev \
+        llvm-21 \
+        llvm-21-dev \
+        zlib1g-dev
 
     local llvm_include_dir
     local llvm_c_include_dir
@@ -135,6 +143,7 @@ install_s390x() {
     local source_root
     source_root="$(llvm-config-21 --prefix)"
     copy_tree "${source_root}" "${LLVM_INSTALL_DIR}"
+    rm -rf "${LLVM_INSTALL_DIR}/build"
 
     # Debian's LLVM headers are usually symlinked out of the LLVM prefix.
     # Make the copied install self-contained so llvm-sys can find them.
@@ -147,13 +156,13 @@ Linux-x86_64|Linux-amd64)
     install_from_archive "LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
     ;;
 Linux-aarch64|Linux-arm64)
-    install_from_archive "LLVM-${LLVM_VERSION}-Linux-ARM64.tar.xz"
+    install_from_apt_llvm
     ;;
 Linux-armv7l|Linux-armv7*)
     install_from_archive "clang+llvm-${LLVM_VERSION}-armv7a-linux-gnueabihf.tar.gz"
     ;;
 Linux-s390x)
-    install_s390x
+    install_from_apt_llvm
     ;;
 Darwin-arm64|Darwin-aarch64|Darwin-x86_64|Darwin-amd64)
     install_from_brew

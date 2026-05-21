@@ -2,7 +2,7 @@ name: Build
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v9
+    LLVM_CACHE_VERSION: v10
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
     VCPKG_CACHE_VERSION: v1
@@ -58,15 +58,15 @@ jobs:
             - name: Add Rust target
               run: rustup target add ${{ matrix.rust_target }}
 
-            - name: Install libzstd-dev
+            - name: Install LLVM link dependencies
               if: runner.os == 'Linux'
               shell: bash
               run: |
                   set -euxo pipefail
                   sudo apt-get update -q -y
-                  sudo apt-get install -q -y libzstd-dev
+                  sudo apt-get install -q -y libffi-dev libxml2-dev libzstd-dev zlib1g-dev
 
-            - name: Cache LLVM 21.1.x (prebuilt)
+            - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
               with:
@@ -92,7 +92,7 @@ jobs:
                   path: ${{ runner.temp }}/vcpkg
                   key: icu-prebuilt-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vcpkg_triplet }}-${{ env.ICU_VERSION }}-${{ env.VCPKG_CACHE_VERSION }}
 
-            - name: Install LLVM 21.1.x (prebuilt)
+            - name: Install LLVM 21.1.x (Unix)
               if: runner.os != 'Windows'
               shell: bash
               run: |
@@ -100,14 +100,13 @@ jobs:
                   LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
                   LLVM_INSTALL_DIR="$LLVM_INSTALL_DIR" ./tools/install_llvm_prebuilt.sh
 
-            - name: Install LLVM 21.1.x (prebuilt, Windows)
+            - name: Build LLVM 21.1.x (Windows)
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
                   $llvmRootDir = Join-Path $env:GITHUB_WORKSPACE '.llvm'
                   $llvmInstallDir = Join-Path $llvmRootDir "$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
-                  $env:LLVM_INSTALL_DIR = $llvmInstallDir
-                  ./tools/install_llvm_prebuilt.ps1 -TargetArch "${{ matrix.rust_target }}"
+                  ./tools/install_llvm_source.ps1 -InstallDir $llvmInstallDir -TargetArch "${{ matrix.rust_target }}"
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
@@ -142,8 +141,16 @@ jobs:
                   & "$env:LLVM_CONFIG_PATH" --version
                   & "$env:LLVM_CONFIG_PATH" --host-target
 
+            - name: Use native Linux linker on ARM64
+              if: runner.os == 'Linux' && runner.arch == 'ARM64'
+              shell: bash
+              run: |
+                  echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=cc" >> "$GITHUB_ENV"
+
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
+              with:
+                  key: ${{ matrix.rust_target }}-${{ env.LLVM_CACHE_VERSION }}
 
             - name: Setup and build (Unix)
               if: runner.os != 'Windows'
@@ -236,7 +243,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Cache LLVM 21.1.x (prebuilt)
+            - name: Cache LLVM 21.1.x
               id: cache-llvm
               uses: actions/cache@v4
               with:
@@ -269,9 +276,9 @@ jobs:
                       .cargo-home/${{ matrix.arch }}
                       .rustup-home/${{ matrix.arch }}
                       target/cargo-${{ matrix.arch }}
-                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ hashFiles('Cargo.lock') }}
+                  key: cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}-${{ hashFiles('Cargo.lock') }}
                   restore-keys: |
-                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-
+                      cargo-linux-${{ matrix.arch }}-${{ env.LLVM_VERSION }}-${{ env.LLVM_CACHE_VERSION }}-
 
             - name: Build on ${{ matrix.arch }}
               uses: uraimo/run-on-arch-action@v3
@@ -297,12 +304,15 @@ jobs:
                         curl \
                         git \
                         gzip \
+                        libffi-dev \
+                        libxml2-dev \
                         libzstd-dev \
                         ninja-build \
                         perl \
                         pkg-config \
                         python3 \
-                        tar
+                        tar \
+                        zlib1g-dev
                   run: |
                       set -euxo pipefail
 
@@ -313,6 +323,9 @@ jobs:
                       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
                         | sh -s -- -y --profile minimal --default-toolchain stable
                       . "$CARGO_HOME/env"
+                      if [[ "$(uname -m)" == "aarch64" ]]; then
+                          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=cc
+                      fi
 
                       export LLVM_ROOT="$PWD/.llvm-emulated/${{ matrix.arch }}"
                       LLVM_INSTALL_DIR="$LLVM_ROOT" ./tools/install_llvm_prebuilt.sh
@@ -320,6 +333,7 @@ jobs:
                       export LLVM_CONFIG_PATH="$LLVM_ROOT/bin/llvm-config"
                       export PATH="$LLVM_ROOT/bin:$PATH"
                       "$LLVM_CONFIG_PATH" --version
+                      "$LLVM_CONFIG_PATH" --system-libs --link-static
 
                       export XYO_ICU_PREBUILT_DIR="$PWD/bitcodes/c/lib/icu-prebuilt-${{ matrix.arch }}"
                       export XYO_ICU_PREBUILT_BUILD_DIR="$PWD/target/icu-prebuilt-build-${{ matrix.arch }}"
