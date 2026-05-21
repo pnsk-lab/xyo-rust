@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use inkwell::{
     FloatPredicate,
     values::{FloatValue, FunctionValue, PointerValue},
@@ -521,6 +523,108 @@ pub fn parse_motion_stmt<'ctx>(
             );
             builders.builder.build_store(field_ptr, val).unwrap();
         }
-        _ => todo!("やります"),
+        MotionStmt::AlignScene => {
+            // No op
+        }
+        MotionStmt::ScrollRight => {
+            // No op
+        }
+        MotionStmt::ScrollUp => {
+            // No op
+        }
+        MotionStmt::MoveStep { steps } => {
+            let p = function.get_first_param().unwrap().into_pointer_value();
+            let sprite_type = create_sprite_struct_type(builders.context);
+            let field_ptr = builders
+                .builder
+                .build_struct_gep(sprite_type, p, SpriteKeys::SpriteRotate.into(), "field0")
+                .unwrap();
+            let theta = builders
+                .builder
+                .build_load(builders.context.f64_type(), field_ptr, "old_degree")
+                .unwrap()
+                .into_float_value();
+            let steps = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, steps, function, target_idx),
+                function,
+            );
+            // sin が x, cos が y
+            let sin_theta = builders
+                .builder
+                .build_call(
+                    builders.functions.llvm_sin,
+                    &[builders
+                        .builder
+                        .build_float_mul(
+                            theta,
+                            builders.context.f64_type().const_float(PI / 180.0),
+                            "rad",
+                        )
+                        .unwrap()
+                        .into()],
+                    "sin",
+                )
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_float_value();
+            let cos_theta = builders
+                .builder
+                .build_call(
+                    builders.functions.llvm_cos,
+                    &[builders
+                        .builder
+                        .build_float_mul(
+                            theta,
+                            builders.context.f64_type().const_float(PI / 180.0),
+                            "rad",
+                        )
+                        .unwrap()
+                        .into()],
+                    "sin",
+                )
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_float_value();
+            let dx = builders
+                .builder
+                .build_float_mul(sin_theta, steps, "dx")
+                .unwrap();
+            let dy = builders
+                .builder
+                .build_float_mul(cos_theta, steps, "dy")
+                .unwrap();
+            let field_ptr = get_x_ptr(builders, function);
+            let old_val = builders
+                .builder
+                .build_load(builders.context.f64_type(), field_ptr, "old_x")
+                .unwrap()
+                .into_float_value();
+            let new_x = builders
+                .builder
+                .build_float_add(old_val, dx, "new_x")
+                .unwrap();
+            let field_ptr = get_y_ptr(builders, function);
+            let old_val = builders
+                .builder
+                .build_load(builders.context.f64_type(), field_ptr, "old_y")
+                .unwrap()
+                .into_float_value();
+            let new_y = builders
+                .builder
+                .build_float_add(old_val, dy, "new_y")
+                .unwrap();
+            fence_goto(builders, function, Some(&new_x), Some(&new_y));
+        }
+        MotionStmt::GlideTo { secs, to } => {}
+        MotionStmt::Goto { to } => {}
+        MotionStmt::GlideToXY { secs, x, y } => {}
+        MotionStmt::IfOnEdgeBounce => {}
+        MotionStmt::PointToTowards { towards } => {}
+        MotionStmt::SetRotationStyle { style } => {}
     }
 }
