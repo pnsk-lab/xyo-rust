@@ -93,6 +93,7 @@ pub struct SpriteStruct {
     pub sprite_costume_id: i64,
     pub sprite_costumes: *mut CostumeInfo,
     pub sprite_costume_number: i64,
+    pub sprite_rotation_style: i8,
 }
 
 impl Default for SpriteStruct {
@@ -105,6 +106,7 @@ impl Default for SpriteStruct {
             sprite_costume_id: 0,
             sprite_costumes: std::ptr::null_mut(),
             sprite_costume_number: 0,
+            sprite_rotation_style: 0,
         }
     }
 }
@@ -117,6 +119,8 @@ pub fn create_sprite_struct_type<'a>(context: &'a Context) -> StructType<'a> {
             context.f64_type().into(),
             context.i64_type().into(),
             context.ptr_type(AddressSpace::default()).into(),
+            context.i64_type().into(),
+            context.i8_type().into(),
         ],
         false,
     )
@@ -129,6 +133,7 @@ pub enum SpriteKeys {
     SpriteCostumeId,
     SpriteCostumes,
     SpriteCostumeNumber,
+    SpriteRotationStyle,
 }
 impl From<SpriteKeys> for u32 {
     fn from(field: SpriteKeys) -> Self {
@@ -140,6 +145,7 @@ impl From<SpriteKeys> for u32 {
             SpriteKeys::SpriteCostumeId => 4,
             SpriteKeys::SpriteCostumes => 5,
             SpriteKeys::SpriteCostumeNumber => 6,
+            SpriteKeys::SpriteRotationStyle => 7,
         }
     }
 }
@@ -213,7 +219,6 @@ pub(crate) fn to_c_str(mut s: &str) -> Cow<'_, CStr> {
 
     match CStr::from_bytes_until_nul(s.as_bytes()) {
         Ok(c) => Cow::from(c),
-        // SAFETY: No internal 0 byte since already `FromBytesUntilNulError`
         Err(_) => unsafe { Cow::from(CString::new(s.as_bytes()).unwrap_unchecked()) },
     }
 }

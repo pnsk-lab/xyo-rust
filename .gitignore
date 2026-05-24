@@ -1,4 +1,6 @@
 /target
+/.llvm
+/.llvm-emulated
 /docs/build
 /docs/taiga
 /docs/__pycache__/

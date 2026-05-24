@@ -15,6 +15,7 @@ use crate::{
         utils::scratch_return_to_number,
     },
     parser::types::MotionStmt,
+    types::RotationStyle,
 };
 
 pub fn get_x_ptr<'ctx>(
@@ -625,6 +626,32 @@ pub fn parse_motion_stmt<'ctx>(
         MotionStmt::GlideToXY { secs, x, y } => {}
         MotionStmt::IfOnEdgeBounce => {}
         MotionStmt::PointToTowards { towards } => {}
-        MotionStmt::SetRotationStyle { style } => {}
+        MotionStmt::SetRotationStyle { style } => {
+            let p = function.get_first_param().unwrap().into_pointer_value();
+            let sprite_type = create_sprite_struct_type(builders.context);
+            let field_ptr = builders
+                .builder
+                .build_struct_gep(
+                    sprite_type,
+                    p,
+                    SpriteKeys::SpriteRotationStyle.into(),
+                    "field0",
+                )
+                .unwrap();
+            builders
+                .builder
+                .build_store(
+                    field_ptr,
+                    builders.context.i8_type().const_int(
+                        match style {
+                            RotationStyle::AllAround => 0,
+                            RotationStyle::DontRotate => 1,
+                            RotationStyle::LeftRight => 2,
+                        },
+                        false,
+                    ),
+                )
+                .unwrap();
+        }
     }
 }
