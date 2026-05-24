@@ -122,7 +122,9 @@ copy_runtime_dependencies() {
     while IFS= read -r dependency; do
         case "${dependency}" in
         */libLLVM*.so*|*/libclang*.so*)
-            cp -L "${dependency}" "${LLVM_INSTALL_DIR}/lib/"
+            local destination="${LLVM_INSTALL_DIR}/lib/$(basename "${dependency}")"
+            rm -f "${destination}"
+            cp -L "${dependency}" "${destination}"
             ;;
         esac
     done < <(
