@@ -111,6 +111,39 @@ copy_resolved_include_dir() {
     cp -a "${source_dir}/." "${LLVM_INSTALL_DIR}/include/${include_name}/"
 }
 
+path_name() {
+    local path="$1"
+    local dir
+
+    dir="$(cd -P "$(dirname "${path}")" && pwd)"
+    printf '%s/%s\n' "${dir}" "$(basename "${path}")"
+}
+
+copy_resolved_library_symlinks() {
+    local source_lib_dir="$1"
+    local installed_lib_dir="${LLVM_INSTALL_DIR}/lib"
+    local library
+
+    if [[ -z "${source_lib_dir}" || ! -d "${source_lib_dir}" || ! -d "${installed_lib_dir}" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r library; do
+        local source="${source_lib_dir}/$(basename "${library}")"
+        local resolved_source
+        resolved_source="$(readlink -f "${source}" 2>/dev/null || true)"
+
+        if [[ -z "${resolved_source}" || ! -f "${resolved_source}" ]]; then
+            continue
+        fi
+
+        rm -f "${library}"
+        cp -L "${resolved_source}" "${library}"
+    done < <(
+        find "${installed_lib_dir}" -maxdepth 1 -type l \( -name 'libLLVM*.so*' -o -name 'libclang*.so*' \) -print
+    )
+}
+
 copy_runtime_dependencies() {
     local binary="$1"
     local dependency
@@ -123,6 +156,9 @@ copy_runtime_dependencies() {
         case "${dependency}" in
         */libLLVM*.so*|*/libclang*.so*)
             local destination="${LLVM_INSTALL_DIR}/lib/$(basename "${dependency}")"
+            if [[ "$(path_name "${dependency}")" == "$(path_name "${destination}")" ]]; then
+                continue
+            fi
             rm -f "${destination}"
             cp -L "${dependency}" "${destination}"
             ;;
@@ -222,12 +258,15 @@ install_from_apt_llvm() {
 
     local llvm_include_dir
     local llvm_c_include_dir
+    local llvm_lib_dir
     llvm_include_dir="$(readlink -f "$(llvm-config-21 --includedir)/llvm" 2>/dev/null || true)"
     llvm_c_include_dir="$(readlink -f "$(llvm-config-21 --includedir)/llvm-c" 2>/dev/null || true)"
+    llvm_lib_dir="$(llvm-config-21 --libdir)"
 
     local source_root
     source_root="$(llvm-config-21 --prefix)"
     copy_tree "${source_root}" "${LLVM_INSTALL_DIR}"
+    copy_resolved_library_symlinks "${llvm_lib_dir}"
     copy_tool_runtime_dependencies
     rm -rf "${LLVM_INSTALL_DIR}/build"
 
