@@ -5,9 +5,63 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LLVM_VERSION="${LLVM_VERSION:-21.1.8}"
 LLVM_INSTALL_DIR="${LLVM_INSTALL_DIR:-${ROOT_DIR}/.llvm/$(uname -s)-$(uname -m)}"
 
-if [[ -x "${LLVM_INSTALL_DIR}/bin/llvm-config" || -x "${LLVM_INSTALL_DIR}/bin/llvm-config.exe" ]]; then
-    echo "LLVM already installed at ${LLVM_INSTALL_DIR}"
-    exit 0
+llvm_library_path() {
+    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+        printf '%s:%s\n' "${LLVM_INSTALL_DIR}/lib" "${LD_LIBRARY_PATH}"
+    else
+        printf '%s\n' "${LLVM_INSTALL_DIR}/lib"
+    fi
+}
+
+installed_llvm_config() {
+    if [[ -x "${LLVM_INSTALL_DIR}/bin/llvm-config" ]]; then
+        printf '%s\n' "${LLVM_INSTALL_DIR}/bin/llvm-config"
+        return 0
+    fi
+
+    if [[ -x "${LLVM_INSTALL_DIR}/bin/llvm-config.exe" ]]; then
+        printf '%s\n' "${LLVM_INSTALL_DIR}/bin/llvm-config.exe"
+        return 0
+    fi
+
+    return 1
+}
+
+installed_clang() {
+    local candidate
+    for candidate in clang clang-21 clang.exe; do
+        if [[ -x "${LLVM_INSTALL_DIR}/bin/${candidate}" ]]; then
+            printf '%s\n' "${LLVM_INSTALL_DIR}/bin/${candidate}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+verify_existing_install() {
+    local llvm_config="$1"
+    local clang="$2"
+    local lib_path
+    lib_path="$(llvm_library_path)"
+
+    env LD_LIBRARY_PATH="${lib_path}" "${llvm_config}" --version >/dev/null 2>&1 || return 1
+
+    if [[ -n "${clang}" ]]; then
+        env LD_LIBRARY_PATH="${lib_path}" "${clang}" --version >/dev/null 2>&1 || return 1
+    fi
+}
+
+existing_llvm_config="$(installed_llvm_config || true)"
+if [[ -n "${existing_llvm_config}" ]]; then
+    existing_clang="$(installed_clang || true)"
+    if verify_existing_install "${existing_llvm_config}" "${existing_clang}"; then
+        echo "LLVM already installed at ${LLVM_INSTALL_DIR}"
+        exit 0
+    fi
+
+    echo "LLVM install at ${LLVM_INSTALL_DIR} is incomplete; reinstalling" >&2
+    rm -rf "${LLVM_INSTALL_DIR}"
 fi
 
 tmp_dir="$(mktemp -d)"
@@ -55,6 +109,35 @@ copy_resolved_include_dir() {
     rm -rf "${LLVM_INSTALL_DIR}/include/${include_name}"
     mkdir -p "${LLVM_INSTALL_DIR}/include/${include_name}"
     cp -a "${source_dir}/." "${LLVM_INSTALL_DIR}/include/${include_name}/"
+}
+
+copy_runtime_dependencies() {
+    local binary="$1"
+    local dependency
+
+    if ! command -v ldd >/dev/null 2>&1 || [[ ! -x "${binary}" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r dependency; do
+        case "${dependency}" in
+        */libLLVM*.so*|*/libclang*.so*)
+            cp -L "${dependency}" "${LLVM_INSTALL_DIR}/lib/"
+            ;;
+        esac
+    done < <(
+        ldd "${binary}" 2>/dev/null |
+            awk '/=> \// { print $(NF - 1); next } /^[[:space:]]*\// { print $1 }'
+    )
+}
+
+copy_tool_runtime_dependencies() {
+    local tool
+
+    mkdir -p "${LLVM_INSTALL_DIR}/lib"
+    for tool in clang clang-21 clang++ clang++-21 llvm-config llvm-config-21; do
+        copy_runtime_dependencies "${LLVM_INSTALL_DIR}/bin/${tool}"
+    done
 }
 
 install_from_archive() {
@@ -143,6 +226,7 @@ install_from_apt_llvm() {
     local source_root
     source_root="$(llvm-config-21 --prefix)"
     copy_tree "${source_root}" "${LLVM_INSTALL_DIR}"
+    copy_tool_runtime_dependencies
     rm -rf "${LLVM_INSTALL_DIR}/build"
 
     # Debian's LLVM headers are usually symlinked out of the LLVM prefix.
@@ -172,5 +256,13 @@ Darwin-arm64|Darwin-aarch64|Darwin-x86_64|Darwin-amd64)
     exit 1
     ;;
 esac
+
+installed_llvm_config_path="$(installed_llvm_config || true)"
+installed_clang_path="$(installed_clang || true)"
+if [[ -z "${installed_llvm_config_path}" ]] ||
+    ! verify_existing_install "${installed_llvm_config_path}" "${installed_clang_path}"; then
+    echo "installed LLVM at ${LLVM_INSTALL_DIR} is not runnable" >&2
+    exit 1
+fi
 
 echo "installed LLVM ${LLVM_VERSION} into ${LLVM_INSTALL_DIR}"

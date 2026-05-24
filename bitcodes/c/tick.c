@@ -35,7 +35,7 @@ int64_t xyo_now_ns(void)
 #endif
 }
 
-void xyo_sleep_until_ns(int64_t deadline_ns)
+void sleep_until_ns(int64_t deadline_ns)
 {
 #if defined(_WIN32)
     int64_t remaining_ns = deadline_ns - xyo_now_ns();
@@ -62,4 +62,20 @@ void xyo_sleep_until_ns(int64_t deadline_ns)
     {
     }
 #endif
+}
+
+void xyo_wait_until_next_frame(double fps)
+{
+    if (fps <= 0.0)
+    {
+        return;
+    }
+
+    int64_t frame_ns = (int64_t)(1000000000.0 / fps);
+    int64_t now_ns = xyo_now_ns();
+
+    int64_t next_frame_ns =
+        ((now_ns / frame_ns) + 1) * frame_ns;
+
+    sleep_until_ns(next_frame_ns);
 }

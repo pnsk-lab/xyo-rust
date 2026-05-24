@@ -2,7 +2,7 @@ name: Cache Warmup
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v10
+    LLVM_CACHE_VERSION: v11
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
     VCPKG_CACHE_VERSION: v1
@@ -108,6 +108,7 @@ jobs:
                   LLVM_ROOT="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
                   echo "LLVM_SYS_211_PREFIX=$LLVM_ROOT" >> "$GITHUB_ENV"
                   echo "LLVM_CONFIG_PATH=$LLVM_ROOT/bin/llvm-config" >> "$GITHUB_ENV"
+                  echo "LD_LIBRARY_PATH=$LLVM_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
                   echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
             - name: Export LLVM env (Windows)
@@ -287,6 +288,7 @@ jobs:
                       export LLVM_SYS_211_PREFIX="$LLVM_ROOT"
                       export LLVM_CONFIG_PATH="$LLVM_ROOT/bin/llvm-config"
                       export PATH="$LLVM_ROOT/bin:$PATH"
+                      export LD_LIBRARY_PATH="$LLVM_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
                       "$LLVM_CONFIG_PATH" --version
                       "$LLVM_CONFIG_PATH" --system-libs --link-static
 

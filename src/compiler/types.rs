@@ -182,6 +182,7 @@ pub struct Functions<'ctx> {
     pub str_cmp_lt: FunctionValue<'ctx>,
     pub str_cmp_eq: FunctionValue<'ctx>,
     pub str_to_bool: FunctionValue<'ctx>,
+    pub wait_tick: FunctionValue<'ctx>,
     pub is_num: FunctionValue<'ctx>,
     pub rand: FunctionValue<'ctx>,
 }
@@ -244,6 +245,7 @@ impl<'ctx> Builders<'ctx> {
             str_cmp_eq: module.get_function("str_cmp_eq").unwrap(),
             is_num: module.get_function("str_is_num").unwrap(),
             str_to_bool: module.get_function("str_to_bool").unwrap(),
+            wait_tick: module.get_function("xyo_wait_until_next_frame").unwrap(),
             rand: build_xor_shift_128_plus(&context, &module),
         };
         let hash_seed_1 = gen_nbit_prime(64);
