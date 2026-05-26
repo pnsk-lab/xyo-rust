@@ -2,6 +2,8 @@ use std::{
     env,
     ffi::CString,
     path::{Path, PathBuf},
+    thread,
+    time::Duration,
 };
 
 use inkwell::{
@@ -87,6 +89,22 @@ const LIBRARIES: &[LibrarySpec] = &[
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 const LIBRARIES: &[LibrarySpec] = &[];
 
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+struct SendMutPtr<T>(*mut T);
+
+unsafe impl<T> Send for SendMutPtr<T> {}
+
+impl<T> SendMutPtr<T> {
+    fn new(ptr: *mut T) -> Self {
+        Self(ptr)
+    }
+
+    unsafe fn as_mut<'a>(self) -> &'a mut T {
+        &mut *self.0
+    }
+}
+
 pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
     load_libraries();
 
@@ -126,24 +144,38 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
     ]
     .into_boxed_slice();
     let costume_ptr = costume_storage.as_mut_ptr();
+    let costume_count = costume_storage.len() as i64;
+    let costume_addr = costume_ptr as usize;
+    let mut handles = Vec::with_capacity(thread_functions.len());
 
     for function_name in thread_functions {
-        let mut state = SpriteStruct::default();
-        state.sprite_size = 100.0;
-        state.sprite_costume_id = 1;
-        state.sprite_costumes = costume_ptr;
-        state.sprite_costume_number = costume_storage.len() as i64;
         eprintln!("{function_name} has started");
 
         let function: JitFunction<'_, ThreadThunk> =
             unsafe { execution_engine.get_function(function_name) }
                 .unwrap_or_else(|err| panic!("failed to find JIT function {function_name}: {err}"));
+        let function = unsafe { function.as_raw() };
 
-        unsafe {
-            function.call(&mut state);
+        let mut state = SpriteStruct::default();
+        state.sprite_size = 100.0;
+        state.sprite_costume_id = 1;
+        state.sprite_costumes = costume_addr as *mut CostumeInfo;
+        state.sprite_costume_number = costume_count;
+        let state_ptr = SendMutPtr::new(&mut state as *mut SpriteStruct);
+
+        handles.push(std::thread::spawn(move || unsafe {
+            let state = state_ptr.as_mut();
+            function(state);
+        }));
+
+        for _ in 0..100 {
+            println!("{:?}", state);
+            thread::sleep(Duration::from_millis(33));
         }
+    }
 
-        println!("{:?}", state);
+    for handle in handles {
+        handle.join().expect("JIT thread panicked");
     }
 }
 

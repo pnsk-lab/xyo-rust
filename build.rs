@@ -155,6 +155,12 @@ fn resolve_clang() -> Option<PathBuf> {
         }
     }
 
+    for clang in ["clang-21", "clang-20", "clang-19", "clang-18", "clang-17"] {
+        if command_exists(clang) {
+            return Some(PathBuf::from(clang));
+        }
+    }
+
     None
 }
 
@@ -172,18 +178,32 @@ fn llvm_bindir() -> Option<PathBuf> {
         return path.parent().map(Path::to_path_buf);
     }
 
-    let output = Command::new("llvm-config").arg("--bindir").output().ok()?;
-
-    if !output.status.success() {
-        return None;
+    if let Ok(output) = Command::new("llvm-config").arg("--bindir").output() {
+        if output.status.success() {
+            let bindir = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            return (!bindir.is_empty()).then_some(PathBuf::from(bindir));
+        }
     }
 
-    let bindir = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if bindir.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(bindir))
+    for llvm_config in [
+        "llvm-config-21",
+        "llvm-config-20",
+        "llvm-config-19",
+        "llvm-config-18",
+        "llvm-config-17",
+    ] {
+        let Ok(output) = Command::new(llvm_config).arg("--bindir").output() else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+
+        let bindir = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        return (!bindir.is_empty()).then_some(PathBuf::from(bindir));
     }
+
+    None
 }
 
 fn compile_source(

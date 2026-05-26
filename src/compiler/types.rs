@@ -30,6 +30,7 @@ pub struct StringStruct {
     pub hash1: u64,
     pub hash2: u64,
 }
+unsafe impl Send for SpriteStruct {}
 pub fn create_string_struct_type<'a>(context: &'a Context) -> StructType<'a> {
     context.struct_type(
         &[
