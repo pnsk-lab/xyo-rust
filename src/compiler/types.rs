@@ -165,6 +165,7 @@ pub struct Builders<'ctx> {
     pub rolling_hash_base_1: u64,
     pub rolling_hash_base_2: u64,
     pub string_literals: HashMap<String, PointerValue<'ctx>>,
+    pub fps: f64,
 }
 #[derive(Debug)]
 pub struct Functions<'ctx> {
@@ -278,6 +279,7 @@ impl<'ctx> Builders<'ctx> {
             rolling_hash_base_1: hash_base_1,
             rolling_hash_base_2: hash_base_2,
             string_literals: HashMap::new(),
+            fps: 30.0,
         }
     }
     fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context) {

@@ -623,7 +623,218 @@ pub fn parse_motion_stmt<'ctx>(
         }
         MotionStmt::GlideTo { secs, to } => {}
         MotionStmt::Goto { to } => {}
-        MotionStmt::GlideToXY { secs, x, y } => {}
+        MotionStmt::GlideToXY { secs, x, y } => {
+            let new_x = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, x, function, target_idx),
+                function,
+            );
+            let new_y = scratch_return_to_number(
+                builders,
+                &generate_expr_ir(builders, y, function, target_idx),
+                function,
+            );
+            let old_x_ptr = get_x_ptr(builders, function);
+            let old_y_ptr = get_y_ptr(builders, function);
+            let old_x = builders
+                .builder
+                .build_load(builders.context.f64_type(), old_x_ptr, "old_x")
+                .unwrap()
+                .into_float_value();
+            let old_y = builders
+                .builder
+                .build_load(builders.context.f64_type(), old_y_ptr, "old_y")
+                .unwrap()
+                .into_float_value();
+            let frames_double = builders
+                .builder
+                .build_float_mul(
+                    scratch_return_to_number(
+                        builders,
+                        &generate_expr_ir(builders, secs, function, target_idx),
+                        function,
+                    ),
+                    builders.context.f64_type().const_float(builders.fps),
+                    "frames",
+                )
+                .unwrap();
+            let frames = builders
+                .builder
+                .build_call(
+                    builders.functions.llvm_ceil,
+                    &[frames_double.into()],
+                    "ceil",
+                )
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_float_value();
+            let frames = builders
+                .builder
+                .build_float_to_signed_int(frames, builders.context.i64_type(), "f64_to_i64")
+                .unwrap();
+            let idx_ptr = builders
+                .builder
+                .build_alloca(builders.context.i64_type(), "idx")
+                .unwrap();
+            builders
+                .builder
+                .build_store(idx_ptr, builders.context.i64_type().const_int(0, true))
+                .unwrap();
+            // loop
+            let loop_main = builders.context.append_basic_block(*function, "looploop");
+            let loop_finish = builders.context.append_basic_block(*function, "loopfinish");
+            builders
+                .builder
+                .build_conditional_branch(
+                    builders
+                        .builder
+                        .build_int_compare(
+                            inkwell::IntPredicate::EQ,
+                            frames,
+                            builders.context.i64_type().const_int(0, true),
+                            "branch",
+                        )
+                        .unwrap(),
+                    loop_finish,
+                    loop_main,
+                )
+                .unwrap();
+            builders.builder.position_at_end(loop_main);
+            builders
+                .builder
+                .build_call(
+                    builders.functions.wait_tick,
+                    &[builders.context.f64_type().const_float(builders.fps).into()],
+                    "wait",
+                )
+                .unwrap();
+            let idx = builders
+                .builder
+                .build_load(builders.context.i64_type(), idx_ptr, "idx_load")
+                .unwrap()
+                .into_int_value();
+            let inc_idx = builders
+                .builder
+                .build_int_add(idx, builders.context.i64_type().const_int(1, true), "inc")
+                .unwrap();
+            let x = builders
+                .builder
+                .build_float_div(
+                    builders
+                        .builder
+                        .build_float_add(
+                            builders
+                                .builder
+                                .build_float_mul(
+                                    new_x,
+                                    builders
+                                        .builder
+                                        .build_signed_int_to_float(
+                                            inc_idx,
+                                            builders.context.f64_type(),
+                                            "x",
+                                        )
+                                        .unwrap(),
+                                    "x",
+                                )
+                                .unwrap(),
+                            builders
+                                .builder
+                                .build_float_mul(
+                                    old_x,
+                                    builders
+                                        .builder
+                                        .build_float_sub(
+                                            frames_double,
+                                            builders
+                                                .builder
+                                                .build_signed_int_to_float(
+                                                    inc_idx,
+                                                    builders.context.f64_type(),
+                                                    "x",
+                                                )
+                                                .unwrap(),
+                                            "a",
+                                        )
+                                        .unwrap(),
+                                    "x",
+                                )
+                                .unwrap(),
+                            "a",
+                        )
+                        .unwrap(),
+                    frames_double,
+                    "now_x",
+                )
+                .unwrap();
+            let y = builders
+                .builder
+                .build_float_div(
+                    builders
+                        .builder
+                        .build_float_add(
+                            builders
+                                .builder
+                                .build_float_mul(
+                                    new_y,
+                                    builders
+                                        .builder
+                                        .build_signed_int_to_float(
+                                            inc_idx,
+                                            builders.context.f64_type(),
+                                            "y",
+                                        )
+                                        .unwrap(),
+                                    "y",
+                                )
+                                .unwrap(),
+                            builders
+                                .builder
+                                .build_float_mul(
+                                    old_y,
+                                    builders
+                                        .builder
+                                        .build_float_sub(
+                                            frames_double,
+                                            builders
+                                                .builder
+                                                .build_signed_int_to_float(
+                                                    inc_idx,
+                                                    builders.context.f64_type(),
+                                                    "y",
+                                                )
+                                                .unwrap(),
+                                            "a",
+                                        )
+                                        .unwrap(),
+                                    "y",
+                                )
+                                .unwrap(),
+                            "a",
+                        )
+                        .unwrap(),
+                    frames_double,
+                    "now_y",
+                )
+                .unwrap();
+            fence_goto(builders, function, Some(&x), Some(&y));
+            builders.builder.build_store(idx_ptr, inc_idx).unwrap();
+            builders
+                .builder
+                .build_conditional_branch(
+                    builders
+                        .builder
+                        .build_int_compare(inkwell::IntPredicate::SLT, inc_idx, frames, "branch")
+                        .unwrap(),
+                    loop_main,
+                    loop_finish,
+                )
+                .unwrap();
+            builders.builder.position_at_end(loop_finish);
+            fence_goto(builders, function, Some(&new_x), Some(&new_y));
+        }
         MotionStmt::IfOnEdgeBounce => {}
         MotionStmt::PointToTowards { towards } => {}
         MotionStmt::SetRotationStyle { style } => {
