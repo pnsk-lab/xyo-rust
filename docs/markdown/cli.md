@@ -181,8 +181,8 @@ xyo run <path-to-project.sb3>
 3. パース          (hat block → Thread, Stmt, Expr)
 4. IR 生成         (Thread → LLVM IR 関数)
 5. 最適化          (O3 パスを適用)
-6. JIT 実行         (生成した各 thread 関数を 1 回呼び出す)
-7. 状態表示        (各 thread の実行後状態を Debug 形式で表示)
+6. JIT 実行         (生成した各 thread 関数を起動し、実行中の状態を表示する)
+7. 状態表示        (各 thread の状態スナップショットを Debug 形式で表示)
 ```
 
 LLVM IR をファイルに保存したい場合は `--emit-llvm` を指定します。
@@ -192,7 +192,7 @@ cargo run -- run <path-to-project.sb3> --emit-llvm out.ll
 xyo run <path-to-project.sb3> --emit-llvm out.ll
 ```
 
-`--emit-llvm` は IR を保存するためのデバッグ用オプションです。指定しても JIT 実行は省略されず、IR 生成後に各 thread 関数が 1 回ずつ実行されます。
+`--emit-llvm` は IR を保存するためのデバッグ用オプションです。指定しても JIT 実行は省略されず、IR 生成後も各 thread の状態が定期的に表示されます。
 
 ```warn
 `run` は実行ランタイムそのものではなく、コンパイル経路を JIT までつないだ検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
@@ -200,7 +200,7 @@ xyo run <path-to-project.sb3> --emit-llvm out.ll
 
 ### 出力例
 
-成功時は各スレッドの実行後状態が標準出力に表示されます。
+成功時は各スレッドの状態が実行中に標準出力へ表示されます。
 
 ```
 JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
@@ -221,7 +221,7 @@ entry:
 
 | セクション | 説明 |
 | ---------- | ---- |
-| `JitSpriteState` | 1 回の JIT 実行後に表示されるスプライト状態 |
+| `JitSpriteState` | 実行中に表示されるスプライト状態 |
 | `sprite_x` | スプライトの X 座標 |
 | `sprite_y` | スプライトの Y 座標 |
 | `sprite_rotate` | スプライトの向き |
@@ -239,7 +239,7 @@ entry:
 
 ### 補足
 
-`run` の標準出力には、既定では各 thread の実行後状態だけが表示されます。LLVM IR テキストを確認したい場合は `--emit-llvm <path>` で保存先を指定してください。
+`run` の標準出力には、既定では各 thread の状態スナップショットが表示されます。LLVM IR テキストを確認したい場合は `--emit-llvm <path>` で保存先を指定してください。
 
 ## エラー表示
 

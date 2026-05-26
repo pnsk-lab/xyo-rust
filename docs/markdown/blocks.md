@@ -20,7 +20,7 @@ Parser で通ることと、`run` サブコマンドで最後まで通ること�
 
 | カテゴリ | Stmt 対応 | Expr 対応 | IR Stmt | IR Expr |
 | -------- | --------- | --------- | ------- | ------- |
-| 動き | ✅ 全 17 opcode | ✅ 全 8 opcode | 🟡 一部 (8/17) | ❌ なし |
+| 動き | ✅ 全 17 opcode | ✅ 全 8 opcode | 🟡 一部 (9/17) | ❌ なし |
 | 見た目 | ✅ 全 21 opcode | ✅ 全 5 opcode | ❌ なし | ❌ なし |
 | 音 | ✅ 全 8 opcode | ✅ 全 4 opcode | ❌ なし | ❌ なし |
 | イベント | ✅ 全 2 opcode | — | ❌ なし | — |
@@ -79,6 +79,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `MotionScrollUp` — (NoOp: 上スクロール)
 - Parser: `Stmt`
 - IR: 一部のみ（位置・向き更新系）
+    - `MotionMoveSteps` → 向きに応じて X・Y 座標を更新し、端の補正を適用
     - `MotionSetX` → `build_struct_gep` で X フィールドを取り出して `store`
     - `MotionChangeXBy` → `build_struct_gep` + `load` + `fadd` + `store` で X 座標を加算
     - `MotionSetY` → `build_struct_gep` で Y フィールドを取り出して `store`
