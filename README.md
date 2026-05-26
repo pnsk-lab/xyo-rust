@@ -132,7 +132,7 @@ cargo run -- json my_project.sb3 | jq '[.targets[].blocks[].opcode] | unique | s
 cargo run -- run <path-to-project.sb3>
 ```
 
-`run` は現状もっとも実験的なコマンドです。動き系命令と演算子のみを含むシンプルなプロジェクトから試すことを推奨します。成功時は各スレッドの実行後状態が標準出力に表示されます。
+`run` は現状もっとも実験的なコマンドです。動き系命令と演算子のみを含むシンプルなプロジェクトから試すことを推奨します。成功時は各スレッドの状態が実行中に定期的に標準出力へ表示されます。
 
 ```text
 JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
