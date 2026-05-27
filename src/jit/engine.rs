@@ -3,7 +3,7 @@ use std::{
     ffi::CString,
     path::{Path, PathBuf},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use inkwell::{
@@ -146,7 +146,6 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
     let costume_ptr = costume_storage.as_mut_ptr();
     let costume_count = costume_storage.len() as i64;
     let costume_addr = costume_ptr as usize;
-    let mut handles = Vec::with_capacity(thread_functions.len());
 
     for function_name in thread_functions {
         eprintln!("{function_name} has started");
@@ -163,19 +162,18 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
         state.sprite_costume_number = costume_count;
         let state_ptr = SendMutPtr::new(&mut state as *mut SpriteStruct);
 
-        handles.push(std::thread::spawn(move || unsafe {
+        let handle = std::thread::spawn(move || unsafe {
             let state = state_ptr.as_mut();
             function(state);
-        }));
+        });
 
-        for _ in 0..100 {
+        let started_at = Instant::now();
+
+        while !handle.is_finished() {
             println!("{:?}", state);
             thread::sleep(Duration::from_millis(33));
         }
-    }
-
-    for handle in handles {
-        handle.join().expect("JIT thread panicked");
+        println!("\nelasped: {:?}", Instant::now() - started_at)
     }
 }
 
