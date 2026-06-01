@@ -1,7 +1,7 @@
 use inkwell::{
     AddressSpace,
     context::Context,
-    values::{FloatValue, FunctionValue, IntValue, PointerValue},
+    values::{FloatValue, FunctionValue, IntValue, PointerValue, StructValue},
 };
 
 use crate::{
@@ -76,4 +76,5 @@ pub enum ScratchReturnTypes<'ctx> {
     NumberLiteral(f64),
     StringLiteral((String, PointerValue<'ctx>)),
     BoolLiteral((bool, IntValue<'ctx>)),
+    Dynamic(PointerValue<'ctx>),
 }

@@ -2,21 +2,21 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     context::Context,
     module::Module,
-    values::{FloatValue, FunctionValue, IntValue, PointerValue},
+    values::{BasicValue, FloatValue, FunctionValue, IntValue, PointerValue},
 };
 use rand::Rng;
 use ryu_js::Buffer;
 
 use crate::compiler::{
     compiler::ScratchReturnTypes,
-    types::{Builders, create_string_struct_type},
+    types::{Builders, DynamicKind, create_dynamic_struct_type, create_string_struct_type},
 };
 
 // 整数か判定する
 pub fn is_num<'ctx>(
     builders: &Builders<'ctx>,
     from: ScratchReturnTypes<'ctx>,
-    _: &FunctionValue<'ctx>,
+    function: &FunctionValue<'ctx>,
 ) -> IntValue<'ctx> {
     let bool_t = builders.context.bool_type();
 
@@ -65,6 +65,95 @@ pub fn is_num<'ctx>(
         ScratchReturnTypes::StringLiteral(v) => {
             bool_t.const_int((!v.0.contains('.')) as u64, false)
         }
+
+        ScratchReturnTypes::Dynamic(v) => {
+            let dynamic_entry = builders.context.append_basic_block(*function, "dynamic");
+            builders.builder.position_at_end(dynamic_entry);
+            let dynamic_struct = create_dynamic_struct_type(builders.context);
+            let kind = builders
+                .builder
+                .build_struct_gep(dynamic_struct, v, 0, "field1")
+                .unwrap();
+            let kind = builders
+                .builder
+                .build_load(builders.context.i8_type(), kind, "kind")
+                .unwrap()
+                .into_int_value();
+            let false_value = builders.context.bool_type().const_int(0, false);
+            let number_block = builders.context.append_basic_block(*function, "double");
+            let string_block = builders.context.append_basic_block(*function, "string");
+            let boolean_block = builders.context.append_basic_block(*function, "boolean");
+            let finally = builders.context.append_basic_block(*function, "finally");
+            builders
+                .builder
+                .build_switch(
+                    kind,
+                    finally,
+                    &[(
+                        builders
+                            .context
+                            .i8_type()
+                            .const_int((DynamicKind::Number as u8).into(), true),
+                        boolean_block,
+                    )],
+                )
+                .unwrap();
+            builders.builder.position_at_end(number_block);
+            let num = builders
+                .builder
+                .build_load(builders.context.f64_type(), v, "float")
+                .unwrap()
+                .into_float_value();
+            let floor = builders
+                .builder
+                .build_call(builders.functions.llvm_floor, &[num.into()], "floor")
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_float_value();
+
+            let is_int = builders
+                .builder
+                .build_float_compare(FloatPredicate::OEQ, floor, num, "is_int")
+                .unwrap();
+
+            let is_nan = builders
+                .builder
+                .build_float_compare(FloatPredicate::UNO, num, num, "is_nan")
+                .unwrap();
+
+            // NaN || floor(v) == v
+            let number_ret = builders.builder.build_or(is_nan, is_int, "is_num").unwrap();
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+            builders.builder.position_at_end(string_block);
+            let string_ret = builders
+                .builder
+                .build_call(builders.functions.is_num, &[v.into()], "is_num")
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_int_value();
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+            builders.builder.position_at_end(finally);
+            let phi = builders
+                .builder
+                .build_phi(builders.context.bool_type(), "phi")
+                .unwrap();
+            phi.add_incoming(&[
+                (&false_value, dynamic_entry),
+                (&number_ret, number_block),
+                (&string_ret, string_block),
+            ]);
+            phi.as_basic_value().into_int_value()
+        }
     }
 }
 
@@ -101,6 +190,7 @@ pub fn scratch_return_to_number<'ctx>(
         ScratchReturnTypes::BoolLiteral(v) => {
             builders.context.f64_type().const_float(v.0 as u8 as f64)
         }
+        ScratchReturnTypes::Dynamic(v) => panic!("未実装"),
     }
 }
 pub fn js_number_to_string(x: f64) -> String {
@@ -171,6 +261,7 @@ pub fn scratch_return_to_string<'ctx>(
         }
         ScratchReturnTypes::StringLiteral(v) => v.1,
         ScratchReturnTypes::BoolLiteral(v) => create_string_struct(builders, &v.0.to_string()),
+        ScratchReturnTypes::Dynamic(v) => panic!("未実装"),
     }
 }
 
@@ -228,6 +319,7 @@ pub fn scratch_return_to_bool<'ctx>(
                 .const_int(string_bool as u64, false)
         }
         ScratchReturnTypes::BoolLiteral(v) => v.1,
+        ScratchReturnTypes::Dynamic(v) => panic!("未実装"),
     }
 }
 

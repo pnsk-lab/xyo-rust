@@ -101,7 +101,7 @@ impl<T> SendMutPtr<T> {
     }
 
     unsafe fn as_mut<'a>(self) -> &'a mut T {
-        &mut *self.0
+        unsafe { &mut *self.0 }
     }
 }
 

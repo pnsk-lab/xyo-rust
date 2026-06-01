@@ -59,6 +59,31 @@ impl From<StringKeys> for u32 {
     }
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DynamicKind {
+    String = 0,
+    Number = 1,
+    Bool = 2,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct DynamicStruct {
+    pub kind: DynamicKind,
+    pub pointer: *mut core::ffi::c_void,
+}
+
+pub fn create_dynamic_struct_type<'a>(context: &'a Context) -> StructType<'a> {
+    context.struct_type(
+        &[
+            context.i8_type().into(),
+            context.ptr_type(AddressSpace::default()).into(),
+        ],
+        false,
+    )
+}
+
 #[repr(C)]
 #[derive(Default, Debug)]
 pub struct CostumeInfo {
