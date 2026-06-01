@@ -1,8 +1,9 @@
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
+    basic_block::BasicBlock,
     context::Context,
     module::Module,
-    values::{BasicValue, FloatValue, FunctionValue, IntValue, PointerValue},
+    values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
 use rand::Rng;
 use ryu_js::Buffer;
@@ -11,6 +12,171 @@ use crate::compiler::{
     compiler::ScratchReturnTypes,
     types::{Builders, DynamicKind, create_dynamic_struct_type, create_string_struct_type},
 };
+
+struct DynamicParts<'ctx> {
+    dispatch_block: BasicBlock<'ctx>,
+    kind: IntValue<'ctx>,
+    payload: PointerValue<'ctx>,
+}
+
+fn dynamic_kind<'ctx>(builders: &Builders<'ctx>, kind: DynamicKind) -> IntValue<'ctx> {
+    builders
+        .context
+        .i8_type()
+        .const_int((kind as u8).into(), false)
+}
+
+fn enter_dynamic_dispatch<'ctx>(
+    builders: &Builders<'ctx>,
+    dynamic: PointerValue<'ctx>,
+    function: &FunctionValue<'ctx>,
+) -> DynamicParts<'ctx> {
+    let dispatch_block = builders
+        .context
+        .append_basic_block(*function, "dynamic_dispatch");
+    builders
+        .builder
+        .build_unconditional_branch(dispatch_block)
+        .unwrap();
+    builders.builder.position_at_end(dispatch_block);
+
+    let dynamic_struct = create_dynamic_struct_type(builders.context);
+    let kind_ptr = builders
+        .builder
+        .build_struct_gep(dynamic_struct, dynamic, 0, "dynamic_kind_ptr")
+        .unwrap();
+    let kind = builders
+        .builder
+        .build_load(builders.context.i8_type(), kind_ptr, "dynamic_kind")
+        .unwrap()
+        .into_int_value();
+    let payload_slot = builders
+        .builder
+        .build_struct_gep(dynamic_struct, dynamic, 1, "dynamic_payload_slot")
+        .unwrap();
+    let payload = builders
+        .builder
+        .build_load(
+            builders.context.ptr_type(AddressSpace::default()),
+            payload_slot,
+            "dynamic_payload",
+        )
+        .unwrap()
+        .into_pointer_value();
+
+    DynamicParts {
+        dispatch_block,
+        kind,
+        payload,
+    }
+}
+
+fn build_number_to_string<'ctx>(
+    builders: &Builders<'ctx>,
+    value: FloatValue<'ctx>,
+) -> PointerValue<'ctx> {
+    builders
+        .builder
+        .build_call(
+            builders.functions.num_to_str,
+            &[
+                value.into(),
+                builders
+                    .context
+                    .i64_type()
+                    .const_int(builders.rolling_hash_seed_1, false)
+                    .into(),
+                builders
+                    .context
+                    .i64_type()
+                    .const_int(builders.rolling_hash_base_1, false)
+                    .into(),
+                builders
+                    .context
+                    .i64_type()
+                    .const_int(builders.rolling_hash_seed_2, false)
+                    .into(),
+                builders
+                    .context
+                    .i64_type()
+                    .const_int(builders.rolling_hash_base_2, false)
+                    .into(),
+            ],
+            "xyo_num_to_str",
+        )
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_pointer_value()
+}
+
+fn build_bool_to_string<'ctx>(
+    builders: &Builders<'ctx>,
+    value: IntValue<'ctx>,
+) -> PointerValue<'ctx> {
+    builders
+        .builder
+        .build_select(
+            builders
+                .builder
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    value,
+                    builders.context.bool_type().const_int(1, false),
+                    "is_true",
+                )
+                .unwrap(),
+            create_string_struct(builders, "true"),
+            create_string_struct(builders, "false"),
+            "bool_to_str",
+        )
+        .unwrap()
+        .into_pointer_value()
+}
+
+fn build_number_to_bool<'ctx>(
+    builders: &Builders<'ctx>,
+    value: FloatValue<'ctx>,
+) -> IntValue<'ctx> {
+    builders
+        .builder
+        .build_select(
+            builders
+                .builder
+                .build_float_compare(
+                    FloatPredicate::OEQ,
+                    value,
+                    builders.context.f64_type().const_float(0.0),
+                    "is_zero",
+                )
+                .unwrap(),
+            builders.context.bool_type().const_int(0, false),
+            builders.context.bool_type().const_int(1, false),
+            "number_to_bool",
+        )
+        .unwrap()
+        .into_int_value()
+}
+
+fn build_string_to_bool<'ctx>(
+    builders: &Builders<'ctx>,
+    function: &FunctionValue<'ctx>,
+    value: PointerValue<'ctx>,
+) -> IntValue<'ctx> {
+    builders
+        .builder
+        .build_call(
+            builders.functions.str_to_bool,
+            &[function.get_first_param().unwrap().into(), value.into()],
+            "str_to_bool",
+        )
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_int_value()
+}
 
 // 整数か判定する
 pub fn is_num<'ctx>(
@@ -67,41 +233,26 @@ pub fn is_num<'ctx>(
         }
 
         ScratchReturnTypes::Dynamic(v) => {
-            let dynamic_entry = builders.context.append_basic_block(*function, "dynamic");
-            builders.builder.position_at_end(dynamic_entry);
-            let dynamic_struct = create_dynamic_struct_type(builders.context);
-            let kind = builders
-                .builder
-                .build_struct_gep(dynamic_struct, v, 0, "field1")
-                .unwrap();
-            let kind = builders
-                .builder
-                .build_load(builders.context.i8_type(), kind, "kind")
-                .unwrap()
-                .into_int_value();
+            let dynamic = enter_dynamic_dispatch(builders, v, function);
             let false_value = builders.context.bool_type().const_int(0, false);
             let number_block = builders.context.append_basic_block(*function, "double");
             let string_block = builders.context.append_basic_block(*function, "string");
-            let boolean_block = builders.context.append_basic_block(*function, "boolean");
             let finally = builders.context.append_basic_block(*function, "finally");
             builders
                 .builder
                 .build_switch(
-                    kind,
+                    dynamic.kind,
                     finally,
-                    &[(
-                        builders
-                            .context
-                            .i8_type()
-                            .const_int((DynamicKind::Number as u8).into(), true),
-                        boolean_block,
-                    )],
+                    &[
+                        (dynamic_kind(builders, DynamicKind::Number), number_block),
+                        (dynamic_kind(builders, DynamicKind::String), string_block),
+                    ],
                 )
                 .unwrap();
             builders.builder.position_at_end(number_block);
             let num = builders
                 .builder
-                .build_load(builders.context.f64_type(), v, "float")
+                .build_load(builders.context.f64_type(), dynamic.payload, "float")
                 .unwrap()
                 .into_float_value();
             let floor = builders
@@ -123,7 +274,6 @@ pub fn is_num<'ctx>(
                 .build_float_compare(FloatPredicate::UNO, num, num, "is_nan")
                 .unwrap();
 
-            // NaN || floor(v) == v
             let number_ret = builders.builder.build_or(is_nan, is_int, "is_num").unwrap();
             builders
                 .builder
@@ -132,7 +282,11 @@ pub fn is_num<'ctx>(
             builders.builder.position_at_end(string_block);
             let string_ret = builders
                 .builder
-                .build_call(builders.functions.is_num, &[v.into()], "is_num")
+                .build_call(
+                    builders.functions.is_num,
+                    &[dynamic.payload.into()],
+                    "is_num",
+                )
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
@@ -148,7 +302,7 @@ pub fn is_num<'ctx>(
                 .build_phi(builders.context.bool_type(), "phi")
                 .unwrap();
             phi.add_incoming(&[
-                (&false_value, dynamic_entry),
+                (&false_value, dynamic.dispatch_block),
                 (&number_ret, number_block),
                 (&string_ret, string_block),
             ]);
@@ -160,7 +314,7 @@ pub fn is_num<'ctx>(
 pub fn scratch_return_to_number<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
-    _: &FunctionValue<'ctx>,
+    function: &FunctionValue<'ctx>,
 ) -> FloatValue<'ctx> {
     match from {
         ScratchReturnTypes::Number(v) => *v,
@@ -190,7 +344,87 @@ pub fn scratch_return_to_number<'ctx>(
         ScratchReturnTypes::BoolLiteral(v) => {
             builders.context.f64_type().const_float(v.0 as u8 as f64)
         }
-        ScratchReturnTypes::Dynamic(v) => panic!("未実装"),
+        ScratchReturnTypes::Dynamic(v) => {
+            let dynamic = enter_dynamic_dispatch(builders, *v, function);
+            let number_block = builders.context.append_basic_block(*function, "double");
+            let string_block = builders.context.append_basic_block(*function, "string");
+            let boolean_block = builders.context.append_basic_block(*function, "boolean");
+            let finally = builders.context.append_basic_block(*function, "finally");
+            builders
+                .builder
+                .build_switch(
+                    dynamic.kind,
+                    finally,
+                    &[
+                        (dynamic_kind(builders, DynamicKind::Number), number_block),
+                        (dynamic_kind(builders, DynamicKind::Bool), boolean_block),
+                        (dynamic_kind(builders, DynamicKind::String), string_block),
+                    ],
+                )
+                .unwrap();
+            builders.builder.position_at_end(number_block);
+            let number_ret = builders
+                .builder
+                .build_load(builders.context.f64_type(), dynamic.payload, "float")
+                .unwrap()
+                .into_float_value();
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+            builders.builder.position_at_end(string_block);
+            let string_ret = builders
+                .builder
+                .build_call(
+                    builders.functions.str_to_num,
+                    &[dynamic.payload.into()],
+                    "xyo_atod",
+                )
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap()
+                .into_float_value();
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+            builders.builder.position_at_end(boolean_block);
+            let bool_value = builders
+                .builder
+                .build_load(builders.context.bool_type(), dynamic.payload, "bool")
+                .unwrap()
+                .into_int_value();
+            let bool_ret = builders
+                .builder
+                .build_select(
+                    bool_value,
+                    builders.context.f64_type().const_float(1.0),
+                    builders.context.f64_type().const_float(0.0),
+                    "num_bool",
+                )
+                .unwrap()
+                .into_float_value();
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+            builders.builder.position_at_end(finally);
+            let phi = builders
+                .builder
+                .build_phi(builders.context.f64_type(), "phi")
+                .unwrap();
+            phi.add_incoming(&[
+                (
+                    &builders.context.f64_type().const_float(f64::NAN),
+                    dynamic.dispatch_block,
+                ),
+                (&number_ret, number_block),
+                (&string_ret, string_block),
+                (&bool_ret, boolean_block),
+            ]);
+            phi.as_basic_value().into_float_value()
+        }
     }
 }
 pub fn js_number_to_string(x: f64) -> String {
@@ -200,68 +434,92 @@ pub fn js_number_to_string(x: f64) -> String {
 pub fn scratch_return_to_string<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
-    _: &FunctionValue<'ctx>,
+    function: &FunctionValue<'ctx>,
 ) -> PointerValue<'ctx> {
     match from {
-        ScratchReturnTypes::Number(v) => builders
-            .builder
-            .build_call(
-                builders.functions.num_to_str,
-                &[
-                    (*v).into(),
-                    builders
-                        .context
-                        .i64_type()
-                        .const_int(builders.rolling_hash_seed_1, false)
-                        .into(),
-                    builders
-                        .context
-                        .i64_type()
-                        .const_int(builders.rolling_hash_base_1, false)
-                        .into(),
-                    builders
-                        .context
-                        .i64_type()
-                        .const_int(builders.rolling_hash_seed_2, false)
-                        .into(),
-                    builders
-                        .context
-                        .i64_type()
-                        .const_int(builders.rolling_hash_base_2, false)
-                        .into(),
-                ],
-                "xyo_num_to_str",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap()
-            .into_pointer_value(),
-        ScratchReturnTypes::Bool(v) => builders
-            .builder
-            .build_select(
-                builders
-                    .builder
-                    .build_int_compare(
-                        IntPredicate::EQ,
-                        *v,
-                        builders.context.bool_type().const_int(1, false),
-                        "is_true",
-                    )
-                    .unwrap(),
-                create_string_struct(builders, "true"),
-                create_string_struct(builders, "false"),
-                "bool_to_str",
-            )
-            .unwrap()
-            .into_pointer_value(),
+        ScratchReturnTypes::Number(v) => build_number_to_string(builders, *v),
+        ScratchReturnTypes::Bool(v) => build_bool_to_string(builders, *v),
         ScratchReturnTypes::String(v) => *v,
         ScratchReturnTypes::NumberLiteral(v) => {
             create_string_struct(builders, &js_number_to_string(*v))
         }
         ScratchReturnTypes::StringLiteral(v) => v.1,
         ScratchReturnTypes::BoolLiteral(v) => create_string_struct(builders, &v.0.to_string()),
-        ScratchReturnTypes::Dynamic(v) => panic!("未実装"),
+        ScratchReturnTypes::Dynamic(v) => {
+            let dynamic = enter_dynamic_dispatch(builders, *v, function);
+            let number_block = builders.context.append_basic_block(*function, "double");
+            let string_block = builders.context.append_basic_block(*function, "string");
+            let boolean_block = builders.context.append_basic_block(*function, "boolean");
+            let finally = builders.context.append_basic_block(*function, "finally");
+            builders
+                .builder
+                .build_switch(
+                    dynamic.kind,
+                    finally,
+                    &[
+                        (dynamic_kind(builders, DynamicKind::Number), number_block),
+                        (dynamic_kind(builders, DynamicKind::Bool), boolean_block),
+                        (dynamic_kind(builders, DynamicKind::String), string_block),
+                    ],
+                )
+                .unwrap();
+
+            builders.builder.position_at_end(number_block);
+            let number_value = builders
+                .builder
+                .build_load(
+                    builders.context.f64_type(),
+                    dynamic.payload,
+                    "dynamic_number",
+                )
+                .unwrap()
+                .into_float_value();
+            let number_ret = build_number_to_string(builders, number_value);
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+
+            builders.builder.position_at_end(string_block);
+            let string_ret = dynamic.payload;
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+
+            builders.builder.position_at_end(boolean_block);
+            let bool_value = builders
+                .builder
+                .build_load(
+                    builders.context.bool_type(),
+                    dynamic.payload,
+                    "dynamic_bool",
+                )
+                .unwrap()
+                .into_int_value();
+            let bool_ret = build_bool_to_string(builders, bool_value);
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+
+            builders.builder.position_at_end(finally);
+            let default_ret = create_string_struct(builders, "");
+            let phi = builders
+                .builder
+                .build_phi(
+                    builders.context.ptr_type(AddressSpace::default()),
+                    "dynamic_to_string",
+                )
+                .unwrap();
+            phi.add_incoming(&[
+                (&default_ret, dynamic.dispatch_block),
+                (&number_ret, number_block),
+                (&string_ret, string_block),
+                (&bool_ret, boolean_block),
+            ]);
+            phi.as_basic_value().into_pointer_value()
+        }
     }
 }
 
@@ -271,37 +529,9 @@ pub fn scratch_return_to_bool<'ctx>(
     func: &FunctionValue<'ctx>,
 ) -> inkwell::values::IntValue<'ctx> {
     match from {
-        ScratchReturnTypes::Number(v) => builders
-            .builder
-            .build_select(
-                builders
-                    .builder
-                    .build_float_compare(
-                        FloatPredicate::OEQ,
-                        *v,
-                        builders.context.f64_type().const_float(0.0),
-                        "is_zero",
-                    )
-                    .unwrap(),
-                builders.context.bool_type().const_int(0, false),
-                builders.context.bool_type().const_int(1, false),
-                "number_to_bool",
-            )
-            .unwrap()
-            .into_int_value(),
+        ScratchReturnTypes::Number(v) => build_number_to_bool(builders, *v),
         ScratchReturnTypes::Bool(v) => *v,
-        ScratchReturnTypes::String(v) => builders
-            .builder
-            .build_call(
-                builders.functions.str_to_bool,
-                &[func.get_first_param().unwrap().into(), (*v).into()],
-                "str_to_bool",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap()
-            .into_int_value(),
+        ScratchReturnTypes::String(v) => build_string_to_bool(builders, func, *v),
         ScratchReturnTypes::NumberLiteral(v) => builders
             .context
             .bool_type()
@@ -319,7 +549,77 @@ pub fn scratch_return_to_bool<'ctx>(
                 .const_int(string_bool as u64, false)
         }
         ScratchReturnTypes::BoolLiteral(v) => v.1,
-        ScratchReturnTypes::Dynamic(v) => panic!("未実装"),
+        ScratchReturnTypes::Dynamic(v) => {
+            let dynamic = enter_dynamic_dispatch(builders, *v, func);
+            let false_value = builders.context.bool_type().const_int(0, false);
+            let number_block = builders.context.append_basic_block(*func, "double");
+            let string_block = builders.context.append_basic_block(*func, "string");
+            let boolean_block = builders.context.append_basic_block(*func, "boolean");
+            let finally = builders.context.append_basic_block(*func, "finally");
+            builders
+                .builder
+                .build_switch(
+                    dynamic.kind,
+                    finally,
+                    &[
+                        (dynamic_kind(builders, DynamicKind::Number), number_block),
+                        (dynamic_kind(builders, DynamicKind::Bool), boolean_block),
+                        (dynamic_kind(builders, DynamicKind::String), string_block),
+                    ],
+                )
+                .unwrap();
+
+            builders.builder.position_at_end(number_block);
+            let number_value = builders
+                .builder
+                .build_load(
+                    builders.context.f64_type(),
+                    dynamic.payload,
+                    "dynamic_number",
+                )
+                .unwrap()
+                .into_float_value();
+            let number_ret = build_number_to_bool(builders, number_value);
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+
+            builders.builder.position_at_end(string_block);
+            let string_ret = build_string_to_bool(builders, func, dynamic.payload);
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+
+            builders.builder.position_at_end(boolean_block);
+            let bool_ret = builders
+                .builder
+                .build_load(
+                    builders.context.bool_type(),
+                    dynamic.payload,
+                    "dynamic_bool",
+                )
+                .unwrap()
+                .into_int_value();
+            builders
+                .builder
+                .build_unconditional_branch(finally)
+                .unwrap();
+
+            builders.builder.position_at_end(finally);
+            let phi = builders
+                .builder
+                .build_phi(builders.context.bool_type(), "dynamic_to_bool")
+                .unwrap();
+            phi.add_incoming(&[
+                (&false_value, dynamic.dispatch_block),
+                (&number_ret, number_block),
+                (&string_ret, string_block),
+                (&bool_ret, boolean_block),
+            ]);
+            phi.as_basic_value().into_int_value()
+        }
     }
 }
 
@@ -523,4 +823,115 @@ pub fn create_string_struct<'ctx>(builders: &Builders<'ctx>, s: &str) -> Pointer
         builders.context.i64_type().const_int(hash2, false).into(),
     ]));
     global.as_pointer_value()
+}
+
+#[cfg(test)]
+mod tests {
+    use inkwell::{AddressSpace, context::Context};
+    use serde_json::json;
+
+    use super::*;
+    use crate::types::ScratchProject;
+
+    fn empty_project() -> ScratchProject {
+        serde_json::from_value(json!({
+            "meta": {
+                "semver": "3.0.0",
+                "vm": null,
+                "agent": null,
+                "origin": null
+            },
+            "targets": [{
+                "isStage": true,
+                "name": "Stage",
+                "currentCostume": 0,
+                "blocks": {},
+                "variables": {},
+                "lists": {},
+                "broadcasts": {},
+                "comments": null,
+                "costumes": [],
+                "sounds": [],
+                "tempo": null,
+                "videoTransparency": null,
+                "videoState": null,
+                "layerOrder": null,
+                "volume": null
+            }]
+        }))
+        .unwrap()
+    }
+
+    fn test_function<'ctx>(
+        context: &'ctx Context,
+        builders: &Builders<'ctx>,
+    ) -> FunctionValue<'ctx> {
+        let fn_type = context
+            .void_type()
+            .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false);
+        let function = builders
+            .module
+            .add_function("dynamic_test_func", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        builders.builder.position_at_end(entry);
+        function
+    }
+
+    fn create_dynamic<'ctx>(
+        builders: &Builders<'ctx>,
+        kind: DynamicKind,
+        payload: PointerValue<'ctx>,
+    ) -> PointerValue<'ctx> {
+        let dynamic_struct = create_dynamic_struct_type(builders.context);
+        let dynamic = builders
+            .builder
+            .build_alloca(dynamic_struct, "dynamic")
+            .unwrap();
+        let kind_ptr = builders
+            .builder
+            .build_struct_gep(dynamic_struct, dynamic, 0, "dynamic_kind")
+            .unwrap();
+        builders
+            .builder
+            .build_store(kind_ptr, dynamic_kind(builders, kind))
+            .unwrap();
+        let payload_ptr = builders
+            .builder
+            .build_struct_gep(dynamic_struct, dynamic, 1, "dynamic_payload")
+            .unwrap();
+        builders.builder.build_store(payload_ptr, payload).unwrap();
+        dynamic
+    }
+
+    #[test]
+    fn dynamic_conversions_build_verifiable_ir() {
+        let context = Context::create();
+        let project = empty_project();
+        let builders = Builders::new(&context, &project);
+        let function = test_function(&context, &builders);
+
+        let number_payload = builders
+            .builder
+            .build_alloca(builders.context.f64_type(), "number_payload")
+            .unwrap();
+        builders
+            .builder
+            .build_store(number_payload, builders.context.f64_type().const_float(3.0))
+            .unwrap();
+        let dynamic = create_dynamic(&builders, DynamicKind::Number, number_payload);
+
+        let _ = is_num(&builders, ScratchReturnTypes::Dynamic(dynamic), &function);
+        let _ =
+            scratch_return_to_number(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
+        let _ =
+            scratch_return_to_string(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
+        let _ = scratch_return_to_bool(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
+        builders.builder.build_return(None).unwrap();
+
+        assert!(
+            builders.module.verify().is_ok(),
+            "{}",
+            builders.module.to_string()
+        );
+    }
 }
