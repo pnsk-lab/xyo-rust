@@ -4,25 +4,44 @@
 	</header>
 	<body>
 		<p>
-			Scratch の 
+			<a href="https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml">
+				<img src="https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml/badge.svg" alt="CI" />
+			</a>
+			<a href="https://github.com/pnsk-lab/xyo-rust/releases/latest">
+				latest release
+			</a>
+		</p>
+		<p>
+			Scratch の
 			<code>
 				.sb3
 			</code>
-			 プロジェクトを読み込み、解析し、LLVM IR 生成へ接続する実験プロジェクト 
+			 プロジェクトを読み込み、解析し、LLVM IR を生成して JIT で動かす実験プロジェクト
 			<code>
 				xyo-rust
 			</code>
 			 の手引きです。
 		</p>
-		<p>
-			このディレクトリの Markdown は、Taiga 用 XML に変換して GitHub Pages へ公開します。
-		</p>
+		<section title="このドキュメントについて">
+			<p>
+				このドキュメントは
+				<code>
+					xyo-rust
+				</code>
+				 の利用者・開発者向けの技術解説書です。Scratch プロジェクトのコンパイル基盤として
+				<code>
+					xyo-rust
+				</code>
+				 がどのように動作するかを、セットアップから内部アーキテクチャまで段階的に説明します。
+			</p>
+		</section>
 		<section title="目次">
 			<ul>
 				<li>
 					<a href="">
 						はじめに
 					</a>
+					 ← 現在のページ
 				</li>
 				<li>
 					<a href="getting-started/">
@@ -45,100 +64,441 @@
 					</a>
 				</li>
 			</ul>
+			<code>
+			</code>
+		</section>
+		<section title="Scratch と  .sb3  について">
+			<p>
+				<a href="https://scratch.mit.edu/">
+					Scratch
+				</a>
+				 は MIT メディアラボが開発したビジュアルプログラミング環境で、ブロックをドラッグ＆ドロップして組み合わせることでプログラムを作れます。
+			</p>
+			<p>
+				Scratch プロジェクトは
+				<code>
+					.sb3
+				</code>
+				 という拡張子で保存されます。
+				<code>
+					.sb3
+				</code>
+				 の正体は ZIP アーカイブで、内部に
+				<code>
+					project.json
+				</code>
+				 というファイルがあり、すべてのブロック・スプライト・変数・コスチューム・サウンドのメタデータが JSON 形式で記録されています。
+			</p>
+			<h3>
+				<code>
+					project.json
+				</code>
+				 の構造
+			</h3>
+			<p>
+				<code>
+					project.json
+				</code>
+				 の最上位には
+				<code>
+					targets
+				</code>
+				 という配列があり、各要素がスプライトまたはステージを表します。各ターゲットは次の情報を持ちます。
+			</p>
+			<table>
+				<tr>
+					<th>
+						フィールド
+					</th>
+					<th>
+						説明
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							blocks
+						</code>
+					</td>
+					<td>
+						ブロックの辞書。ブロック ID をキーにしてブロック情報が格納される
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							variables
+						</code>
+					</td>
+					<td>
+						変数の辞書。変数 ID をキーに名前と初期値が入る
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							lists
+						</code>
+					</td>
+					<td>
+						リストの辞書。リスト ID をキーに名前と初期値が入る
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							costumes
+						</code>
+					</td>
+					<td>
+						コスチューム情報の配列
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sounds
+						</code>
+					</td>
+					<td>
+						サウンド情報の配列
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							isStage
+						</code>
+					</td>
+					<td>
+						このターゲットがステージかどうか
+					</td>
+				</tr>
+			</table>
+			<p>
+				各ブロックは次のフィールドを持ちます。
+			</p>
+			<table>
+				<tr>
+					<th>
+						フィールド
+					</th>
+					<th>
+						説明
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							opcode
+						</code>
+					</td>
+					<td>
+						ブロックの種類を表す識別子 (
+						<code>
+							motion_movesteps
+						</code>
+						 など)
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							inputs
+						</code>
+					</td>
+					<td>
+						ブロックへの入力（数値・文字列・他のブロックへの参照）
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							fields
+						</code>
+					</td>
+					<td>
+						ドロップダウンメニューの選択値
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							next
+						</code>
+					</td>
+					<td>
+						次に実行するブロックの ID（連鎖構造）
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							parent
+						</code>
+					</td>
+					<td>
+						親ブロックの ID
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							topLevel
+						</code>
+					</td>
+					<td>
+						スクリプトの先頭ブロックかどうか
+					</td>
+				</tr>
+			</table>
 		</section>
 		<section title="このプロジェクトが目指すこと">
+			<p>
+				<code>
+					xyo-rust
+				</code>
+				 は以下を目標としています。
+			</p>
 			<ul>
 				<li>
-					Scratch プロジェクトを静的に解析できる内部表現へ変換する
+					Scratch プロジェクトを
+					<strong>
+						静的解析
+					</strong>
+					 できる内部表現へ変換する
 				</li>
 				<li>
-					hat block からスレッドを抽出する
+					hat block からスレッドを抽出し、実行単位を定義する
 				</li>
 				<li>
-					LLVM IR を生成し、将来的なネイティブ実行につなげる
+					LLVM IR を生成し、現在は JIT 実行で挙動確認を行う
 				</li>
 				<li>
-					SB3 解析系の検証用ツールチェーンを整える
+					SB3 解析系の
+					<strong>
+						検証用ツールチェーン
+					</strong>
+					 を整える
 				</li>
 			</ul>
+			<p>
+				完全な Scratch 互換ランタイムを作るのではなく、「Scratch プロジェクトをどこまで静的に処理できるか」を探ることが現在の中心です。
+			</p>
 		</section>
 		<section title="現在の実装範囲">
-			<ol>
-				<li>
-					<code>
-						.sb3
-					</code>
-					 を ZIP として開く
-				</li>
-				<li>
-					<code>
-						project.json
-					</code>
-					 を取り出す
-				</li>
-				<li>
-					<code>
-						serde
-					</code>
-					 で Scratch プロジェクト構造へ変換する
-				</li>
-				<li>
-					hat block からスレッドを解析する
-				</li>
-				<li>
-					<code>
-						Stmt
-					</code>
-					 / 
-					<code>
-						Expr
-					</code>
-					 に変換する
-				</li>
-				<li>
-					一部の式 / 文を LLVM IR へ変換する
-				</li>
-			</ol>
-			<blockquote>
+			<table>
+				<tr>
+					<th>
+						段階
+					</th>
+					<th>
+						内容
+					</th>
+					<th>
+						状態
+					</th>
+				</tr>
+				<tr>
+					<td>
+						1
+					</td>
+					<td>
+						<code>
+							.sb3
+						</code>
+						 を ZIP として開き
+						<code>
+							project.json
+						</code>
+						 を取り出す
+					</td>
+					<td>
+						✅ 完成
+					</td>
+				</tr>
+				<tr>
+					<td>
+						2
+					</td>
+					<td>
+						<code>
+							project.json
+						</code>
+						 を Scratch プロジェクト構造へ変換する
+					</td>
+					<td>
+						✅ 完成
+					</td>
+				</tr>
+				<tr>
+					<td>
+						3
+					</td>
+					<td>
+						hat block からスレッドを解析する
+					</td>
+					<td>
+						✅ 完成
+					</td>
+				</tr>
+				<tr>
+					<td>
+						4
+					</td>
+					<td>
+						<code>
+							Stmt
+						</code>
+						 /
+						<code>
+							Expr
+						</code>
+						 に変換する（パーサー）
+					</td>
+					<td>
+						✅ ほぼ完成（87 opcode）
+					</td>
+				</tr>
+				<tr>
+					<td>
+						5
+					</td>
+					<td>
+						一部の式 / 文を LLVM IR へ変換し、JIT で実行する
+					</td>
+					<td>
+						🚧 一部実装（文は動き系、式はリテラル + 演算子）
+					</td>
+				</tr>
+				<tr>
+					<td>
+						6
+					</td>
+					<td>
+						生成した IR から実行可能ファイルを作る
+					</td>
+					<td>
+						❌ 未実装
+					</td>
+				</tr>
+			</table>
+			<warning>
 				<p>
-					<strong>
-						注意
-					</strong>
-					完全な Scratch 実行互換はまだ未実装です。特に 
+					完全な Scratch 実行互換はまだ未実装です。特に
 					<code>
 						run
 					</code>
-					 サブコマンドは実験段階で、入力によっては未実装分岐に到達します。
+					 サブコマンドは実験段階で、入力によっては未実装分岐に到達します。成功時は各スレッドの状態が実行中に定期的に標準出力へ表示されます。
 				</p>
-			</blockquote>
+			</warning>
+		</section>
+		<section title="処理の流れ（概要）">
+			<p>
+				<code>
+					xyo-rust
+				</code>
+				 は Scratch プロジェクトをネイティブコードへ変換するため、以下の 4 段階のパイプラインを通します。
+			</p>
+			<pre><code>.sb3
+ │
+ ▼
+SB3 ロード（src/sb3.rs）
+ │  ZIP を展開して project.json を読み込む
+ │
+ ▼
+デシリアライズ（src/types/）
+ │  JSON → Rust の ScratchProject 構造体
+ │
+ ▼
+パース（src/parser/）
+ │  hat block → Thread (スレッド)
+ │  各ブロック → Stmt / Expr (AST)
+ │
+ ▼
+IR 生成（src/compiler/）
+   Thread → LLVM 関数
+   Stmt/Expr → LLVM IR 命令列
+   最適化パス（O3）を適用
+   JIT で各スレッドを実行
+   → 標準出力へ実行結果を表示
+</code></pre>
+			<p>
+				詳細は
+				<a href="architecture/">
+					アーキテクチャ
+				</a>
+				 を参照してください。
+			</p>
 		</section>
 		<section title="読み進め方">
-			<ul>
-				<li>
-					まず動かしたい: 
-					<a href="getting-started/">
-						セットアップ
-					</a>
-				</li>
-				<li>
-					コマンドの違いを知りたい: 
-					<a href="cli/">
-						CLI
-					</a>
-				</li>
-				<li>
-					対応済み opcode を確認したい: 
-					<a href="blocks/">
-						対応ブロック一覧
-					</a>
-				</li>
-				<li>
-					内部構造を把握したい: 
-					<a href="architecture/">
-						アーキテクチャ
-					</a>
-				</li>
-			</ul>
+			<p>
+				目的に合わせて読み始めるページを選んでください。
+			</p>
+			<table>
+				<tr>
+					<th>
+						目的
+					</th>
+					<th>
+						参照ページ
+					</th>
+				</tr>
+				<tr>
+					<td>
+						まず動かしてみたい
+					</td>
+					<td>
+						<a href="getting-started/">
+							セットアップ
+						</a>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						コマンドの使い方を知りたい
+					</td>
+					<td>
+						<a href="cli/">
+							CLI
+						</a>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						対応済み opcode を確認したい
+					</td>
+					<td>
+						<a href="blocks/">
+							対応ブロック一覧
+						</a>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						内部構造を把握したい
+					</td>
+					<td>
+						<a href="architecture/">
+							アーキテクチャ
+						</a>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						コントリビュートしたい
+					</td>
+					<td>
+						<a href="architecture/">
+							アーキテクチャ
+						</a>
+						 →
+						<a href="blocks/">
+							対応ブロック一覧
+						</a>
+					</td>
+				</tr>
+			</table>
 		</section>
 		<section title="現時点での注意点">
 			<ul>
@@ -146,14 +506,20 @@
 					Scratch VM との完全互換は未実装です
 				</li>
 				<li>
-					LLVM 21.1 系を前提にしています
+					LLVM 21.1.x 系を前提にしています（他のバージョンではビルドが失敗します）
 				</li>
 				<li>
-					配布用の 
+					配布用の
 					<code>
 						.sb3
 					</code>
-					 サンプルは同梱されていません
+					 サンプルは同梱されていません。Scratch エディタからエクスポートしてください
+				</li>
+				<li>
+					<code>
+						run
+					</code>
+					 サブコマンドは実験的で、スレッド本体は動き系文ブロックのみ、入力式はリテラルと演算子のみ対応しています
 				</li>
 			</ul>
 		</section>
@@ -169,31 +535,29 @@
 						GitHub
 					</a>
 				</li>
+				<li>
+					<a href="https://scratch.mit.edu/">
+						Scratch 公式サイト
+					</a>
+				</li>
+				<li>
+					<a href="https://llvm.org/">
+						LLVM 公式サイト
+					</a>
+				</li>
+				<li>
+					<a href="https://github.com/TheDan64/inkwell">
+						inkwell (LLVM Rust バインディング)
+					</a>
+				</li>
 			</ul>
 		</section>
-		<section title="Taiga でのサイト生成">
-			<pre>
-				<code>
-					./taiga markdown-dir ./markdown
-					
-
-					rm -rf build
-					
-
-					./taiga site
-					
-
-				</code>
-			</pre>
+		<section title="Star History">
 			<p>
-				ローカルで 
-				<code>
-					taiga
-				</code>
-				 バイナリがない場合は、GitHub Pages と同じ URL から取得できます。
+				<img src="https://api.star-history.com/chart?repos=pnsk-lab/xyo-rust&amp;type=date&amp;legend=top-left" alt="star history" />
 			</p>
 			<p>
-				続きは 
+				続きは
 				<a href="getting-started/">
 					セットアップ
 				</a>

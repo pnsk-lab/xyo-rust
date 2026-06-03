@@ -156,7 +156,7 @@ Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright"
 Using Op Codes: ["event_whenflagclicked", "motion_setx", "operator_add"]
 ```
 
-上記の場合、使われている opcode はすべて IR 生成まで対応しているため `run` が成功する可能性が高いです。
+上記の場合、文ブロックは動き系で、入力式も演算子だけなので `run` が成功する可能性が高いです。
 
 一方、次のような opcode が含まれている場合は `run` が途中で停止することがあります。
 
@@ -203,7 +203,7 @@ xyo run <path-to-project.sb3> --emit-llvm out.ll
 成功時は各スレッドの状態が実行中に標準出力へ表示されます。
 
 ```
-JitSpriteState { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 0.0 }
+SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
 ```
 <!--
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -221,10 +221,11 @@ entry:
 
 | セクション | 説明 |
 | ---------- | ---- |
-| `JitSpriteState` | 実行中に表示されるスプライト状態 |
+| `SpriteStruct` | 実行中に表示されるスプライト状態 |
 | `sprite_x` | スプライトの X 座標 |
 | `sprite_y` | スプライトの Y 座標 |
 | `sprite_rotate` | スプライトの向き |
+| `sprite_size` | スプライトの大きさ |
 
 ### 最適化について
 

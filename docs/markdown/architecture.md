@@ -53,7 +53,7 @@ Scratch VM 相当の完全な実行ランタイムはまだ完成していない
         │ compiler()
         ▼
    LLVM Module
-   ├── 実行状態 (SpriteStruct / JitSpriteState)
+   ├── 実行状態 (SpriteStruct)
    ├── 文字列リテラル (StringStruct)
    ├── 関数 @thread_0(ptr) → スレッドの IR
    ├── 関数 @thread_1(ptr) → スレッドの IR
@@ -327,7 +327,7 @@ pub enum Literal {
 
 | ファイル | 担当カテゴリ | 対応ブロック数（概算） |
 | -------- | ------------ | ---------------------- |
-| `motion.rs` | 動き | 17 Stmt + 8 Expr |
+| `motion.rs` | 動き | 18 Stmt + 8 Expr |
 | `looks.rs` | 見た目 | 21 Stmt + 5 Expr |
 | `sound.rs` | 音 | 8 Stmt + 4 Expr |
 | `event.rs` | イベント | 2 Stmt |
@@ -391,10 +391,34 @@ pub struct SpriteStruct {
     pub sprite_x: f64,
     pub sprite_y: f64,
     pub sprite_rotate: f64,
+    pub sprite_size: f64,
+    pub sprite_costume_id: i64,
+    pub sprite_costumes: *mut CostumeInfo,
+    pub sprite_costume_number: i64,
+    pub sprite_rotation_style: i8,
 }
 ```
 
-`StringStruct` は UTF-16 の文字列本体と 2 系統のローリングハッシュを持ち、`SpriteStruct` はスプライトの実行状態を表します。`StringKeys` と `SpriteKeys` はこれらの構造体の field index を LLVM から扱いやすくするための列挙型です。
+`StringStruct` は UTF-16 の文字列本体と 2 系統のローリングハッシュを持ち、`SpriteStruct` はスプライトの実行状態を表します。`SpriteStruct` には位置・向きだけでなく、大きさ、コスチューム配列、コスチューム数、回転方法も含まれます。`StringKeys` と `SpriteKeys` はこれらの構造体の field index を LLVM から扱いやすくするための列挙型です。
+
+動的に型が決まる値は `DynamicStruct` で表します。
+
+```rust
+#[repr(u8)]
+pub enum DynamicKind {
+    String = 0,
+    Number = 1,
+    Bool = 2,
+}
+
+#[repr(C)]
+pub struct DynamicStruct {
+    pub kind: DynamicKind,
+    pub pointer: *mut core::ffi::c_void,
+}
+```
+
+`DynamicStruct` は kind と payload pointer を持ち、文字列 / 数値 / 真偽値の coercion や比較で実行時分岐するために使います。
 
 ### スレッドごとの IR 生成
 
@@ -422,7 +446,7 @@ builder.build_return(None);  // void return
 
 ### 実行状態
 
-各スレッドは `SpriteStruct` と同じ 3 フィールド構成の状態ポインタを受け取り、`MotionSetX` などは `build_struct_gep` を使ってそのフィールドを更新します。JIT 実行時に表示される `JitSpriteState` も、同じレイアウトを持つデバッグ用の状態構造体です。
+各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` などは `build_struct_gep` を使ってそのフィールドを更新します。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
 
 ### 式の IR 変換
 
@@ -436,10 +460,13 @@ pub enum ScratchReturnTypes<'ctx> {
     NumberLiteral(f64),                          // コンパイル時定数（数値）
     StringLiteral((String, PointerValue<'ctx>)), // コンパイル時定数（文字列）
     BoolLiteral((bool, IntValue<'ctx>)),         // コンパイル時定数（真偽値）
+    Dynamic(PointerValue<'ctx>),                 // kind + payload pointer
 }
 ```
 
 `Literal` バリアントは実際の LLVM 値と Rust 側の定数の両方を保持します。これにより、定数畳み込みなどの最適化が可能になります。`String` / `StringLiteral` は `StringStruct` で表現された文字列を指し、`BoolLiteral` / `NumberLiteral` は coercion のための定数としても使われます。
+
+`Dynamic` は実行時に `DynamicKind` を見て `Number` / `String` / `Bool` へ分岐します。`scratch_return_to_number`, `scratch_return_to_string`, `scratch_return_to_bool`, `is_num` は、静的型だけでなく Dynamic 値も扱います。`OperatorGt` / `OperatorLt` / `OperatorEquals` は片側が文字列または Dynamic の場合、文字列比較と数値比較の分岐を生成します。
 
 ### 最適化
 
@@ -478,7 +505,7 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 
 ### 現在の制約
 
-- **IR 生成**: 動き系命令と演算子のみ。`run` で残りの opcode に当たると `todo!()` パニックが起きる
+- **IR 生成**: スレッド本体は動き系命令のみ。式はリテラルと演算子のみ。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
 - **ランタイム**: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの `run` は JIT で各 thread を実行し、状態を標準出力へ定期的に返す
 - **コスチューム・サウンド**: メタデータは読み込めるが IR 生成には未対応
 - **スレッド間通信**: ブロードキャスト・メッセージ処理は未実装

@@ -7,15 +7,15 @@
 			<a href="../">
 				はじめに
 			</a>
-			 / 
+			 /
 			<a href="../cli/">
 				CLI
 			</a>
-			 / 
+			 /
 			<a href="../blocks/">
 				対応ブロック一覧
 			</a>
-			 / 
+			 /
 			<a href="../architecture/">
 				アーキテクチャ
 			</a>
@@ -25,177 +25,544 @@
 			<code>
 				xyo-rust
 			</code>
-			 をローカルでビルドし、手元の 
+			 をローカルでビルドし、手元の
 			<code>
 				.sb3
 			</code>
 			 ファイルを入力して確認する最短手順を説明します。
 		</p>
 		<section title="前提条件">
-			<ul>
-				<li>
-					Rust stable
-				</li>
-				<li>
-					LLVM 21.1 系
-				</li>
-				<li>
-					<code>
-						llvm-config
-					</code>
-					 が 
-					<code>
-						PATH
-					</code>
-					 上にあること
-				</li>
-			</ul>
+			<p>
+				<code>
+					xyo-rust
+				</code>
+				 のビルドには以下のツールが必要です。
+			</p>
+			<table>
+				<tr>
+					<th>
+						ツール
+					</th>
+					<th>
+						バージョン
+					</th>
+					<th>
+						用途
+					</th>
+				</tr>
+				<tr>
+					<td>
+						Rust
+					</td>
+					<td>
+						stable
+					</td>
+					<td>
+						プロジェクト本体のビルド
+					</td>
+				</tr>
+				<tr>
+					<td>
+						LLVM
+					</td>
+					<td>
+						21.1.x
+					</td>
+					<td>
+						IR 生成バックエンド
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							llvm-config
+						</code>
+					</td>
+					<td>
+						PATH 上に必要
+					</td>
+					<td>
+						ビルドスクリプトが LLVM の設定を取得するため
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							clang
+						</code>
+					</td>
+					<td>
+						PATH 上に必要
+					</td>
+					<td>
+						<code>
+							bitcodes/c/
+						</code>
+						 の C ソースを bitcode へ変換するため
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							make
+						</code>
+						 /
+						<code>
+							gmake
+						</code>
+					</td>
+					<td>
+						PATH 上にあると便利
+					</td>
+					<td>
+						<code>
+							tools/build_icu_prebuilt.sh
+						</code>
+						 で ICU static archive を構築するときに使う
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							python3
+						</code>
+					</td>
+					<td>
+						PATH 上にあると便利
+					</td>
+					<td>
+						ICU ビルド補助スクリプトの整形処理で使う
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							curl
+						</code>
+						 /
+						<code>
+							wget
+						</code>
+					</td>
+					<td>
+						どちらか 1 つあると便利
+					</td>
+					<td>
+						<code>
+							setup.sh
+						</code>
+						 が ICU source archive を取得するときに使う
+					</td>
+				</tr>
+			</table>
 			<p>
 				まずは次のコマンドでバージョンを確認しておくと安全です。
 			</p>
-			<pre>
-				<code>
-					rustc --version
-					
-
-					llvm-config --version
-					
-
-				</code>
-			</pre>
+			<pre><code>rustc --version
+llvm-config --version
+clang --version
+</code></pre>
 			<p>
 				<code>
 					llvm-config --version
 				</code>
-				 は 
+				 は
 				<code>
 					21.1.x
 				</code>
 				 を想定しています。
 			</p>
+			<warning>
+				<p>
+					inkwell は LLVM のバージョンに厳密に依存します。LLVM 21.1.x 以外のバージョンでは Cargo.toml の inkwell の feature を変更する必要があり、単純な差し替えではビルドが通らない場合があります。
+				</p>
+			</warning>
+		</section>
+		<section title="LLVM 21.1 のインストール">
+			<h3>
+				Ubuntu / Debian 系
+			</h3>
+			<p>
+				LLVM 公式のインストールスクリプトを使うのが最も確実な方法です。
+			</p>
+			<pre><code># LLVM インストールスクリプトをダウンロードして実行
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 21
+
+# インストール確認
+llvm-config-21 --version
+
+# PATH に追加（バージョン番号付きコマンドが入る場合）
+export PATH="/usr/lib/llvm-21/bin:$PATH"
+llvm-config --version
+</code></pre>
+			<p>
+				または apt で直接インストールすることもできます。
+			</p>
+			<pre><code>sudo apt-get update
+sudo apt-get install -y llvm-21 llvm-21-dev clang-21
+
+# シンボリックリンクを作成してデフォルトにする
+sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-21 100
+sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+</code></pre>
+			<h3>
+				macOS (Homebrew)
+			</h3>
+			<p>
+				Homebrew で特定バージョンの LLVM をインストールできます。
+			</p>
+			<pre><code># LLVM 21 をインストール
+brew install llvm@21
+
+# 環境変数を設定（.zshrc や .bashrc に追記する）
+export PATH="$(brew --prefix llvm@21)/bin:$PATH"
+export LLVM_CONFIG_PATH="$(brew --prefix llvm@21)/bin/llvm-config"
+export CLANG="$(brew --prefix llvm@21)/bin/clang"
+export CLANGXX="$(brew --prefix llvm@21)/bin/clang++"
+
+# 確認
+llvm-config --version
+</code></pre>
+			<h3>
+				バージョン確認
+			</h3>
+			<p>
+				インストール後、以下が
+				<code>
+					21.1.x
+				</code>
+				 を返せば準備完了です。
+			</p>
+			<pre><code>llvm-config --version
+# 出力例: 21.1.0
+</code></pre>
 		</section>
 		<section title="ビルド">
-			<pre>
-				<code>
-					cargo build --release
-					
-
-				</code>
-			</pre>
+			<pre><code>git clone https://github.com/pnsk-lab/xyo-rust.git
+cd xyo-rust
+cargo build --release
+</code></pre>
 			<p>
-				ビルド後の実行ファイルは 
+				ビルドには数分かかることがあります。ビルドが成功すると
 				<code>
 					target/release/xyo
 				</code>
-				 です。
+				 が生成されます。
+			</p>
+			<h3>
+				ビルド中に行われること
+			</h3>
+			<p>
+				<code>
+					cargo build
+				</code>
+				 を実行すると、次の処理が順に行われます。
+			</p>
+			<ol>
+				<li>
+					<strong>
+						<code>
+							build.rs
+						</code>
+						 の実行
+					</strong>
+					:
+					<code>
+						clang
+					</code>
+					 を使って
+					<code>
+						bitcodes/c/
+					</code>
+					 配下のトップレベル
+					<code>
+						.c
+					</code>
+					 ファイルを LLVM bitcode (
+					<code>
+						bitcodes/bc/
+					</code>
+					) と LLVM IR (
+					<code>
+						bitcodes/ll/
+					</code>
+					) に変換します
+				</li>
+				<li>
+					<strong>
+						Rust コードのコンパイル
+					</strong>
+					:
+					<code>
+						inkwell
+					</code>
+					 経由で LLVM ライブラリとリンクしながら Rust コードをコンパイルします
+				</li>
+				<li>
+					<strong>
+						バイナリ生成
+					</strong>
+					:
+					<code>
+						target/release/xyo
+					</code>
+					 (リリースビルド) または
+					<code>
+						target/debug/xyo
+					</code>
+					 (デバッグビルド) が生成されます
+				</li>
+			</ol>
+			<p>
+				<code>
+					cargo build
+				</code>
+				 は
+				<code>
+					bitcodes/c/
+				</code>
+				 配下の補助 C コードもあわせて LLVM bitcode に変換します。
+				<code>
+					str.c
+				</code>
+				 が ICU の Unicode API を使うため、
+				<code>
+					XYO_ICU_ROOT
+				</code>
+				 または
+				<code>
+					XYO_ICU_PREBUILT_DIR
+				</code>
+				 を用意してください。
+			</p>
+			<h3>
+				<code>
+					configure
+				</code>
+				 が
+				<code>
+					C compiler cannot create executables
+				</code>
+				 を返す (macOS)
+			</h3>
+			<p>
+				Xcode Command Line Tools か macOS SDK が見えていないと、ICU の
+				<code>
+					configure
+				</code>
+				 が最初のリンクテストで失敗することがあります。
+			</p>
+			<pre><code>xcode-select -p
+xcrun --sdk macosx --show-sdk-path
+export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+</code></pre>
+			<p>
+				<code>
+					setup.sh
+				</code>
+				 と
+				<code>
+					tools/build_icu_prebuilt.sh
+				</code>
+				、
+				<code>
+					tools/build_icu_runtime.sh
+				</code>
+				 は macOS で
+				<code>
+					SDKROOT
+				</code>
+				 が未設定なら自動検出を試みますが、SDK の場所を手動で固定したい場合は上の
+				<code>
+					export
+				</code>
+				 を使えます。
+			</p>
+			<h3>
+				開発時のビルド
+			</h3>
+			<p>
+				開発中は
+				<code>
+					--release
+				</code>
+				 なしで高速にビルドできます。
+			</p>
+			<pre><code>cargo build
+</code></pre>
+			<p>
+				デバッグビルドは最適化が弱い代わりに、コンパイルが速くパニック時のスタックトレースが詳細です。
 			</p>
 		</section>
 		<section title="テスト">
-			<pre>
+			<pre><code>cargo test
+</code></pre>
+			<p>
+				現時点では
 				<code>
 					cargo test
-					
-
 				</code>
-			</pre>
+				 がそのままビルド確認と smoke test の入口です。必要になったら
+				<code>
+					tests/
+				</code>
+				 配下に fixture を足して広げていくのがよさそうです。
+			</p>
 			<p>
 				ヘルプだけ確認したい場合は次でも十分です。
 			</p>
-			<pre>
-				<code>
-					cargo run -- --help
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- --help
+</code></pre>
 			<code>
 			</code>
 		</section>
 		<section title=".sb3  ファイルを用意する">
 			<p>
-				このリポジトリには現在、配布用の 
+				このリポジトリには現在、配布用の
 				<code>
 					.sb3
 				</code>
 				 サンプルは含まれていません。Scratch エディタから自分のプロジェクトを書き出して使います。
 			</p>
+			<h3>
+				Scratch エディタからのエクスポート方法
+			</h3>
 			<ol>
 				<li>
-					Scratch でプロジェクトを開く
+					<a href="https://scratch.mit.edu/projects/editor/">
+						Scratch エディタ
+					</a>
+					 をブラウザで開く
 				</li>
 				<li>
-					「ファイル」→「コンピューターに保存する」を選ぶ
+					プロジェクトを作成する（または既存のプロジェクトを開く）
 				</li>
 				<li>
-					保存された 
+					上部メニューの「ファイル」→「コンピューターに保存する」を選ぶ
+				</li>
+				<li>
+					保存された
 					<code>
 						.sb3
 					</code>
-					 のパスを控える
+					 ファイルのパスを控える
 				</li>
 			</ol>
+			<h3>
+				動作確認に適したプロジェクト
+			</h3>
 			<p>
-				以下では、そのファイルを 
 				<code>
-					&lt;path-to-project.sb3&gt;
+					run
 				</code>
-				 と表記します。
+				 コマンドで最後まで処理を通したい場合は、文ブロックを動き系（「〇歩動かす」「x座標を〇にする」など）に絞り、その入力式にリテラルと演算子だけを使ったシンプルなプロジェクトから始めるとよいです。
+			</p>
+			<p>
+				現在
+				<code>
+					run
+				</code>
+				 で最後まで通る命令の詳細は
+				<a href="../blocks/">
+					対応ブロック一覧
+				</a>
+				 を参照してください。
 			</p>
 		</section>
 		<section title="最初に試すコマンド">
 			<h3>
 				構造だけ見たい場合
 			</h3>
-			<pre>
-				<code>
-					cargo run -- json &lt;path-to-project.sb3&gt;
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- json &lt;path-to-project.sb3&gt;
+</code></pre>
 			<p>
 				<code>
 					project.json
 				</code>
-				 をそのまま表示します。
+				 をそのまま標準出力に表示します。Scratch のデータ構造を確認したいときに便利です。
 			</p>
+			<p>
+				出力は JSON テキストなので、
+				<code>
+					jq
+				</code>
+				 などと組み合わせると読みやすくなります。
+			</p>
+			<pre><code>cargo run -- json my_project.sb3 | jq .
+</code></pre>
 			<h3>
 				規模を知りたい場合
 			</h3>
-			<pre>
-				<code>
-					cargo run -- stats &lt;path-to-project.sb3&gt;
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- stats &lt;path-to-project.sb3&gt;
+</code></pre>
 			<p>
 				次の情報が得られます。
 			</p>
-			<ul>
-				<li>
-					入力ファイル名
-				</li>
-				<li>
-					読み込み時間
-				</li>
-				<li>
-					ブロック数
-				</li>
-				<li>
-					使用 opcode 一覧
-				</li>
-			</ul>
+			<table>
+				<tr>
+					<th>
+						項目
+					</th>
+					<th>
+						内容
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							File
+						</code>
+					</td>
+					<td>
+						入力した SB3 ファイルのパス
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							Loading Time
+						</code>
+					</td>
+					<td>
+						プロジェクト読み込みにかかった時間
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							Block Number
+						</code>
+					</td>
+					<td>
+						プロジェクト全体のブロック総数
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							Using Op Codes
+						</code>
+					</td>
+					<td>
+						使用されている opcode の一覧
+					</td>
+				</tr>
+			</table>
+			<p>
+				出力例:
+			</p>
+			<pre><code>File: my_project.sb3
+Loading Time: 2.345ms
+Block Number: 42
+Using Op Codes: ["motion_movesteps", "motion_turnright", "looks_say", "event_whenflagclicked"]
+</code></pre>
 			<h3>
-				IR 生成経路を試したい場合
+				JIT 実行経路を試したい場合
 			</h3>
-			<pre>
-				<code>
-					cargo run -- run &lt;path-to-project.sb3&gt;
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- run &lt;path-to-project.sb3&gt;
+</code></pre>
 			<blockquote>
 				<p>
 					<strong>
@@ -205,13 +572,236 @@
 						run
 					</code>
 					 はもっとも実験的なコマンドです。入力によっては未実装の opcode や IR 変換で停止することがあります。
+					移動命令と演算子のみを含むシンプルなプロジェクトから試すことを推奨します。
 				</p>
 			</blockquote>
+			<p>
+				成功時はターミナルに各スレッドの実行後状態が出力されます。出力例:
+			</p>
+			<pre><code>SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
+</code></pre>
+			<p>
+				生成された LLVM IR も確認したい場合は
+				<code>
+					--emit-llvm
+				</code>
+				 を付けます。IR を保存したあとも JIT 実行は続くため、標準出力には同じように実行後状態が表示されます。
+			</p>
+			<pre><code>cargo run -- run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
+</code></pre>
 		</section>
 		<section title="エラーの見方">
 			<p>
 				読み込みや JSON パースに失敗した場合、標準エラー出力には原因チェーンに加えて、可能なら位置情報や周辺コンテキストも表示されます。
 			</p>
+			<h3>
+				ファイルが見つからない場合
+			</h3>
+			<pre><code>Load error: Failed to open SB3 file: `project.sb3`
+  cause: No such file or directory (os error 2)
+</code></pre>
+			<h3>
+				JSON パースに失敗した場合
+			</h3>
+			<pre><code>Load error: Failed to parse `project.json`: `project.sb3`
+Path: .targets[0].blocks[blockId_xxx]
+Location: line 42, column 15
+Context:
+  41 | "inputs": {
+  42 |   "NUM": [1, "invalid
+                  ^
+</code></pre>
+			<ul>
+				<li>
+					<code>
+						Path:
+					</code>
+					 は失敗したフィールドへの JSON パスです
+				</li>
+				<li>
+					<code>
+						Location:
+					</code>
+					 は
+					<code>
+						project.json
+					</code>
+					 内の行番号・列番号です
+				</li>
+				<li>
+					<code>
+						Context:
+					</code>
+					 はその周辺のテキスト抜粋と、エラー位置を示す
+					<code>
+						^
+					</code>
+					 記号です
+				</li>
+			</ul>
+			<h3>
+				未実装 opcode で停止した場合
+			</h3>
+			<p>
+				<code>
+					run
+				</code>
+				 コマンドが次のように停止することがあります。
+			</p>
+			<pre><code>Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
+</code></pre>
+			<p>
+				これは
+				<code>
+					stats
+				</code>
+				 コマンドで使用 opcode を確認したうえで、
+				<a href="../blocks/">
+					対応ブロック一覧
+				</a>
+				 と照らし合わせると原因が分かります。
+			</p>
+		</section>
+		<section title="トラブルシューティング">
+			<h3>
+				<code>
+					llvm-config: command not found
+				</code>
+			</h3>
+			<p>
+				LLVM がインストールされていないか、
+				<code>
+					PATH
+				</code>
+				 に含まれていません。上記の LLVM インストール手順を参照してください。
+			</p>
+			<p>
+				macOS で Homebrew を使った場合は、
+				<code>
+					LLVM_CONFIG_PATH
+				</code>
+				 環境変数を設定する方法も有効です。
+			</p>
+			<pre><code>export LLVM_CONFIG_PATH="$(brew --prefix llvm@21)/bin/llvm-config"
+cargo build
+</code></pre>
+			<h3>
+				LLVM バージョンが合わない
+			</h3>
+			<pre><code>error: package `inkwell v0.8.0` cannot be built because it requires rustc 1.x.0 or newer...
+</code></pre>
+			<p>
+				または:
+			</p>
+			<pre><code>error[E0433]: failed to resolve: use of undeclared crate or module `llvm_sys`
+</code></pre>
+			<p>
+				<code>
+					Cargo.toml
+				</code>
+				 の
+				<code>
+					inkwell
+				</code>
+				 の feature でバージョンを確認してください。LLVM 21.1 を使う場合は
+				<code>
+					llvm21-1
+				</code>
+				 feature が必要です。
+			</p>
+			<h3>
+				<code>
+					bitcodes/c/
+				</code>
+				 配下のコンパイルが失敗する
+			</h3>
+			<p>
+				<code>
+					clang
+				</code>
+				 が PATH に存在するか確認します。
+			</p>
+			<pre><code>which clang
+clang --version
+</code></pre>
+			<p>
+				環境変数
+				<code>
+					CLANG
+				</code>
+				 または
+				<code>
+					LLVM_CONFIG_PATH
+				</code>
+				 を設定してビルドスクリプトにヒントを与えることもできます。
+			</p>
+			<pre><code>CLANG=clang-21 cargo build
+</code></pre>
+			<p>
+				<code>
+					cargo build
+				</code>
+				 は
+				<code>
+					bitcodes/c/
+				</code>
+				 配下の補助 C コードもあわせて LLVM bitcode に変換します。
+				<code>
+					str.c
+				</code>
+				 は ICU の Unicode API を使うため、
+				<code>
+					XYO_ICU_ROOT
+				</code>
+				 または
+				<code>
+					XYO_ICU_PREBUILT_DIR
+				</code>
+				 を用意してください。
+			</p>
+			<p>
+				既定の ICU source tree が
+				<code>
+					bitcodes/c/lib/icu/
+				</code>
+				 に無い場合は、
+				<code>
+					XYO_ICU_ROOT=/path/to/icu
+				</code>
+				 を付けてください。prebuilt archive の配置先を変える場合は
+				<code>
+					XYO_ICU_PREBUILT_DIR=/path/to/prebuilt
+				</code>
+				 を使えます。
+			</p>
+			<p>
+				通常は次の 1 コマンドで十分です。
+			</p>
+			<pre><code>CLANG=clang-21 CLANGXX=clang++-21 ./setup.sh
+</code></pre>
+			<p>
+				このコマンドは次をまとめて実行します。
+			</p>
+			<ol>
+				<li>
+					vendored ICU を必要に応じて取得する
+				</li>
+				<li>
+					prebuilt ICU static archive を構築する
+				</li>
+				<li>
+					<code>
+						cargo build --release
+					</code>
+					 を実行する
+				</li>
+			</ol>
+			<p>
+				個別に実行する場合は次を使います。
+			</p>
+			<pre><code>./tools/build_icu_prebuilt.sh
+cargo build --release
+</code></pre>
 		</section>
 		<section title="ドキュメントのローカル確認">
 			<p>
@@ -234,7 +824,7 @@
 					<code>
 						rm -rf build &amp;&amp; ./taiga site
 					</code>
-					 で 
+					 で
 					<code>
 						docs/build/
 					</code>

@@ -20,13 +20,13 @@ Parser で通ることと、`run` サブコマンドで最後まで通ること�
 
 | カテゴリ | Stmt 対応 | Expr 対応 | IR Stmt | IR Expr |
 | -------- | --------- | --------- | ------- | ------- |
-| 動き | ✅ 全 17 opcode | ✅ 全 8 opcode | 🟡 一部 (9/17) | ❌ なし |
+| 動き | ✅ 全 18 opcode | ✅ 全 8 opcode | 🟡 一部 (11/18 + 3 NoOp) | ❌ なし |
 | 見た目 | ✅ 全 21 opcode | ✅ 全 5 opcode | ❌ なし | ❌ なし |
 | 音 | ✅ 全 8 opcode | ✅ 全 4 opcode | ❌ なし | ❌ なし |
 | イベント | ✅ 全 2 opcode | — | ❌ なし | — |
 | 制御 | ✅ 全 15 opcode | ✅ 全 2 opcode | ❌ なし | ❌ なし |
 | 調べる | ✅ 全 3 opcode | ✅ 全 22 opcode | ❌ なし | ❌ なし |
-| 演算 | — | ✅ 全 18 opcode | — | 🟡 一部 (14/18) |
+| 演算 | — | ✅ 全 18 opcode | — | 🟡 一部 (14/18、比較は文字列 / Dynamic 分岐あり) |
 | データ | ✅ 全 11 opcode | ✅ 全 6 opcode | ❌ なし | ❌ なし |
 | 独自ブロック | ✅ 全 1 opcode | ✅ 全 3 opcode | ❌ なし | ❌ なし |
 | ペン | ✅ 全 13 opcode | ✅ 全 1 opcode | ❌ なし | ❌ なし |
@@ -56,7 +56,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ### 動き
 
-動きカテゴリはスプライトの位置・向きを変更する命令です。IR 生成では、`SpriteStruct` と同じレイアウトの状態ポインタから `build_struct_gep` で X 座標・Y 座標・向きを取り出し、`store` 命令で値を更新します。
+動きカテゴリはスプライトの位置・向きを変更する命令です。IR 生成では、`SpriteStruct` の状態ポインタから `build_struct_gep` で X 座標・Y 座標・向き・回転方法を取り出し、`store` 命令で値を更新します。
 
 - 対応 opcode:
     - `MotionMoveSteps` — `[数値]` 歩動かす
@@ -78,7 +78,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `MotionScrollRight` — (NoOp: 右スクロール)
     - `MotionScrollUp` — (NoOp: 上スクロール)
 - Parser: `Stmt`
-- IR: 一部のみ（位置・向き更新系）
+- IR: 一部のみ（位置・向き更新系 + `glide secs to x/y`）
     - `MotionMoveSteps` → 向きに応じて X・Y 座標を更新し、端の補正を適用
     - `MotionSetX` → `build_struct_gep` で X フィールドを取り出して `store`
     - `MotionChangeXBy` → `build_struct_gep` + `load` + `fadd` + `store` で X 座標を加算
@@ -88,7 +88,10 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `MotionTurnRight` → `build_struct_gep` した向きフィールドに加算
     - `MotionTurnLeft` → `build_struct_gep` した向きフィールドから減算
     - `MotionPointInDirection` → `build_struct_gep` した向きフィールドへ `store`
-- 備考: `AlignScene`, `ScrollRight`, `ScrollUp` は Scratch でも実質 NoOp の命令です
+    - `MotionGlideSecsToXY` → `secs * fps` からフレーム数を計算し、`wait_tick` を挟みながら線形補間で X・Y 座標を更新
+    - `MotionSetRotationStyle` → 回転方法を `SpriteStruct` の `sprite_rotation_style` に保存
+    - `MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` → NoOp
+- 備考: `MotionGoTo`, `MotionGlideTo`, `MotionIfOnEdgeBounce`, `MotionPointTowards` は `parse_motion_stmt` の分岐はありますが、現状は空実装です
 
 ### 見た目
 
@@ -327,7 +330,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ### 演算
 
-数値・文字列・真偽値の演算を行うレポーターです。IR 生成が最も充実しているカテゴリです。
+数値・文字列・真偽値の演算を行うレポーターです。IR 生成が最も充実しているカテゴリですが、スレッド本体の文として実行されるのではなく、動きブロックなどの入力式として `generate_expr_ir` から使われます。
 
 - 対応 opcode:
     - `OperatorAdd` — `[数値]` + `[数値]`
@@ -354,15 +357,15 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `OperatorSubtract` → `fsub double`
     - `OperatorMultiply` → `fmul double`
     - `OperatorDivide` → `fdiv double`
-    - `OperatorRandom` → `rand` クレートを使った乱数生成 (呼び出し)
-    - `OperatorGt` → `fcmp ogt double`
-    - `OperatorLt` → `fcmp olt double`
-    - `OperatorEquals` → `fcmp oeq double`
+    - `OperatorRandom` → `xorshift128plus` を使った乱数生成。両端が整数扱いできる場合は整数乱数、そうでなければ実数乱数
+    - `OperatorGt` → 数値同士は `fcmp ogt double`、文字列または Dynamic を含む場合は文字列比較 / 数値比較へ実行時分岐
+    - `OperatorLt` → 数値同士は `fcmp olt double`、文字列または Dynamic を含む場合は文字列比較 / 数値比較へ実行時分岐
+    - `OperatorEquals` → 数値同士は `fcmp oeq double`、文字列または Dynamic を含む場合は文字列比較 / 数値比較へ実行時分岐
     - `OperatorAnd` → `and i1`
     - `OperatorOr` → `or i1`
     - `OperatorNot` → `xor i1 %v, true`
     - `OperatorMod` → `frem double`
-    - `OperatorRound` → `llvm.round.f64` 組み込み関数
+    - `OperatorRound` → Scratch の丸め規則に合わせ、`floor(x + 0.5)` と `-0` 付近の補正で生成
     - `OperatorMathOp (Abs)` → `llvm.fabs.f64`
     - `OperatorMathOp (Floor)` → `llvm.floor.f64`
     - `OperatorMathOp (Ceil)` → `llvm.ceil.f64`
@@ -372,8 +375,9 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `OperatorMathOp (LogE)` → `llvm.log.f64`
     - `OperatorMathOp (Log10)` → `llvm.log10.f64`
     - `OperatorMathOp (PowE)` → `llvm.exp.f64`
-    - `OperatorMathOp (Pow10)` → `llvm.pow.f64(10.0, x)`
-- 備考: 四則演算はすべて `double` (f64) 精度の浮動小数点演算です。整数演算はありません（Scratch の数値型は浮動小数点です）
+    - `OperatorMathOp (Pow10)` → `pow10` 呼び出し
+- 未実装: `OperatorJoin`, `OperatorLetterOf`, `OperatorLength`, `OperatorContains` はパーサーでは `Expr` になりますが、IR 生成ではまだ `todo!()` に到達します
+- 備考: 四則演算はすべて `double` (f64) 精度の浮動小数点演算です。文字列 / 数値 / 真偽値 / Dynamic の相互変換は `scratch_return_to_number`, `scratch_return_to_string`, `scratch_return_to_bool`, `is_num` を経由します
 
 ### データ
 
@@ -429,13 +433,13 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ## IR 生成の現状
 
-現在の LLVM IR 生成は、スレッド本体では移動系の一部命令だけを扱います。式側は数値系の一部演算が中心です。
+現在の LLVM IR 生成は、スレッド本体では移動系の一部命令だけを扱います。式側はリテラルと演算子を扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
 
 | 層      | 対応内容                                                                                                                                                                                                                                                         |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stmt    | `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`                                                                                                                  |
+| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
 | Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc`（数学関数） |
-| Literal | 数値入力の変換経路あり                                                                                                                                                                                                                                           |
+| Literal | 数値入力と文字列入力の変換経路あり。どちらも現状は `StringStruct` として作られ、利用側の coercion で数値・真偽値へ変換されます |
 
 ## `run` の前に使える確認コマンド
 

@@ -7,60 +7,69 @@
 			<a href="../">
 				はじめに
 			</a>
-			 / 
+			 /
 			<a href="../getting-started/">
 				セットアップ
 			</a>
-			 / 
+			 /
 			<a href="../blocks/">
 				対応ブロック一覧
 			</a>
-			 / 
+			 /
 			<a href="../architecture/">
 				アーキテクチャ
 			</a>
 		</p>
 		<p>
-			実行ファイル名は 
+			実行ファイル名は
 			<code>
 				xyo
 			</code>
-			 です。開発中は 
+			 です。開発中は
 			<code>
 				cargo run -- ...
 			</code>
 			 から呼び出すのが簡単です。
 		</p>
-		<pre>
-			<code>
-				cargo run -- --help
-				
+		<pre><code>cargo run -- --help
+</code></pre>
+		<p>
+			出力:
+		</p>
+		<pre><code>Usage: xyo &lt;COMMAND&gt;
 
-			</code>
-		</pre>
+Commands:
+  run    run &lt;path&gt;
+  stats  stats &lt;path&gt;
+  json   json &lt;path&gt;
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -V, --version  Print version
+  -h, --help  Print help
+</code></pre>
 		<p>
 			現時点のサブコマンドは 3 つです。
 		</p>
 		<code>
 		</code>
 		<section title="json">
-			<pre>
-				<code>
-					cargo run -- json &lt;path-to-project.sb3&gt;
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- json &lt;path-to-project.sb3&gt;
+xyo json &lt;path-to-project.sb3&gt;
+</code></pre>
 			<p>
 				<code>
 					.sb3
 				</code>
-				 に含まれる 
+				 に含まれる
 				<code>
 					project.json
 				</code>
 				 を標準出力へ表示します。
 			</p>
+			<h3>
+				使いどき
+			</h3>
 			<ul>
 				<li>
 					入力ファイルが正しく開けるか確かめたいとき
@@ -71,18 +80,99 @@
 				<li>
 					パーサー調査前に元 JSON を見たいとき
 				</li>
+				<li>
+					<code>
+						project.json
+					</code>
+					 の内容を別のツールに渡したいとき
+				</li>
 			</ul>
+			<h3>
+				出力例
+			</h3>
+			<pre><code>{
+  "targets": [
+    {
+      "isStage": true,
+      "name": "Stage",
+      "variables": {},
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {},
+      "comments": {},
+      "currentCostume": 0,
+      "costumes": [...],
+      "sounds": [],
+      "volume": 100,
+      "layerOrder": 0,
+      "tempo": 60,
+      "videoTransparency": 50,
+      "videoState": "on",
+      "textToSpeechLanguage": null
+    },
+    {
+      "isStage": false,
+      "name": "Sprite1",
+      "variables": {},
+      "lists": {},
+      "broadcasts": {},
+      "blocks": {
+        "blockId_1": {
+          "opcode": "event_whenflagclicked",
+          "next": "blockId_2",
+          "parent": null,
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": true
+        },
+        "blockId_2": {
+          "opcode": "motion_movesteps",
+          "next": null,
+          "parent": "blockId_1",
+          "inputs": {
+            "STEPS": [1, [4, "10"]]
+          },
+          ...
+        }
+      },
+      ...
+    }
+  ],
+  "monitors": [],
+  "extensions": [],
+  "meta": {
+    "semver": "3.0.0",
+    "vm": "2.3.0",
+    "agent": "..."
+  }
+}
+</code></pre>
+			<h3>
+				活用例
+			</h3>
+			<p>
+				<code>
+					jq
+				</code>
+				 と組み合わせてブロック一覧を抽出することができます。
+			</p>
+			<pre><code># すべてのブロックの opcode を一覧表示する
+cargo run -- json my_project.sb3 | jq '[.targets[].blocks[].opcode] | unique | sort'
+
+# ステージ以外のターゲット名を表示する
+cargo run -- json my_project.sb3 | jq '[.targets[] | select(.isStage == false) | .name]'
+
+# ブロック数を数える
+cargo run -- json my_project.sb3 | jq '[.targets[].blocks | keys | length] | add'
+</code></pre>
 			<code>
 			</code>
 		</section>
 		<section title="stats">
-			<pre>
-				<code>
-					cargo run -- stats &lt;path-to-project.sb3&gt;
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- stats &lt;path-to-project.sb3&gt;
+xyo stats &lt;path-to-project.sb3&gt;
+</code></pre>
 			<table>
 				<tr>
 					<th>
@@ -97,7 +187,7 @@
 						ファイル名
 					</td>
 					<td>
-						入力した SB3 ファイル名
+						入力した SB3 ファイルのパス
 					</td>
 				</tr>
 				<tr>
@@ -113,7 +203,7 @@
 						ブロック数
 					</td>
 					<td>
-						Scratch ブロック数
+						Scratch ブロックの総数
 					</td>
 				</tr>
 				<tr>
@@ -121,68 +211,456 @@
 						使用 opcode 一覧
 					</td>
 					<td>
-						含まれている命令種別
+						含まれている命令種別の配列
 					</td>
 				</tr>
 			</table>
+			<h3>
+				出力例
+			</h3>
+			<pre><code>File: my_project.sb3
+Loading Time: 2.345ms
+Block Number: 42
+Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright", "looks_say", "control_repeat"]
+</code></pre>
+			<h3>
+				使いどき
+			</h3>
+			<ul>
+				<li>
+					プロジェクトの規模をざっと確認したいとき
+				</li>
+				<li>
+					どの opcode が使われているか確認したいとき（
+					<code>
+						run
+					</code>
+					 実行前のチェックに便利）
+				</li>
+				<li>
+					<code>
+						run
+					</code>
+					 がどの opcode で失敗するか事前に予想したいとき
+				</li>
+			</ul>
+			<h3>
+				<code>
+					stats
+				</code>
+				 と対応ブロック一覧の組み合わせ
+			</h3>
+			<p>
+				<code>
+					stats
+				</code>
+				 で表示された opcode 一覧を
+				<a href="../blocks/">
+					対応ブロック一覧
+				</a>
+				 と照らし合わせることで、
+				<code>
+					run
+				</code>
+				 コマンドが最後まで通るかどうかを事前に判断できます。
+			</p>
+			<pre><code>Using Op Codes: ["event_whenflagclicked", "motion_setx", "operator_add"]
+</code></pre>
+			<p>
+				上記の場合、文ブロックは動き系で、入力式も演算子だけなので
+				<code>
+					run
+				</code>
+				 が成功する可能性が高いです。
+			</p>
+			<p>
+				一方、次のような opcode が含まれている場合は
+				<code>
+					run
+				</code>
+				 が途中で停止することがあります。
+			</p>
+			<pre><code>Using Op Codes: ["event_whenflagclicked", "looks_sayforsecs", "control_if"]
+</code></pre>
+			<p>
+				<code>
+					looks_sayforsecs
+				</code>
+				 や
+				<code>
+					control_if
+				</code>
+				 は現在パーサーまでは対応していますが、IR 生成には未対応です。
+			</p>
 			<code>
 			</code>
 		</section>
 		<section title="run">
-			<pre>
-				<code>
-					cargo run -- run &lt;path-to-project.sb3&gt;
-					
-
-				</code>
-			</pre>
+			<pre><code>cargo run -- run &lt;path-to-project.sb3&gt;
+xyo run &lt;path-to-project.sb3&gt;
+</code></pre>
 			<p>
-				内部では、読み込み、デシリアライズ、hat block からのスレッド抽出、LLVM IR 生成の順に処理します。
+				内部では次の順に処理を実行します。
 			</p>
-			<blockquote>
+			<pre><code>1. SB3 ロード      (.sb3 を開き project.json を読み込む)
+2. デシリアライズ   (JSON → ScratchProject 構造体)
+3. パース          (hat block → Thread, Stmt, Expr)
+4. IR 生成         (Thread → LLVM IR 関数)
+5. 最適化          (O3 パスを適用)
+6. JIT 実行         (生成した各 thread 関数を起動し、実行中の状態を表示する)
+7. 状態表示        (各 thread の状態スナップショットを Debug 形式で表示)
+</code></pre>
+			<p>
+				LLVM IR をファイルに保存したい場合は
+				<code>
+					--emit-llvm
+				</code>
+				 を指定します。
+			</p>
+			<pre><code>cargo run -- run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
+xyo run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
+</code></pre>
+			<p>
+				<code>
+					--emit-llvm
+				</code>
+				 は IR を保存するためのデバッグ用オプションです。指定しても JIT 実行は省略されず、IR 生成後も各 thread の状態が定期的に表示されます。
+			</p>
+			<warning>
 				<p>
-					<strong>
-						注意
-					</strong>
 					<code>
 						run
 					</code>
-					 は実行ランタイムではなく、コンパイル経路の検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
+					 は実行ランタイムそのものではなく、コンパイル経路を JIT までつないだ検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
 				</p>
-			</blockquote>
+			</warning>
+			<h3>
+				出力例
+			</h3>
+			<p>
+				成功時は各スレッドの状態が実行中に標準出力へ表示されます。
+			</p>
+			<pre><code>SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
+</code></pre>
+			<p>
+				各部分の意味:
+			</p>
+			<table>
+				<tr>
+					<th>
+						セクション
+					</th>
+					<th>
+						説明
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							SpriteStruct
+						</code>
+					</td>
+					<td>
+						実行中に表示されるスプライト状態
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sprite_x
+						</code>
+					</td>
+					<td>
+						スプライトの X 座標
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sprite_y
+						</code>
+					</td>
+					<td>
+						スプライトの Y 座標
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sprite_rotate
+						</code>
+					</td>
+					<td>
+						スプライトの向き
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sprite_size
+						</code>
+					</td>
+					<td>
+						スプライトの大きさ
+					</td>
+				</tr>
+			</table>
+			<h3>
+				最適化について
+			</h3>
+			<p>
+				<code>
+					run
+				</code>
+				 は
+				<code>
+					default&lt;O3&gt;
+				</code>
+				 最適化パスを適用します。次のオプションが有効です。
+			</p>
+			<table>
+				<tr>
+					<th>
+						最適化
+					</th>
+					<th>
+						説明
+					</th>
+				</tr>
+				<tr>
+					<td>
+						ループインターリービング
+					</td>
+					<td>
+						ループの実行順序を最適化
+					</td>
+				</tr>
+				<tr>
+					<td>
+						ループベクトル化
+					</td>
+					<td>
+						SIMD 命令を使って複数の計算を同時処理
+					</td>
+				</tr>
+				<tr>
+					<td>
+						SLP ベクトル化
+					</td>
+					<td>
+						隣接するスカラー演算をベクトル演算にまとめる
+					</td>
+				</tr>
+				<tr>
+					<td>
+						ループアンロール
+					</td>
+					<td>
+						ループを展開して分岐オーバーヘッドを削減
+					</td>
+				</tr>
+			</table>
+			<h3>
+				補足
+			</h3>
+			<p>
+				<code>
+					run
+				</code>
+				 の標準出力には、既定では各 thread の状態スナップショットが表示されます。LLVM IR テキストを確認したい場合は
+				<code>
+					--emit-llvm &lt;path&gt;
+				</code>
+				 で保存先を指定してください。
+			</p>
 		</section>
 		<section title="エラー表示">
 			<p>
 				読み込みや JSON パースに失敗した場合、原因チェーンをたどって詳細が標準エラー出力に表示されます。失敗箇所によっては JSON のパス、行番号、列番号、周辺コンテキストも確認できます。
 			</p>
-		</section>
-		<section title="使い分けの目安">
+			<h3>
+				エラーの種類と意味
+			</h3>
+			<h4>
+				ファイルアクセスエラー
+			</h4>
+			<pre><code>Load error: Failed to open SB3 file: `project.sb3`
+  cause: No such file or directory (os error 2)
+</code></pre>
+			<p>
+				指定したパスにファイルが存在しません。パスを確認してください。
+			</p>
+			<h4>
+				ZIP 読み込みエラー
+			</h4>
+			<pre><code>Load error: Failed to read as SB3 (ZIP): `project.sb3`
+  cause: ...
+</code></pre>
+			<p>
+				ファイルが有効な ZIP アーカイブではありません。ファイルが破損しているか、
+				<code>
+					.sb3
+				</code>
+				 形式ではない可能性があります。
+			</p>
+			<h4>
+				<code>
+					project.json
+				</code>
+				 不在エラー
+			</h4>
+			<pre><code>Load error: `project.json` not found in archive: `project.sb3`
+</code></pre>
+			<p>
+				ZIP アーカイブ内に
+				<code>
+					project.json
+				</code>
+				 が見つかりません。有効な
+				<code>
+					.sb3
+				</code>
+				 ファイルか確認してください。
+			</p>
+			<h4>
+				JSON パースエラー
+			</h4>
+			<pre><code>Load error: Failed to parse `project.json`: `project.sb3`
+Path: .targets[0].blocks[blockId_xxx]
+Location: line 42, column 15
+Context:
+  41 | "inputs": {
+  42 |   "NUM": [1, "invalid
+                  ^
+</code></pre>
 			<ul>
 				<li>
-					まず中身を見たい: 
-					<code>
-						json
-					</code>
+					<strong>
+						<code>
+							Path:
+						</code>
+					</strong>
+					: パースが失敗した JSON パス。どのブロックで問題が起きたかを示します
 				</li>
 				<li>
-					対応状況をざっと知りたい: 
+					<strong>
+						<code>
+							Location:
+						</code>
+					</strong>
+					:
 					<code>
-						stats
+						project.json
 					</code>
-					 / 
-					<a href="../blocks/">
-						対応ブロック一覧
-					</a>
+					 内の正確な行・列番号
 				</li>
 				<li>
-					IR 生成経路を試したい: 
+					<strong>
+						<code>
+							Context:
+						</code>
+					</strong>
+					: 周辺テキストとエラー位置を示す
 					<code>
-						run
+						^
 					</code>
+					 記号
 				</li>
 			</ul>
+			<h4>
+				パースエラー (未実装 opcode)
+			</h4>
+			<pre><code>Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
+</code></pre>
 			<p>
-				次は 
+				プロジェクトに含まれる opcode がまだパーサーに実装されていません。
+				<a href="../blocks/">
+					対応ブロック一覧
+				</a>
+				 で対応状況を確認してください。
+			</p>
+		</section>
+		<section title="使い分けの目安">
+			<table>
+				<tr>
+					<th>
+						やりたいこと
+					</th>
+					<th>
+						推奨コマンド
+					</th>
+				</tr>
+				<tr>
+					<td>
+						ファイルが正しく読めるか確認
+					</td>
+					<td>
+						<code>
+							json
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						どんなブロックが使われているか確認
+					</td>
+					<td>
+						<code>
+							stats
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						JIT 実行できるか確認
+					</td>
+					<td>
+						<code>
+							stats
+						</code>
+						 で opcode を確認後 →
+						<code>
+							run
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						生成された LLVM IR を確認
+					</td>
+					<td>
+						<code>
+							run --emit-llvm out.ll
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						Scratch の内部構造を調べる
+					</td>
+					<td>
+						<code>
+							json
+						</code>
+						 +
+						<code>
+							jq
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						コンパイルパイプラインをデバッグ
+					</td>
+					<td>
+						<code>
+							run
+						</code>
+					</td>
+				</tr>
+			</table>
+			<p>
+				次は
 				<a href="../architecture/">
 					アーキテクチャ
 				</a>

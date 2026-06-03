@@ -7,15 +7,15 @@
 			<a href="../">
 				はじめに
 			</a>
-			 / 
+			 /
 			<a href="../getting-started/">
 				セットアップ
 			</a>
-			 / 
+			 /
 			<a href="../cli/">
 				CLI
 			</a>
-			 / 
+			 /
 			<a href="../blocks/">
 				対応ブロック一覧
 			</a>
@@ -24,14 +24,14 @@
 			<code>
 				xyo-rust
 			</code>
-			 の処理は、大きく分けると 4 段階です。
+			 の処理は、大きく分けると 5 段階です。
 		</p>
 		<ol>
 			<li>
 				<code>
 					.sb3
 				</code>
-				 から 
+				 から
 				<code>
 					project.json
 				</code>
@@ -46,9 +46,12 @@
 			<li>
 				一部のスレッドを LLVM IR へ変換する
 			</li>
+			<li>
+				生成した IR を JIT で実行し、状態を定期表示する
+			</li>
 		</ol>
 		<p>
-			実行ランタイムはまだ完成していないため、現在の中心は解析と変換のパイプラインです。
+			Scratch VM 相当の完全な実行ランタイムはまだ完成していないため、現在の中心は解析・変換・JIT 実行のパイプラインです。
 		</p>
 		<section title="モジュール概要">
 			<table>
@@ -67,7 +70,7 @@
 						</code>
 					</td>
 					<td>
-						ZIP アーカイブとして 
+						ZIP アーカイブとして
 						<code>
 							.sb3
 						</code>
@@ -95,11 +98,11 @@
 						</code>
 					</td>
 					<td>
-						Scratch ブロックを 
+						Scratch ブロックを
 						<code>
 							Stmt
 						</code>
-						 / 
+						 /
 						<code>
 							Expr
 						</code>
@@ -116,61 +119,1677 @@
 						<code>
 							inkwell
 						</code>
-						 を使って LLVM IR を生成し、最適化パスを適用する
+						 を使って LLVM IR を生成し、最適化パスと JIT 実行を担当する
 					</td>
 				</tr>
 			</table>
 		</section>
-		<section title="パーサーの役割">
+		<section title="データフロー詳細">
+			<h3>
+				全体フロー
+			</h3>
+			<pre><code>.sb3 ファイル (ZIP アーカイブ)
+        │
+        │ File::open + ZipArchive
+        ▼
+   project.json (バイト列)
+        │
+        │ serde_path_to_error::deserialize
+        ▼
+   ScratchProject (Rust 構造体)
+   ├── targets: Vec&lt;StageOrSprite&gt;
+   │   ├── isStage: bool
+   │   ├── name: String
+   │   ├── blocks: HashMap&lt;String, BlockAndTopLevelPrimitive&gt;
+   │   ├── variables: HashMap&lt;String, Variable&gt;
+   │   └── lists: HashMap&lt;String, List&gt;
+   └── meta: Metadata
+        │
+        │ project_parser()
+        ▼
+   Vec&lt;Thread&gt;
+   ├── Thread { hat: HatStmt, stmts: Vec&lt;Stmt&gt;, target_idx: usize }
+   ├── Thread { hat: HatStmt, stmts: Vec&lt;Stmt&gt;, target_idx: usize }
+   └── ...
+        │
+        │ compiler()
+        ▼
+   LLVM Module
+   ├── 実行状態 (SpriteStruct)
+   ├── 文字列リテラル (StringStruct)
+   ├── 関数 @thread_0(ptr) → スレッドの IR
+   ├── 関数 @thread_1(ptr) → スレッドの IR
+   └── ...
+        │
+        │ run_passes("default&lt;O3&gt;")
+        ▼
+   JIT 実行
+   ├── thread_0(ptr state) を呼ぶ
+   └── 変更後の状態を標準出力へ表示
+</code></pre>
+			<code>
+			</code>
+		</section>
+		<section title="ステージ 1: SB3 ロード ( src/sb3.rs )">
 			<p>
-				パーサーは、Scratch のブロック集合をそのままなぞるのではなく、hat block を起点に「実行のまとまり」に近い形へ組み替えます。
+				<code>
+					.sb3
+				</code>
+				 ファイルは ZIP アーカイブです。
+				<code>
+					sb3.rs
+				</code>
+				 はこのアーカイブを開いて
+				<code>
+					project.json
+				</code>
+				 を取り出す処理を担当します。
+			</p>
+			<h3>
+				主要な公開 API
+			</h3>
+			<pre><code>// project.json を文字列として返す
+pub fn read_json(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;String, ReadSb3Error&gt;
+
+// project.json をデシリアライズして ScratchProject を返す
+pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, ReadSb3Error&gt;
+</code></pre>
+			<h3>
+				処理の流れ
+			</h3>
+			<ol>
+				<li>
+					<code>
+						File::open(path)
+					</code>
+					 でファイルを開く
+				</li>
+				<li>
+					<code>
+						ZipArchive::new(stream)
+					</code>
+					 で ZIP として読み込む
+				</li>
+				<li>
+					<code>
+						archive.by_name("project.json")
+					</code>
+					 でエントリを取得する
+				</li>
+				<li>
+					バイト列として読み込む
+				</li>
+				<li>
+					<code>
+						read_sb3
+					</code>
+					 の場合は
+					<code>
+						serde_path_to_error::deserialize
+					</code>
+					 でデシリアライズする
+				</li>
+			</ol>
+			<h3>
+				エラー報告の仕組み
+			</h3>
+			<p>
+				<code>
+					sb3.rs
+				</code>
+				 は JSON パースエラーが発生した際に、単純なエラーメッセージではなく詳細なコンテキスト情報を生成します。
+			</p>
+			<pre><code>pub enum ReadSb3Error {
+    OpenFile { path: String, source: std::io::Error },
+    OpenZip { path: String, source: zip::result::ZipError },
+    MissingProjectJson { path: String, source: zip::result::ZipError },
+    ReadProjectJson { path: String, source: std::io::Error },
+    ParseProjectJson {
+        path: String,
+        source: serde_json::Error,
+        json_path: Option&lt;String&gt;,  // JSON パス (例: .targets[0].blocks[xxx])
+        context: String,            // 行番号・列番号・周辺テキスト
+    },
+    ReadAsUTF8 { path: String, source: FromUtf8Error },
+}
+</code></pre>
+			<p>
+				<code>
+					serde_path_to_error
+				</code>
+				 クレートを使うことで、デシリアライズが失敗した JSON パスを正確に特定できます。さらに
+				<code>
+					refine_json_path
+				</code>
+				 関数によって、エラーの起きたブロック ID までパスを絞り込む場合があります。
 			</p>
 			<p>
-				起点になる hat block の例:
+				エラー表示には
+				<code>
+					json_error_context
+				</code>
+				 関数が使われ、行番号・列番号とともに前後 1 行の周辺テキスト（長い行は
+				<code>
+					...
+				</code>
+				 で省略）と
+				<code>
+					^
+				</code>
+				 カーソルが表示されます。
+			</p>
+			<code>
+			</code>
+		</section>
+		<section title="ステージ 2: 型定義とデシリアライズ ( src/types/ )">
+			<p>
+				<code>
+					types/
+				</code>
+				 モジュールは Scratch の
+				<code>
+					project.json
+				</code>
+				 構造を Rust の型として表現します。
+			</p>
+			<h3>
+				主要な型
+			</h3>
+			<h4>
+				<code>
+					ScratchProject
+				</code>
+			</h4>
+			<p>
+				プロジェクト全体を表すルート構造体です。
+			</p>
+			<pre><code>pub struct ScratchProject {
+    pub targets: Vec&lt;StageOrSprite&gt;,
+    pub meta: Metadata,
+    // ...
+}
+</code></pre>
+			<p>
+				<code>
+					count_blocks()
+				</code>
+				 メソッドでブロック総数を、
+				<code>
+					check_op_codes()
+				</code>
+				 メソッドで使用 opcode 一覧を取得できます。
+			</p>
+			<h4>
+				<code>
+					StageOrSprite
+				</code>
+			</h4>
+			<p>
+				ステージとスプライトを統合した型です。
+				<code>
+					isStage
+				</code>
+				 フィールドで区別します。
+			</p>
+			<pre><code>pub struct StageOrSprite {
+    pub is_stage: bool,
+    pub name: String,
+    pub blocks: HashMap&lt;String, BlockAndTopLevelPrimitive&gt;,
+    pub variables: HashMap&lt;String, (String, serde_json::Value)&gt;,
+    pub lists: HashMap&lt;String, (String, Vec&lt;serde_json::Value&gt;)&gt;,
+    // ...
+}
+</code></pre>
+			<h4>
+				<code>
+					Block
+				</code>
+			</h4>
+			<p>
+				個々のブロックを表す型です。
+			</p>
+			<pre><code>pub struct Block {
+    pub opcode: BlockOpCodes,
+    pub inputs: HashMap&lt;String, Input&gt;,
+    pub fields: HashMap&lt;String, Vec&lt;Option&lt;String&gt;&gt;&gt;,
+    pub next: Option&lt;String&gt;,
+    pub parent: Option&lt;String&gt;,
+    pub shadow: bool,
+    pub top_level: bool,
+}
+</code></pre>
+			<ul>
+				<li>
+					<code>
+						opcode
+					</code>
+					:
+					<code>
+						BlockOpCodes
+					</code>
+					 列挙型（
+					<code>
+						str_enum!
+					</code>
+					 マクロで定義）
+				</li>
+				<li>
+					<code>
+						inputs
+					</code>
+					: 入力値の辞書（数値・文字列・他ブロックへの参照など）
+				</li>
+				<li>
+					<code>
+						fields
+					</code>
+					: ドロップダウンメニューの選択値
+				</li>
+				<li>
+					<code>
+						next
+					</code>
+					 /
+					<code>
+						parent
+					</code>
+					: ブロック連鎖のリンク
+				</li>
+			</ul>
+			<h4>
+				<code>
+					BlockAndTopLevelPrimitive
+				</code>
+			</h4>
+			<p>
+				ブロック辞書の値型です。通常のブロックと、ブロック参照なしに直接埋め込まれるプリミティブ値の両方を表します。
+			</p>
+			<pre><code>pub enum BlockAndTopLevelPrimitive {
+    Block(Block),
+    Primitive(TopLevelPrimitive),
+}
+</code></pre>
+			<h4>
+				<code>
+					Input
+				</code>
+			</h4>
+			<p>
+				ブロックの入力値を表す型です。Scratch は入力形式として V2 互換形式と V3 形式の両方をサポートしており、この型でその違いを吸収します。
+			</p>
+			<h3>
+				カスタムマクロ
+			</h3>
+			<p>
+				<code>
+					types/mod.rs
+				</code>
+				 には型定義を簡潔に書くためのカスタムマクロが定義されています。
+			</p>
+			<h4>
+				<code>
+					str_enum!
+				</code>
+			</h4>
+			<p>
+				文字列と列挙型を双方向に変換できる列挙型を定義します。Scratch の JSON には opcode などが文字列で格納されているため、デシリアライズ時にこのマクロが活用されています。
+			</p>
+			<pre><code>str_enum! {
+    pub enum BlockOpCodes {
+        MotionMoveSteps =&gt; "motion_movesteps",
+        MotionTurnRight =&gt; "motion_turnright",
+        // ...
+    }
+}
+</code></pre>
+			<h4>
+				<code>
+					str_enum_with_enum!
+				</code>
+			</h4>
+			<p>
+				カテゴリ情報も付属した列挙型を定義します。
+			</p>
+			<code>
+			</code>
+		</section>
+		<section title="ステージ 3: パーサー ( src/parser/ )">
+			<p>
+				パーサーは
+				<code>
+					ScratchProject
+				</code>
+				 を受け取り、各スレッドを表す
+				<code>
+					Vec&lt;Thread&gt;
+				</code>
+				 を返します。
+			</p>
+			<h3>
+				スレッドとは
+			</h3>
+			<p>
+				Scratch では、hat block（「緑の旗が押されたとき」など）がスクリプトの起点になります。hat block に続くブロック列が一つの実行単位（スレッド）です。
+			</p>
+			<p>
+				<code>
+					Thread
+				</code>
+				 構造体は次のフィールドを持ちます。
+			</p>
+			<pre><code>pub struct Thread {
+    pub hat: HatStmt,       // スレッドを起動するイベント
+    pub stmts: Vec&lt;Stmt&gt;,   // 実行するブロック列
+    pub target_idx: usize,  // どのスプライト/ステージのスレッドか
+}
+</code></pre>
+			<h3>
+				hat block の種類
+			</h3>
+			<p>
+				<code>
+					HatStmt
+				</code>
+				 列挙型は 10 種類の hat block を表します。
+			</p>
+			<table>
+				<tr>
+					<th>
+						バリアント
+					</th>
+					<th>
+						Scratch での表示
+					</th>
+					<th>
+						opcode
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenFlagClicked
+						</code>
+					</td>
+					<td>
+						緑の旗が押されたとき
+					</td>
+					<td>
+						<code>
+							EventWhenFlagClicked
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenKeyPressed { key }
+						</code>
+					</td>
+					<td>
+						<code>
+							[キー]
+						</code>
+						 キーが押されたとき
+					</td>
+					<td>
+						<code>
+							EventWhenKeyPressed
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenThisSpriteClicked
+						</code>
+					</td>
+					<td>
+						このスプライトが押されたとき
+					</td>
+					<td>
+						<code>
+							EventWhenThisSpriteClicked
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenStageClicked
+						</code>
+					</td>
+					<td>
+						ステージが押されたとき
+					</td>
+					<td>
+						<code>
+							EventWhenStageClicked
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenBacdropSwitchesTo { backdrop }
+						</code>
+					</td>
+					<td>
+						背景が
+						<code>
+							[名前]
+						</code>
+						 に切り替わったとき
+					</td>
+					<td>
+						<code>
+							EventWhenBackdropSwitchesTo
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenGreaterThan { target, value }
+						</code>
+					</td>
+					<td>
+						<code>
+							[音量/タイマー]
+						</code>
+						 が
+						<code>
+							[値]
+						</code>
+						 より大きくなったとき
+					</td>
+					<td>
+						<code>
+							EventWhenGreaterThan
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenBroadcastReceived { target }
+						</code>
+					</td>
+					<td>
+						<code>
+							[メッセージ]
+						</code>
+						 を受け取ったとき
+					</td>
+					<td>
+						<code>
+							EventWhenBroadcastReceived
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							ControlStartAsClone
+						</code>
+					</td>
+					<td>
+						クローンされたとき
+					</td>
+					<td>
+						<code>
+							ControlStartAsClone
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							ProcedureDefinition { prototype }
+						</code>
+					</td>
+					<td>
+						手続き定義（独自ブロック）
+					</td>
+					<td>
+						<code>
+							ProceduresDefinition
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							WhenTouchingObject { object }
+						</code>
+					</td>
+					<td>
+						<code>
+							[対象]
+						</code>
+						 に触れたとき
+					</td>
+					<td>
+						<code>
+							EventWhenTouchingObject
+						</code>
+					</td>
+				</tr>
+			</table>
+			<h3>
+				パースの流れ
+			</h3>
+			<p>
+				<code>
+					project_parser
+				</code>
+				 関数は次の手順でスレッドを抽出します。
+			</p>
+			<ol>
+				<li>
+					すべてのターゲット（スプライト・ステージ）をループで処理する
+				</li>
+				<li>
+					各ターゲットのすべてのブロックをループで処理する
+				</li>
+				<li>
+					<code>
+						top_level: true
+					</code>
+					 かつ hat block の opcode を持つブロックを見つける
+				</li>
+				<li>
+					hat block の種別を
+					<code>
+						hat.rs
+					</code>
+					 で判定して
+					<code>
+						HatStmt
+					</code>
+					 に変換する
+				</li>
+				<li>
+					<code>
+						next
+					</code>
+					 フィールドをたどって続くブロック列を解析し、
+					<code>
+						Vec&lt;Stmt&gt;
+					</code>
+					 を作る
+				</li>
+				<li>
+					<code>
+						Thread { hat, stmts, target_idx }
+					</code>
+					 を生成して結果リストに追加する
+				</li>
+			</ol>
+			<h3>
+				AST 型
+			</h3>
+			<p>
+				パーサーが生成する AST は
+				<code>
+					parser/types.rs
+				</code>
+				 で定義されています。
+			</p>
+			<h4>
+				<code>
+					Stmt
+				</code>
+				 (文ブロック)
+			</h4>
+			<pre><code>pub enum Stmt {
+    Motion(MotionStmt),       // 動き
+    Looks(LooksStmt),         // 見た目
+    Sound(SoundStmt),         // 音
+    Event(EventStmt),         // イベント
+    Control(ControlStmt),     // 制御
+    Sensing(SensingStmt),     // 調べる
+    Operator(OperatorStmt),   // 演算 (文はほぼない)
+    DataStmt(DataStmt),       // データ
+    Procedures(ProceduresStmt), // 独自ブロック
+    PenStmt(PenStmt),         // ペン
+}
+</code></pre>
+			<p>
+				各カテゴリは対応する Scratch ブロックのすべての入力・フィールドを保持します。例えば
+				<code>
+					MotionStmt::GlideToXY
+				</code>
+				 は秒数・X 座標・Y 座標を
+				<code>
+					Expr
+				</code>
+				 として保持します。
+			</p>
+			<h4>
+				<code>
+					Expr
+				</code>
+				 (値ブロック / レポーター)
+			</h4>
+			<pre><code>pub enum Expr {
+    Motion(MotionExpr),
+    Looks(LooksExpr),
+    Sound(SoundExpr),
+    Event(EventExpr),
+    Control(ControlExpr),
+    Sensing(SensingExpr),
+    Operator(OperatorExpr),
+    Data(DataExpr),
+    Procedures(ProceduresExpr),
+    Pen(PenExpr),
+    Literal(Literal),  // 数値・文字列・変数参照などのリテラル
+}
+</code></pre>
+			<p>
+				<code>
+					Expr
+				</code>
+				 はネストできます。例えば「
+				<code>
+					(10 + x座標)
+				</code>
+				 歩動かす」は次のように表現されます。
+			</p>
+			<pre><code>MotionStmt::MoveStep {
+    steps: Expr::Operator(OperatorExpr::Add {
+        left: Box::new(Expr::Literal(Literal::Number("10".to_string()))),
+        right: Box::new(Expr::Motion(MotionExpr::XPosition)),
+    })
+}
+</code></pre>
+			<h4>
+				<code>
+					Literal
+				</code>
+				 (入力プリミティブ)
+			</h4>
+			<p>
+				<code>
+					Literal
+				</code>
+				 はブロック以外の生の入力値を表します。
+			</p>
+			<pre><code>pub enum Literal {
+    String(String),              // テキスト入力
+    Number(String),              // 数値入力（文字列として保持）
+    Variable { target: String }, // 変数参照 (変数 ID)
+    List { target: String },     // リスト参照 (リスト ID)
+    Color { color: String },     // 色 (#RRGGBB 形式)
+    Broadcast { id: String },    // ブロードキャスト参照
+    Null,                        // 空入力
+}
+</code></pre>
+			<p>
+				数値は
+				<code>
+					String
+				</code>
+				 として保持されており、IR 生成時に
+				<code>
+					f64
+				</code>
+				 へ変換されます。これは Scratch の数値が浮動小数点演算を前提としているためです。
+			</p>
+			<h3>
+				カテゴリ別パーサー
+			</h3>
+			<p>
+				<code>
+					parser/blocks/
+				</code>
+				 ディレクトリには、カテゴリごとのパーサーが 11 ファイルあります。
+			</p>
+			<table>
+				<tr>
+					<th>
+						ファイル
+					</th>
+					<th>
+						担当カテゴリ
+					</th>
+					<th>
+						対応ブロック数（概算）
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							motion.rs
+						</code>
+					</td>
+					<td>
+						動き
+					</td>
+					<td>
+						18 Stmt + 8 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							looks.rs
+						</code>
+					</td>
+					<td>
+						見た目
+					</td>
+					<td>
+						21 Stmt + 5 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sound.rs
+						</code>
+					</td>
+					<td>
+						音
+					</td>
+					<td>
+						8 Stmt + 4 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							event.rs
+						</code>
+					</td>
+					<td>
+						イベント
+					</td>
+					<td>
+						2 Stmt
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							control.rs
+						</code>
+					</td>
+					<td>
+						制御
+					</td>
+					<td>
+						15 Stmt + 2 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							sensing.rs
+						</code>
+					</td>
+					<td>
+						調べる
+					</td>
+					<td>
+						3 Stmt + 22 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							operator.rs
+						</code>
+					</td>
+					<td>
+						演算
+					</td>
+					<td>
+						18 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							data.rs
+						</code>
+					</td>
+					<td>
+						データ
+					</td>
+					<td>
+						11 Stmt + 6 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							procedures.rs
+						</code>
+					</td>
+					<td>
+						独自ブロック
+					</td>
+					<td>
+						1 Stmt + 3 Expr
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							pen.rs
+						</code>
+					</td>
+					<td>
+						ペン
+					</td>
+					<td>
+						13 Stmt + 1 Expr
+					</td>
+				</tr>
+			</table>
+			<h3>
+				エラー処理
+			</h3>
+			<p>
+				<code>
+					ParserError
+				</code>
+				 列挙型でパースエラーを表現します。
+			</p>
+			<pre><code>pub enum ParserError&lt;'a&gt; {
+    NotHandledOp(BlockOpCodes),       // 未実装 opcode
+    InvalidValue(&amp;'a str),            // 不正な値
+    UnknownBlock(String),             // 未知のブロック ID
+    InvalidTargetIndex(usize),        // 不正なターゲットインデックス
+    UnexpectedTopLevelPrimitive(String), // 予期しないプリミティブ
+    Context {
+        context: String,              // コンテキスト情報（ブロック ID など）
+        source: Box&lt;ParserError&lt;'a&gt;&gt;, // 原因エラー
+    },
+}
+</code></pre>
+			<p>
+				<code>
+					Context
+				</code>
+				 バリアントにより、エラーが発生したブロック ID やターゲットインデックスを連鎖的に付加できます。これにより「どのスプライトのどのブロックで失敗したか」が分かります。
+			</p>
+			<code>
+			</code>
+		</section>
+		<section title="ステージ 4: IR 生成と JIT 実行 ( src/compiler/ )">
+			<p>
+				コンパイラは
+				<code>
+					Vec&lt;Thread&gt;
+				</code>
+				 を受け取り、各スレッドを LLVM IR の関数として生成したあと、JIT で実行して状態を定期表示します。CLI から
+				<code>
+					run --emit-llvm &lt;path&gt;
+				</code>
+				 を指定した場合は、JIT 実行前にモジュール全体の LLVM IR を指定パスへ保存します。
+			</p>
+			<h3>
+				<code>
+					Builders
+				</code>
+				 構造体
+			</h3>
+			<p>
+				<code>
+					compiler/types.rs
+				</code>
+				 では、LLVM の基本オブジェクトに加えて、実行時 ABI や変数割り当てをまとめた
+				<code>
+					Builders
+				</code>
+				 構造体が定義されています。
+			</p>
+			<p>
+				<code>
+					Builders
+				</code>
+				 が保持する主な情報は次のとおりです。
 			</p>
 			<ul>
 				<li>
-					旗が押されたとき
+					<code>
+						context
+					</code>
+					 /
+					<code>
+						module
+					</code>
+					 /
+					<code>
+						builder
+					</code>
+					: LLVM の基本オブジェクト
 				</li>
 				<li>
-					キーが押されたとき
+					<code>
+						functions
+					</code>
+					:
+					<code>
+						llvm.*
+					</code>
+					 intrinsic と
+					<code>
+						xyo_atod
+					</code>
+					,
+					<code>
+						xyo_dtoa
+					</code>
+					,
+					<code>
+						xyo_bool_to_str
+					</code>
+					,
+					<code>
+						xyo_str_cmp_gt
+					</code>
+					,
+					<code>
+						xyo_str_cmp_lt
+					</code>
+					,
+					<code>
+						xyo_str_cmp_eq
+					</code>
+					,
+					<code>
+						str_to_bool
+					</code>
+					,
+					<code>
+						str_is_num
+					</code>
+					,
+					<code>
+						xorshift128plus
+					</code>
+					 の関数ハンドル
 				</li>
 				<li>
-					スプライトやステージがクリックされたとき
+					<code>
+						global_variables
+					</code>
+					 /
+					<code>
+						local_variables
+					</code>
+					: Scratch の変数 ID をスロット番号へ割り当てる表
 				</li>
 				<li>
-					メッセージを受け取ったとき
+					<code>
+						get_variable()
+					</code>
+					: 変数 ID を
+					<code>
+						VariableInfo
+					</code>
+					 に解決して、グローバルかローカルかとスロット番号を返す
 				</li>
 				<li>
-					クローン開始時
+					<code>
+						rolling_hash_seed_*
+					</code>
+					 /
+					<code>
+						rolling_hash_base_*
+					</code>
+					: 文字列ハッシュ生成に使う定数
 				</li>
 				<li>
-					手続き定義
+					<code>
+						string_literals
+					</code>
+					: 生成済みの
+					<code>
+						StringStruct
+					</code>
+					 グローバルを再利用するキャッシュ
 				</li>
 			</ul>
-		</section>
-		<section title="コンパイラの現状">
+			<h3>
+				実行時の構造体
+			</h3>
+			<pre><code>#[repr(C)]
+pub struct StringStruct {
+    pub length: u64,
+    pub container: *mut u16,
+    pub hash1: u64,
+    pub hash2: u64,
+}
+
+#[repr(C)]
+pub struct SpriteStruct {
+    pub sprite_x: f64,
+    pub sprite_y: f64,
+    pub sprite_rotate: f64,
+    pub sprite_size: f64,
+    pub sprite_costume_id: i64,
+    pub sprite_costumes: *mut CostumeInfo,
+    pub sprite_costume_number: i64,
+    pub sprite_rotation_style: i8,
+}
+</code></pre>
 			<p>
-				現在の IR 生成は全面対応ではなく、一部のリテラル、一部の演算子式、一部の移動系命令の検証が中心です。
-			</p>
-			<p>
-				どの opcode がパーサー段階まで通るか、どこまで IR 生成できるかは 
-				<a href="../blocks/">
-					対応ブロック一覧
-				</a>
-				 にまとめています。
-			</p>
-		</section>
-		<section title="制約">
-			<p>
-				現時点では、全 opcode の完全実装や Scratch VM と同等の実行モデルは未完です。そのため、
 				<code>
-					run
+					StringStruct
 				</code>
-				 サブコマンドは「完全な実行コマンド」ではなく、「コンパイル経路の検証ツール」として考えるのが適切です。
+				 は UTF-16 の文字列本体と 2 系統のローリングハッシュを持ち、
+				<code>
+					SpriteStruct
+				</code>
+				 はスプライトの実行状態を表します。
+				<code>
+					SpriteStruct
+				</code>
+				 には位置・向きだけでなく、大きさ、コスチューム配列、コスチューム数、回転方法も含まれます。
+				<code>
+					StringKeys
+				</code>
+				 と
+				<code>
+					SpriteKeys
+				</code>
+				 はこれらの構造体の field index を LLVM から扱いやすくするための列挙型です。
 			</p>
 			<p>
-				前のページ: 
+				動的に型が決まる値は
+				<code>
+					DynamicStruct
+				</code>
+				 で表します。
+			</p>
+			<pre><code>#[repr(u8)]
+pub enum DynamicKind {
+    String = 0,
+    Number = 1,
+    Bool = 2,
+}
+
+#[repr(C)]
+pub struct DynamicStruct {
+    pub kind: DynamicKind,
+    pub pointer: *mut core::ffi::c_void,
+}
+</code></pre>
+			<p>
+				<code>
+					DynamicStruct
+				</code>
+				 は kind と payload pointer を持ち、文字列 / 数値 / 真偽値の coercion や比較で実行時分岐するために使います。
+			</p>
+			<h3>
+				スレッドごとの IR 生成
+			</h3>
+			<p>
+				各
+				<code>
+					Thread
+				</code>
+				 は次のようにして LLVM 関数に変換されます。
+			</p>
+			<pre><code>// 関数のシグネチャ: void thread_N(ptr)
+let fn_type = context.void_type().fn_type(&amp;[ptr_type.into()], false);
+let function = module.add_function(&amp;function_name, fn_type, None);
+
+// エントリブロックを作成してビルダーを配置
+let entry = context.append_basic_block(function, "entry");
+builder.position_at_end(entry);
+
+// 各 Stmt を IR に変換
+for stmt in &amp;thread.stmts {
+    match stmt {
+        Stmt::Motion(v) =&gt; parse_motion_stmt(builders, v, &amp;function, thread.target_idx),
+        _ =&gt; todo!("やります"),  // 未実装
+    }
+}
+
+builder.build_return(None);  // void return
+</code></pre>
+			<h3>
+				実行状態
+			</h3>
+			<p>
+				各スレッドは
+				<code>
+					SpriteStruct
+				</code>
+				 の状態ポインタを受け取り、
+				<code>
+					MotionSetX
+				</code>
+				 などは
+				<code>
+					build_struct_gep
+				</code>
+				 を使ってそのフィールドを更新します。JIT 実行時にも同じ
+				<code>
+					SpriteStruct
+				</code>
+				 が
+				<code>
+					Debug
+				</code>
+				 形式で表示されます。
+			</p>
+			<h3>
+				式の IR 変換
+			</h3>
+			<p>
+				<code>
+					generate_expr_ir
+				</code>
+				 関数が式を LLVM の値に変換します。戻り値の型は
+				<code>
+					ScratchReturnTypes
+				</code>
+				 列挙型で表現されます。
+			</p>
+			<pre><code>pub enum ScratchReturnTypes&lt;'ctx&gt; {
+    Number(FloatValue&lt;'ctx&gt;),                    // f64 の LLVM 値
+    String(PointerValue&lt;'ctx&gt;),                  // 文字列ポインタ
+    Bool(IntValue&lt;'ctx&gt;),                        // i1 の LLVM 値（真偽値）
+    NumberLiteral(f64),                          // コンパイル時定数（数値）
+    StringLiteral((String, PointerValue&lt;'ctx&gt;)), // コンパイル時定数（文字列）
+    BoolLiteral((bool, IntValue&lt;'ctx&gt;)),         // コンパイル時定数（真偽値）
+    Dynamic(PointerValue&lt;'ctx&gt;),                 // kind + payload pointer
+}
+</code></pre>
+			<p>
+				<code>
+					Literal
+				</code>
+				 バリアントは実際の LLVM 値と Rust 側の定数の両方を保持します。これにより、定数畳み込みなどの最適化が可能になります。
+				<code>
+					String
+				</code>
+				 /
+				<code>
+					StringLiteral
+				</code>
+				 は
+				<code>
+					StringStruct
+				</code>
+				 で表現された文字列を指し、
+				<code>
+					BoolLiteral
+				</code>
+				 /
+				<code>
+					NumberLiteral
+				</code>
+				 は coercion のための定数としても使われます。
+			</p>
+			<p>
+				<code>
+					Dynamic
+				</code>
+				 は実行時に
+				<code>
+					DynamicKind
+				</code>
+				 を見て
+				<code>
+					Number
+				</code>
+				 /
+				<code>
+					String
+				</code>
+				 /
+				<code>
+					Bool
+				</code>
+				 へ分岐します。
+				<code>
+					scratch_return_to_number
+				</code>
+				,
+				<code>
+					scratch_return_to_string
+				</code>
+				,
+				<code>
+					scratch_return_to_bool
+				</code>
+				,
+				<code>
+					is_num
+				</code>
+				 は、静的型だけでなく Dynamic 値も扱います。
+				<code>
+					OperatorGt
+				</code>
+				 /
+				<code>
+					OperatorLt
+				</code>
+				 /
+				<code>
+					OperatorEquals
+				</code>
+				 は片側が文字列または Dynamic の場合、文字列比較と数値比較の分岐を生成します。
+			</p>
+			<h3>
+				最適化
+			</h3>
+			<p>
+				IR 生成後、
+				<code>
+					default&lt;O3&gt;
+				</code>
+				 パスが適用されます。有効化されている最適化オプション:
+			</p>
+			<ul>
+				<li>
+					<strong>
+						ループインターリービング
+					</strong>
+					: ループの実行順序を最適化してキャッシュ効率を上げる
+				</li>
+				<li>
+					<strong>
+						ループベクトル化
+					</strong>
+					: SIMD 命令を使って複数の計算を同時処理
+				</li>
+				<li>
+					<strong>
+						SLP ベクトル化
+					</strong>
+					: 隣接するスカラー演算をベクトル演算にまとめる
+				</li>
+				<li>
+					<strong>
+						ループアンロール
+					</strong>
+					: ループを展開して分岐オーバーヘッドを削減
+				</li>
+			</ul>
+			<code>
+			</code>
+		</section>
+		<section title="ビルドスクリプト ( build.rs )">
+			<p>
+				<code>
+					cargo build
+				</code>
+				 時に
+				<code>
+					build.rs
+				</code>
+				 が実行され、
+				<code>
+					bitcodes/c/
+				</code>
+				 にあるトップレベルの C ソースを LLVM bitcode と LLVM IR に変換します。各ソースは
+				<code>
+					clang -emit-llvm -c -O3
+				</code>
+				 で
+				<code>
+					.bc
+				</code>
+				、
+				<code>
+					clang -S -emit-llvm -O3
+				</code>
+				 で
+				<code>
+					.ll
+				</code>
+				 に変換され、出力は
+				<code>
+					bitcodes/bc/
+				</code>
+				 と
+				<code>
+					bitcodes/ll/
+				</code>
+				 に保存されます。生成済み
+				<code>
+					.bc
+				</code>
+				 は
+				<code>
+					embedded_bitcodes.rs
+				</code>
+				 にも列挙されます。
+			</p>
+			<p>
+				現在のターゲット:
+			</p>
+			<table>
+				<tr>
+					<th>
+						C ソース
+					</th>
+					<th>
+						生成物
+					</th>
+					<th>
+						役割
+					</th>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							bitcodes/c/numeric.c
+						</code>
+					</td>
+					<td>
+						<code>
+							bitcodes/bc/numeric.bc
+						</code>
+						,
+						<code>
+							bitcodes/ll/numeric.ll
+						</code>
+					</td>
+					<td>
+						数値変換と数値判定のヘルパー
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							bitcodes/c/str.c
+						</code>
+					</td>
+					<td>
+						<code>
+							bitcodes/bc/str.bc
+						</code>
+						,
+						<code>
+							bitcodes/ll/str.ll
+						</code>
+					</td>
+					<td>
+						文字列比較と真偽値変換のヘルパー
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>
+							bitcodes/c/tick.c
+						</code>
+					</td>
+					<td>
+						<code>
+							bitcodes/bc/tick.bc
+						</code>
+						,
+						<code>
+							bitcodes/ll/tick.ll
+						</code>
+					</td>
+					<td>
+						単調時計と sleep のヘルパー
+					</td>
+				</tr>
+			</table>
+			<p>
+				<code>
+					numeric.c
+				</code>
+				 は
+				<code>
+					bitcodes/c/lib/dtoa.c
+				</code>
+				 と
+				<code>
+					bitcodes/c/lib/cutils.c
+				</code>
+				 を取り込み、
+				<code>
+					xyo_atod
+				</code>
+				 /
+				<code>
+					xyo_dtoa
+				</code>
+				 /
+				<code>
+					str_is_num
+				</code>
+				 /
+				<code>
+					str_is_double
+				</code>
+				 を実装します。
+				<code>
+					str.c
+				</code>
+				 は ICU の Unicode API を使って
+				<code>
+					string_to_bool
+				</code>
+				 と文字列比較を実装し、
+				<code>
+					tick.c
+				</code>
+				 は
+				<code>
+					xyo_now_ns
+				</code>
+				 /
+				<code>
+					xyo_sleep_until_ns
+				</code>
+				 を提供します。
+			</p>
+			<p>
+				<code>
+					build.rs
+				</code>
+				 は
+				<code>
+					CLANG
+				</code>
+				、
+				<code>
+					PATH
+				</code>
+				 上の
+				<code>
+					clang
+				</code>
+				、
+				<code>
+					llvm-config --bindir
+				</code>
+				 の順で
+				<code>
+					clang
+				</code>
+				 を解決し、
+				<code>
+					bitcodes/c/lib
+				</code>
+				 と ICU の include path を追加して各ソースをコンパイルします。ICU ヘッダは
+				<code>
+					XYO_ICU_PREBUILT_DIR/include
+				</code>
+				 か
+				<code>
+					XYO_ICU_ROOT/source/common
+				</code>
+				 から見つけます。
+			</p>
+			<p>
+				ビルドスクリプトは次の手順で動作します:
+			</p>
+			<ol>
+				<li>
+					<code>
+						CLANG
+					</code>
+					、
+					<code>
+						PATH
+					</code>
+					 上の
+					<code>
+						clang
+					</code>
+					、
+					<code>
+						llvm-config --bindir
+					</code>
+					 の順で
+					<code>
+						clang
+					</code>
+					 を解決する
+				</li>
+				<li>
+					<code>
+						bitcodes/c/
+					</code>
+					 配下のトップレベル
+					<code>
+						.c
+					</code>
+					 を列挙する
+				</li>
+				<li>
+					各ソースに
+					<code>
+						-I bitcodes/c/lib
+					</code>
+					 と ICU の include path を足して
+					<code>
+						clang -emit-llvm -c -O3
+					</code>
+					 と
+					<code>
+						clang -S -emit-llvm -O3
+					</code>
+					 を実行する
+				</li>
+				<li>
+					生成した
+					<code>
+						.bc
+					</code>
+					 を
+					<code>
+						bitcodes/bc/
+					</code>
+					、
+					<code>
+						.ll
+					</code>
+					 を
+					<code>
+						bitcodes/ll/
+					</code>
+					 に保存する
+				</li>
+				<li>
+					<code>
+						.bc
+					</code>
+					 一覧をもとに
+					<code>
+						embedded_bitcodes.rs
+					</code>
+					 を書き出す
+				</li>
+			</ol>
+		</section>
+		<section title="制約と今後の方針">
+			<h3>
+				現在の制約
+			</h3>
+			<ul>
+				<li>
+					<strong>
+						IR 生成
+					</strong>
+					: スレッド本体は動き系命令のみ。式はリテラルと演算子のみ。
+					<code>
+						run
+					</code>
+					 で残りの文 opcode や未実装式に当たると
+					<code>
+						todo!()
+					</code>
+					 パニックが起きる
+				</li>
+				<li>
+					<strong>
+						ランタイム
+					</strong>
+					: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの
+					<code>
+						run
+					</code>
+					 は JIT で各 thread を実行し、状態を標準出力へ定期的に返す
+				</li>
+				<li>
+					<strong>
+						コスチューム・サウンド
+					</strong>
+					: メタデータは読み込めるが IR 生成には未対応
+				</li>
+				<li>
+					<strong>
+						スレッド間通信
+					</strong>
+					: ブロードキャスト・メッセージ処理は未実装
+				</li>
+			</ul>
+			<h3>
+				今後の実装が期待される部分
+			</h3>
+			<ul>
+				<li>
+					<code>
+						ControlStmt
+					</code>
+					 (if/else, repeat, forever など) の IR 生成
+				</li>
+				<li>
+					<code>
+						DataStmt
+					</code>
+					 (変数操作) の IR 生成
+				</li>
+				<li>
+					<code>
+						LooksStmt
+					</code>
+					 (見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
+				</li>
+				<li>
+					<code>
+						run
+					</code>
+					 の未実装分岐に対する安全なフォールバック（パニックを避けてエラー報告する）
+				</li>
+				<li>
+					生成した IR を
+					<code>
+						clang
+					</code>
+					 や
+					<code>
+						llc
+					</code>
+					 でリンク・コンパイルするフロー
+				</li>
+			</ul>
+			<p>
+				前のページ:
 				<a href="../cli/">
 					CLI
 				</a>
