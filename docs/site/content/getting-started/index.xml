@@ -252,6 +252,19 @@ cargo build --release
 				 が生成されます。
 			</p>
 			<h3>
+				Docker イメージを使う場合
+			</h3>
+			<p>
+				Docker イメージは
+				<code>
+					public.ecr.aws/b9q9k6r0/xyo-rust
+				</code>
+				 にあります。
+			</p>
+			<pre><code>docker pull public.ecr.aws/b9q9k6r0/xyo-rust
+docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
+</code></pre>
+			<h3>
 				ビルド中に行われること
 			</h3>
 			<p>

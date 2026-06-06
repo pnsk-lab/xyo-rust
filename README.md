@@ -83,6 +83,15 @@ cargo build --release
 
 `cargo build` は `build.rs` を通じて `bitcodes/` 配下の C コードも再生成します。ビルドが成功すると `target/release/xyo` が生成されます。
 
+### Docker イメージ
+
+Docker イメージは `public.ecr.aws/b9q9k6r0/xyo-rust` にあります。
+
+```bash
+docker pull public.ecr.aws/b9q9k6r0/xyo-rust
+docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
+```
+
 ### テスト
 
 ```bash

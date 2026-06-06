@@ -100,6 +100,15 @@ cargo build --release
 
 ビルドには数分かかることがあります。ビルドが成功すると `target/release/xyo` が生成されます。
 
+### Docker イメージを使う場合
+
+Docker イメージは `public.ecr.aws/b9q9k6r0/xyo-rust` にあります。
+
+```bash
+docker pull public.ecr.aws/b9q9k6r0/xyo-rust
+docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
+```
+
 ### ビルド中に行われること
 
 `cargo build` を実行すると、次の処理が順に行われます。
