@@ -1,0 +1,13 @@
+target/
+.git/
+.github/
+.llvm/
+
+scratch-editor/
+
+bitcodes/bc/
+bitcodes/ll/
+bitcodes/c/lib/icu/
+bitcodes/c/lib/icu-prebuilt/
+
+docs/site/

@@ -7,7 +7,8 @@ use inkwell::{
 use crate::{
     compiler::{
         blocks::{
-            literal::parse_literal_expr, motion::parse_motion_stmt, operator::parse_operator_expr,
+            literal::parse_literal_expr, looks::parse_looks_expr, motion::parse_motion_stmt,
+            operator::parse_operator_expr,
         },
         types::Builders,
     },
@@ -65,6 +66,7 @@ pub fn generate_expr_ir<'ctx>(
     match expr {
         Expr::Literal(l) => parse_literal_expr(builders, l, function, target_idx),
         Expr::Operator(l) => parse_operator_expr(builders, l, function, target_idx),
+        Expr::Looks(l) => parse_looks_expr(builders, l, function, target_idx),
         _ => todo!("やる"),
     }
 }
