@@ -1,0 +1,112 @@
+name: Docker Publish
+
+env:
+    AWS_REGION: ${{ vars.AWS_REGION }}
+    AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+    ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'xyo-rust' }}
+
+on:
+    push:
+        tags:
+            - "*"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: docker-publish-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        name: Build and Push to Amazon ECR
+        runs-on: ubuntu-24.04
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Validate AWS settings
+              shell: bash
+              env:
+                  AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+              run: |
+                  set -euo pipefail
+
+                  if [[ -z "${AWS_REGION}" ]]; then
+                      echo "::error::Set the AWS_REGION repository variable."
+                      exit 1
+                  fi
+
+                  if [[ -z "${AWS_ACCOUNT_ID}" ]]; then
+                      echo "::error::Set the AWS_ACCOUNT_ID repository variable."
+                      exit 1
+                  fi
+
+                  if [[ -z "${AWS_ROLE_TO_ASSUME}" ]]; then
+                      echo "::error::Set the AWS_ROLE_TO_ASSUME repository secret."
+                      exit 1
+                  fi
+
+                  if [[ -z "${ECR_REPOSITORY}" ]]; then
+                      echo "::error::Set ECR_REPOSITORY or keep the default xyo-rust value."
+                      exit 1
+                  fi
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v5
+              with:
+                  role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+                  aws-region: ${{ env.AWS_REGION }}
+                  role-session-name: xyo-rust-${{ github.run_id }}-${{ github.run_attempt }}
+                  allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+                  mask-aws-account-id: true
+
+            - name: Ensure ECR repository exists
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  if aws ecr describe-repositories \
+                    --repository-names "$ECR_REPOSITORY" \
+                    >/dev/null 2>&1; then
+                      exit 0
+                  fi
+
+                  aws ecr create-repository \
+                    --repository-name "$ECR_REPOSITORY" \
+                    --image-scanning-configuration scanOnPush=true \
+                    >/dev/null \
+                    || aws ecr describe-repositories \
+                      --repository-names "$ECR_REPOSITORY" \
+                      >/dev/null
+
+            - name: Login to Amazon ECR
+              id: login-ecr
+              uses: aws-actions/amazon-ecr-login@v2
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Extract Docker metadata
+              id: meta
+              uses: docker/metadata-action@v6
+              with:
+                  images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+                  tags: |
+                      type=ref,event=tag
+                      type=sha,prefix=sha-
+                      type=raw,value=latest,enable=${{ vars.ECR_PUSH_LATEST == 'true' }}
+
+            - name: Build and push Docker image
+              uses: docker/build-push-action@v7
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
