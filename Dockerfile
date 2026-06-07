@@ -13,13 +13,13 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg \
-        make \
-        python3 \
-        tar \
-        xz-utils \
+    ca-certificates \
+    curl \
+    gnupg \
+    make \
+    python3 \
+    tar \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY tools/install_llvm_prebuilt.sh tools/install_llvm_prebuilt.sh
@@ -32,9 +32,9 @@ FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libffi8 \
-        libstdc++6 \
-        zlib1g \
+    libffi8 \
+    libstdc++6 \
+    zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/xyo /usr/local/bin/xyo
