@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/pnsk-lab/xyo-rust/actions/workflows/ci.yml)
 [latest release](https://github.com/pnsk-lab/xyo-rust/releases/latest)
+[![技術者倫理 遵守済み](https://img.shields.io/badge/%E6%8A%80%E8%A1%93%E8%80%85%E5%80%AB%E7%90%86-%E9%81%B5%E5%AE%88%E6%B8%88%E3%81%BF-0a0a0a?style=for-the-badge&labelColor=ffffff)](https://技術者倫理.com)
 
 Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR を生成して JIT で動かす実験プロジェクト `xyo-rust` の手引きです。
 
