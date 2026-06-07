@@ -228,10 +228,10 @@ cargo run -- run <path-to-project.sb3>
 SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
 ```
 
-生成された LLVM IR も確認したい場合は `--emit-llvm` を付けます。IR を保存したあとも JIT 実行は続くため、標準出力には同じように実行後状態が表示されます。
+生成された LLVM IR も確認したい場合は `compile` を使います。`compile` は IR を保存するだけで、JIT 実行は行いません。
 
 ```bash
-cargo run -- run <path-to-project.sb3> --emit-llvm out.ll
+cargo run -- compile <path-to-project.sb3> --output out.ll
 ```
 
 ## エラーの見方

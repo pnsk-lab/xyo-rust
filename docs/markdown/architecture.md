@@ -360,7 +360,7 @@ pub enum ParserError<'a> {
 
 ## ステージ 4: IR 生成と JIT 実行 (`src/compiler/`)
 
-コンパイラは `Vec<Thread>` を受け取り、各スレッドを LLVM IR の関数として生成したあと、JIT で実行して状態を定期表示します。CLI から `run --emit-llvm <path>` を指定した場合は、JIT 実行前にモジュール全体の LLVM IR を指定パスへ保存します。
+コンパイラは `Vec<Thread>` を受け取り、各スレッドを LLVM IR の関数として生成します。CLI の `compile --output <path>` はモジュール全体の LLVM IR を指定パスへ保存し、`run` は生成した関数を JIT で実行して状態を定期表示します。
 
 ### `Builders` 構造体
 
@@ -457,7 +457,7 @@ pub enum ScratchReturnTypes<'ctx> {
     Number(FloatValue<'ctx>),                    // f64 の LLVM 値
     String(PointerValue<'ctx>),                  // 文字列ポインタ
     Bool(IntValue<'ctx>),                        // i1 の LLVM 値（真偽値）
-    NumberLiteral(f64),                          // コンパイル時定数（数値）
+    NumberLiteral((f64, FloatValue<'ctx>)),     // コンパイル時定数（数値）
     StringLiteral((String, PointerValue<'ctx>)), // コンパイル時定数（文字列）
     BoolLiteral((bool, IntValue<'ctx>)),         // コンパイル時定数（真偽値）
     Dynamic(PointerValue<'ctx>),                 // kind + payload pointer

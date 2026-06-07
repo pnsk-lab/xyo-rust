@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(version, about = "run/stats cli")]
+#[command(version, about = "compile/run/stats cli")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -11,10 +11,12 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// run <path>
-    Run {
+    Run { path: PathBuf },
+    /// compile <path>
+    Compile {
         path: PathBuf,
-        #[arg(long)]
-        emit_llvm: Option<PathBuf>,
+        #[arg(short, long, default_value = "out.ll")]
+        output: PathBuf,
     },
     /// stats <path>
     Stats { path: PathBuf },

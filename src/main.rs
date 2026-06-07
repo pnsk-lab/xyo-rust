@@ -23,14 +23,27 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<(), ()> {
     match cli.command {
-        Command::Run { path, emit_llvm } => {
+        Command::Run { path } => {
             let project = handle_error(sb3::read_sb3(&path), "Load error")?;
             let threads = handle_error(project_parser(&project), "Parse error")?;
             compiler(
                 &project,
                 &threads,
                 CompilerOption {
-                    emit_llvm: emit_llvm.map(|v| v.to_str().unwrap().to_string()),
+                    emit_llvm: None,
+                    run_jit: true,
+                },
+            );
+        }
+        Command::Compile { path, output } => {
+            let project = handle_error(sb3::read_sb3(&path), "Load error")?;
+            let threads = handle_error(project_parser(&project), "Parse error")?;
+            compiler(
+                &project,
+                &threads,
+                CompilerOption {
+                    emit_llvm: Some(output),
+                    run_jit: false,
                 },
             );
         }

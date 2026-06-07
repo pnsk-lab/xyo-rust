@@ -449,11 +449,11 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 # 使用 opcode を確認する
 cargo run -- stats my_project.sb3
 
-# 確認後、IR 生成を試す
+# 確認後、JIT 実行を試す
 cargo run -- run my_project.sb3
 
 # LLVM IR をファイルに保存して確認する
-cargo run -- run my_project.sb3 --emit-llvm out.ll
+cargo run -- compile my_project.sb3 --output out.ll
 ```
 
 前のページ: [CLI](./cli.md)  

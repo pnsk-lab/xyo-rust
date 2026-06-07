@@ -14,17 +14,18 @@ cargo run -- --help
 Usage: xyo <COMMAND>
 
 Commands:
-  run    run <path>
-  stats  stats <path>
-  json   json <path>
-  help   Print this message or the help of the given subcommand(s)
+  run      run <path>
+  compile  compile <path>
+  stats    stats <path>
+  json     json <path>
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
   -V, --version  Print version
   -h, --help  Print help
 ```
 
-現時点のサブコマンドは 3 つです。
+現時点のサブコマンドは 4 つです。
 
 ## `json`
 
@@ -185,15 +186,6 @@ xyo run <path-to-project.sb3>
 7. 状態表示        (各 thread の状態スナップショットを Debug 形式で表示)
 ```
 
-LLVM IR をファイルに保存したい場合は `--emit-llvm` を指定します。
-
-```bash
-cargo run -- run <path-to-project.sb3> --emit-llvm out.ll
-xyo run <path-to-project.sb3> --emit-llvm out.ll
-```
-
-`--emit-llvm` は IR を保存するためのデバッグ用オプションです。指定しても JIT 実行は省略されず、IR 生成後も各 thread の状態が定期的に表示されます。
-
 ```warn
 `run` は実行ランタイムそのものではなく、コンパイル経路を JIT までつないだ検証コマンドです。未実装の opcode や IR 変換が残っているため、入力によっては途中で停止します。
 ```
@@ -229,7 +221,7 @@ entry:
 
 ### 最適化について
 
-`run` は `default<O3>` 最適化パスを適用します。次のオプションが有効です。
+`run` は `default<O3>` 最適化パスを適用してから JIT 実行します。次のオプションが有効です。
 
 | 最適化 | 説明 |
 | ------ | ---- |
@@ -240,7 +232,23 @@ entry:
 
 ### 補足
 
-`run` の標準出力には、既定では各 thread の状態スナップショットが表示されます。LLVM IR テキストを確認したい場合は `--emit-llvm <path>` で保存先を指定してください。
+`run` の標準出力には、既定では各 thread の状態スナップショットが表示されます。LLVM IR テキストを確認したい場合は `compile` を使ってください。
+
+## `compile`
+
+```bash
+cargo run -- compile <path-to-project.sb3> --output out.ll
+xyo compile <path-to-project.sb3> --output out.ll
+```
+
+`.sb3` を読み込み、hat block から thread を抽出して LLVM IR を生成し、指定した `.ll` ファイルへ保存します。JIT 実行は行いません。
+
+`--output` を省略した場合は `out.ll` に保存します。
+
+```bash
+cargo run -- compile <path-to-project.sb3>
+xyo compile <path-to-project.sb3>
+```
 
 ## エラー表示
 
@@ -305,8 +313,8 @@ Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
 | ファイルが正しく読めるか確認 | `json` |
 | どんなブロックが使われているか確認 | `stats` |
 | JIT 実行できるか確認 | `stats` で opcode を確認後 → `run` |
-| 生成された LLVM IR を確認 | `run --emit-llvm out.ll` |
+| 生成された LLVM IR を確認 | `compile --output out.ll` |
 | Scratch の内部構造を調べる | `json` + `jq` |
-| コンパイルパイプラインをデバッグ | `run` |
+| コンパイルパイプラインをデバッグ | `compile` |
 
 次は [アーキテクチャ](./architecture.md) を参照してください。

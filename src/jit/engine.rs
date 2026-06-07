@@ -173,7 +173,8 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
             println!("{:?}", state);
             thread::sleep(Duration::from_millis(33));
         }
-        println!("\nelasped: {:?}", Instant::now() - started_at)
+        println!("\nelasped: {:?}", Instant::now() - started_at);
+        println!("final state: {:?}", state);
     }
 }
 

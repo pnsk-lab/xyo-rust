@@ -1,8 +1,9 @@
 use inkwell::{
     AddressSpace,
     context::Context,
-    values::{FloatValue, FunctionValue, IntValue, PointerValue, StructValue},
+    values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
+use std::path::PathBuf;
 
 use crate::{
     compiler::{
@@ -18,7 +19,8 @@ use crate::{
 };
 
 pub struct CompilerOption {
-    pub emit_llvm: Option<String>,
+    pub emit_llvm: Option<PathBuf>,
+    pub run_jit: bool,
 }
 
 pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>, option: CompilerOption) {
@@ -34,7 +36,9 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>, option: Compile
         builders.module.print_to_file(emit_llvm).unwrap();
     }
 
-    jit::run(&builders, &thread_functions);
+    if option.run_jit {
+        jit::run(&builders, &thread_functions);
+    }
 }
 
 pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread) -> String {
@@ -75,7 +79,7 @@ pub enum ScratchReturnTypes<'ctx> {
     Number(FloatValue<'ctx>),
     String(PointerValue<'ctx>),
     Bool(IntValue<'ctx>),
-    NumberLiteral(f64),
+    NumberLiteral((f64, FloatValue<'ctx>)),
     StringLiteral((String, PointerValue<'ctx>)),
     BoolLiteral((bool, IntValue<'ctx>)),
     Dynamic(PointerValue<'ctx>),

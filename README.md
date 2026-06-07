@@ -48,7 +48,7 @@
 | ブロック数・使用 opcode を確認する | `stats` | ✅ |
 | hat block からスレッドを抽出する | `run` | ✅ |
 | 動き系命令と、その入力式に使われる演算子を LLVM IR へ変換し、JIT で実行する | `run` | 🚧 一部 |
-| 生成した LLVM IR を `.ll` ファイルへ保存する | `run --emit-llvm` | ✅ |
+| 生成した LLVM IR を `.ll` ファイルへ保存する | `compile` | ✅ |
 | JSON パースエラー時の位置情報・コンテキスト表示 | — | ✅ |
 | 完全な Scratch 互換実行 | — | ❌ |
 
@@ -147,11 +147,19 @@ cargo run -- run <path-to-project.sb3>
 SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
 ```
 
-生成された LLVM IR をファイルとして確認したい場合は `--emit-llvm` を使います。IR を保存したあとも、通常どおり JIT 実行まで続きます。
+### LLVM IR を生成する
 
 ```bash
-cargo run -- run <path-to-project.sb3> --emit-llvm out.ll
+cargo run -- compile <path-to-project.sb3> --output out.ll
 ```
+
+`compile` は `.sb3` を LLVM IR に変換して `.ll` ファイルへ保存します。JIT 実行は行いません。
+
+```bash
+cargo run -- compile <path-to-project.sb3>
+```
+
+`--output` を省略した場合は `out.ll` に保存します。
 
 ## 入力ファイルについて
 
