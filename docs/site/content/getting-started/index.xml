@@ -7,15 +7,15 @@
 			<a href="../">
 				はじめに
 			</a>
-			 /
+			 / 
 			<a href="../cli/">
 				CLI
 			</a>
-			 /
+			 / 
 			<a href="../blocks/">
 				対応ブロック一覧
 			</a>
-			 /
+			 / 
 			<a href="../architecture/">
 				アーキテクチャ
 			</a>
@@ -25,7 +25,7 @@
 			<code>
 				xyo-rust
 			</code>
-			 をローカルでビルドし、手元の
+			 をローカルでビルドし、手元の 
 			<code>
 				.sb3
 			</code>
@@ -106,7 +106,7 @@
 						<code>
 							make
 						</code>
-						 /
+						 / 
 						<code>
 							gmake
 						</code>
@@ -139,7 +139,7 @@
 						<code>
 							curl
 						</code>
-						 /
+						 / 
 						<code>
 							wget
 						</code>
@@ -166,7 +166,7 @@ clang --version
 				<code>
 					llvm-config --version
 				</code>
-				 は
+				 は 
 				<code>
 					21.1.x
 				</code>
@@ -229,7 +229,7 @@ llvm-config --version
 				バージョン確認
 			</h3>
 			<p>
-				インストール後、以下が
+				インストール後、以下が 
 				<code>
 					21.1.x
 				</code>
@@ -245,7 +245,7 @@ cd xyo-rust
 cargo build --release
 </code></pre>
 			<p>
-				ビルドには数分かかることがあります。ビルドが成功すると
+				ビルドには数分かかることがあります。ビルドが成功すると 
 				<code>
 					target/release/xyo
 				</code>
@@ -255,7 +255,7 @@ cargo build --release
 				Docker イメージを使う場合
 			</h3>
 			<p>
-				Docker イメージは
+				Docker イメージは 
 				<code>
 					public.ecr.aws/b9q9k6r0/xyo-rust
 				</code>
@@ -281,15 +281,15 @@ docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
 						</code>
 						 の実行
 					</strong>
-					:
+					: 
 					<code>
 						clang
 					</code>
-					 を使って
+					 を使って 
 					<code>
 						bitcodes/c/
 					</code>
-					 配下のトップレベル
+					 配下のトップレベル 
 					<code>
 						.c
 					</code>
@@ -307,7 +307,7 @@ docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
 					<strong>
 						Rust コードのコンパイル
 					</strong>
-					:
+					: 
 					<code>
 						inkwell
 					</code>
@@ -317,11 +317,11 @@ docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
 					<strong>
 						バイナリ生成
 					</strong>
-					:
+					: 
 					<code>
 						target/release/xyo
 					</code>
-					 (リリースビルド) または
+					 (リリースビルド) または 
 					<code>
 						target/debug/xyo
 					</code>
@@ -332,7 +332,7 @@ docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
 				<code>
 					cargo build
 				</code>
-				 は
+				 は 
 				<code>
 					bitcodes/c/
 				</code>
@@ -344,7 +344,7 @@ docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
 				<code>
 					XYO_ICU_ROOT
 				</code>
-				 または
+				 または 
 				<code>
 					XYO_ICU_PREBUILT_DIR
 				</code>
@@ -354,14 +354,14 @@ docker run --rm public.ecr.aws/b9q9k6r0/xyo-rust --help
 				<code>
 					configure
 				</code>
-				 が
+				 が 
 				<code>
 					C compiler cannot create executables
 				</code>
 				 を返す (macOS)
 			</h3>
 			<p>
-				Xcode Command Line Tools か macOS SDK が見えていないと、ICU の
+				Xcode Command Line Tools か macOS SDK が見えていないと、ICU の 
 				<code>
 					configure
 				</code>
@@ -375,7 +375,7 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 				<code>
 					setup.sh
 				</code>
-				 と
+				 と 
 				<code>
 					tools/build_icu_prebuilt.sh
 				</code>
@@ -383,11 +383,11 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 				<code>
 					tools/build_icu_runtime.sh
 				</code>
-				 は macOS で
+				 は macOS で 
 				<code>
 					SDKROOT
 				</code>
-				 が未設定なら自動検出を試みますが、SDK の場所を手動で固定したい場合は上の
+				 が未設定なら自動検出を試みますが、SDK の場所を手動で固定したい場合は上の 
 				<code>
 					export
 				</code>
@@ -397,7 +397,7 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 				開発時のビルド
 			</h3>
 			<p>
-				開発中は
+				開発中は 
 				<code>
 					--release
 				</code>
@@ -413,11 +413,11 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 			<pre><code>cargo test
 </code></pre>
 			<p>
-				現時点では
+				現時点では 
 				<code>
 					cargo test
 				</code>
-				 がそのままビルド確認と smoke test の入口です。必要になったら
+				 がそのままビルド確認と smoke test の入口です。必要になったら 
 				<code>
 					tests/
 				</code>
@@ -433,7 +433,7 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 		</section>
 		<section title=".sb3  ファイルを用意する">
 			<p>
-				このリポジトリには現在、配布用の
+				このリポジトリには現在、配布用の 
 				<code>
 					.sb3
 				</code>
@@ -456,7 +456,7 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 					上部メニューの「ファイル」→「コンピューターに保存する」を選ぶ
 				</li>
 				<li>
-					保存された
+					保存された 
 					<code>
 						.sb3
 					</code>
@@ -473,11 +473,11 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 				 コマンドで最後まで処理を通したい場合は、文ブロックを動き系（「〇歩動かす」「x座標を〇にする」など）に絞り、その入力式にリテラルと演算子だけを使ったシンプルなプロジェクトから始めるとよいです。
 			</p>
 			<p>
-				現在
+				現在 
 				<code>
 					run
 				</code>
-				 で最後まで通る命令の詳細は
+				 で最後まで通る命令の詳細は 
 				<a href="../blocks/">
 					対応ブロック一覧
 				</a>
@@ -594,13 +594,17 @@ Using Op Codes: ["motion_movesteps", "motion_turnright", "looks_say", "event_whe
 			<pre><code>SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
 </code></pre>
 			<p>
-				生成された LLVM IR も確認したい場合は
+				生成された LLVM IR も確認したい場合は 
 				<code>
-					--emit-llvm
+					compile
 				</code>
-				 を付けます。IR を保存したあとも JIT 実行は続くため、標準出力には同じように実行後状態が表示されます。
+				 を使います。
+				<code>
+					compile
+				</code>
+				 は IR を保存するだけで、JIT 実行は行いません。
 			</p>
-			<pre><code>cargo run -- run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
+			<pre><code>cargo run -- compile &lt;path-to-project.sb3&gt; --output out.ll
 </code></pre>
 		</section>
 		<section title="エラーの見方">
@@ -635,7 +639,7 @@ Context:
 					<code>
 						Location:
 					</code>
-					 は
+					 は 
 					<code>
 						project.json
 					</code>
@@ -645,7 +649,7 @@ Context:
 					<code>
 						Context:
 					</code>
-					 はその周辺のテキスト抜粋と、エラー位置を示す
+					 はその周辺のテキスト抜粋と、エラー位置を示す 
 					<code>
 						^
 					</code>
@@ -664,7 +668,7 @@ Context:
 			<pre><code>Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
 </code></pre>
 			<p>
-				これは
+				これは 
 				<code>
 					stats
 				</code>
@@ -712,11 +716,11 @@ cargo build
 				<code>
 					Cargo.toml
 				</code>
-				 の
+				 の 
 				<code>
 					inkwell
 				</code>
-				 の feature でバージョンを確認してください。LLVM 21.1 を使う場合は
+				 の feature でバージョンを確認してください。LLVM 21.1 を使う場合は 
 				<code>
 					llvm21-1
 				</code>
@@ -738,11 +742,11 @@ cargo build
 clang --version
 </code></pre>
 			<p>
-				環境変数
+				環境変数 
 				<code>
 					CLANG
 				</code>
-				 または
+				 または 
 				<code>
 					LLVM_CONFIG_PATH
 				</code>
@@ -754,7 +758,7 @@ clang --version
 				<code>
 					cargo build
 				</code>
-				 は
+				 は 
 				<code>
 					bitcodes/c/
 				</code>
@@ -766,14 +770,14 @@ clang --version
 				<code>
 					XYO_ICU_ROOT
 				</code>
-				 または
+				 または 
 				<code>
 					XYO_ICU_PREBUILT_DIR
 				</code>
 				 を用意してください。
 			</p>
 			<p>
-				既定の ICU source tree が
+				既定の ICU source tree が 
 				<code>
 					bitcodes/c/lib/icu/
 				</code>
@@ -781,7 +785,7 @@ clang --version
 				<code>
 					XYO_ICU_ROOT=/path/to/icu
 				</code>
-				 を付けてください。prebuilt archive の配置先を変える場合は
+				 を付けてください。prebuilt archive の配置先を変える場合は 
 				<code>
 					XYO_ICU_PREBUILT_DIR=/path/to/prebuilt
 				</code>
@@ -837,7 +841,7 @@ cargo build --release
 					<code>
 						rm -rf build &amp;&amp; ./taiga site
 					</code>
-					 で
+					 で 
 					<code>
 						docs/build/
 					</code>

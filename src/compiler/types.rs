@@ -209,6 +209,8 @@ pub struct Functions<'ctx> {
     pub llvm_log10: FunctionValue<'ctx>,
     pub llvm_exp: FunctionValue<'ctx>,
     pub llvm_pow10: FunctionValue<'ctx>,
+    pub llvm_min: FunctionValue<'ctx>,
+    pub llvm_max: FunctionValue<'ctx>,
     pub str_to_num: FunctionValue<'ctx>,
     pub num_to_str: FunctionValue<'ctx>,
     pub str_cmp_gt: FunctionValue<'ctx>,
@@ -231,6 +233,19 @@ fn get_libm_f64_to_f64<'a>(
 ) -> FunctionValue<'a> {
     let f64_type = context.f64_type();
     let floor_type = f64_type.fn_type(&[f64_type.into()], false);
+    let func = module.add_function(name, floor_type, None);
+    let nobuiltin_kind = Attribute::get_named_enum_kind_id("nobuiltin");
+    let nobuiltin_attr = context.create_enum_attribute(nobuiltin_kind, 0);
+    func.add_attribute(AttributeLoc::Function, nobuiltin_attr);
+    func
+}
+fn get_libm_double_f64_to_f64<'a>(
+    module: &Module<'a>,
+    context: &'a Context,
+    name: &str,
+) -> FunctionValue<'a> {
+    let f64_type = context.f64_type();
+    let floor_type = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
     let func = module.add_function(name, floor_type, None);
     let nobuiltin_kind = Attribute::get_named_enum_kind_id("nobuiltin");
     let nobuiltin_attr = context.create_enum_attribute(nobuiltin_kind, 0);
@@ -270,6 +285,8 @@ impl<'ctx> Builders<'ctx> {
             llvm_log10: get_libm_f64_to_f64(&module, &context, "log10"),
             llvm_exp: get_libm_f64_to_f64(&module, &context, "exp"),
             llvm_pow10: get_libm_f64_to_f64(&module, &context, "exp10"),
+            llvm_min: get_libm_double_f64_to_f64(&module, &context, "fmin"),
+            llvm_max: get_libm_double_f64_to_f64(&module, &context, "fmax"),
             str_to_num: module.get_function("xyo_atod").unwrap(),
             num_to_str: module.get_function("xyo_dtoa").unwrap(),
             str_cmp_gt: module.get_function("str_cmp_gt").unwrap(),

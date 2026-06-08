@@ -369,7 +369,7 @@ pub enum ParserError<'a> {
 `Builders` が保持する主な情報は次のとおりです。
 
 - `context` / `module` / `builder`: LLVM の基本オブジェクト
-- `functions`: `llvm.*` intrinsic と `xyo_atod`, `xyo_dtoa`, `xyo_bool_to_str`, `xyo_str_cmp_gt`, `xyo_str_cmp_lt`, `xyo_str_cmp_eq`, `str_to_bool`, `str_is_num`, `xorshift128plus` の関数ハンドル
+- `functions`: `llvm.*` intrinsic、`fmin` / `fmax` と `xyo_atod`, `xyo_dtoa`, `xyo_bool_to_str`, `xyo_str_cmp_gt`, `xyo_str_cmp_lt`, `xyo_str_cmp_eq`, `str_to_bool`, `str_is_num`, `xorshift128plus` の関数ハンドル
 - `global_variables` / `local_variables`: Scratch の変数 ID をスロット番号へ割り当てる表
 - `get_variable()`: 変数 ID を `VariableInfo` に解決して、グローバルかローカルかとスロット番号を返す
 - `rolling_hash_seed_*` / `rolling_hash_base_*`: 文字列ハッシュ生成に使う定数
@@ -437,6 +437,7 @@ builder.position_at_end(entry);
 for stmt in &thread.stmts {
     match stmt {
         Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
+        Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx),
         _ => todo!("やります"),  // 未実装
     }
 }
@@ -446,7 +447,7 @@ builder.build_return(None);  // void return
 
 ### 実行状態
 
-各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` などは `build_struct_gep` を使ってそのフィールドを更新します。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
+各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` や `LooksSetSizeTo` などは `build_struct_gep` を使ってそのフィールドを更新します。大きさ変更系の Looks ブロックは、現在コスチュームの幅・高さから Scratch と同じ最小・最大スケールを計算し、`fmin` / `fmax` で丸めた値を `sprite_size` に保存します。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
 
 ### 式の IR 変換
 
@@ -505,16 +506,16 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 
 ### 現在の制約
 
-- **IR 生成**: スレッド本体は動き系命令のみ。式はリテラルと演算子のみ。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
+- **IR 生成**: スレッド本体は動き系命令と見た目の大きさ変更系のみ。式はリテラル、演算子、見た目の大きさレポーターが中心。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
 - **ランタイム**: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの `run` は JIT で各 thread を実行し、状態を標準出力へ定期的に返す
-- **コスチューム・サウンド**: メタデータは読み込めるが IR 生成には未対応
+- **コスチューム・サウンド**: コスチューム寸法は大きさの丸めに使うが、コスチューム切り替えやサウンド再生の IR 生成は未対応
 - **スレッド間通信**: ブロードキャスト・メッセージ処理は未実装
 
 ### 今後の実装が期待される部分
 
 - `ControlStmt` (if/else, repeat, forever など) の IR 生成
 - `DataStmt` (変数操作) の IR 生成
-- `LooksStmt` (見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
+- `LooksStmt` (大きさ以外の見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
 - `run` の未実装分岐に対する安全なフォールバック（パニックを避けてエラー報告する）
 - 生成した IR を `clang` や `llc` でリンク・コンパイルするフロー
 

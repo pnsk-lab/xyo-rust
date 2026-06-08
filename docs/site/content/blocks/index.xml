@@ -7,21 +7,21 @@
 			<a href="../">
 				はじめに
 			</a>
-			 /
+			 / 
 			<a href="../getting-started/">
 				セットアップ
 			</a>
-			 /
+			 / 
 			<a href="../cli/">
 				CLI
 			</a>
-			 /
+			 / 
 			<a href="../architecture/">
 				アーキテクチャ
 			</a>
 		</p>
 		<p>
-			このページは、現時点の
+			このページは、現時点の 
 			<code>
 				xyo-rust
 			</code>
@@ -122,10 +122,10 @@
 						✅ 全 5 opcode
 					</td>
 					<td>
-						❌ なし
+						🟡 一部 (2/21)
 					</td>
 					<td>
-						❌ なし
+						🟡 一部 (1/5)
 					</td>
 				</tr>
 				<tr>
@@ -268,15 +268,15 @@
 		</section>
 		<section title="Hat block">
 			<p>
-				hat block はスクリプトの起点になるブロックです。各 hat block は
+				hat block はスクリプトの起点になるブロックです。各 hat block は 
 				<code>
 					Thread
 				</code>
-				 の
+				 の 
 				<code>
 					hat
 				</code>
-				 フィールドに格納され、その後に続くブロック列が
+				 フィールドに格納され、その後に続くブロック列が 
 				<code>
 					stmts
 				</code>
@@ -504,7 +504,7 @@
 				</tr>
 			</table>
 			<p>
-				「間接対応」とは、hat block 自体は
+				「間接対応」とは、hat block 自体は 
 				<code>
 					Thread
 				</code>
@@ -527,7 +527,7 @@
 				<code>
 					SpriteStruct
 				</code>
-				 の状態ポインタから
+				 の状態ポインタから 
 				<code>
 					build_struct_gep
 				</code>
@@ -545,7 +545,7 @@
 							<code>
 								MotionMoveSteps
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -555,7 +555,7 @@
 							<code>
 								MotionTurnRight
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -565,7 +565,7 @@
 							<code>
 								MotionTurnLeft
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -575,7 +575,7 @@
 							<code>
 								MotionGoTo
 							</code>
-							 —
+							 — 
 							<code>
 								[対象]
 							</code>
@@ -585,11 +585,11 @@
 							<code>
 								MotionGoToXY
 							</code>
-							 — x:
+							 — x: 
 							<code>
 								[数値]
 							</code>
-							 y:
+							 y: 
 							<code>
 								[数値]
 							</code>
@@ -599,11 +599,11 @@
 							<code>
 								MotionGlideTo
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 秒で
+							 秒で 
 							<code>
 								[対象]
 							</code>
@@ -613,15 +613,15 @@
 							<code>
 								MotionGlideSecsToXY
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 秒で x:
+							 秒で x: 
 							<code>
 								[数値]
 							</code>
-							 y:
+							 y: 
 							<code>
 								[数値]
 							</code>
@@ -631,7 +631,7 @@
 							<code>
 								MotionPointInDirection
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -641,7 +641,7 @@
 							<code>
 								MotionPointTowards
 							</code>
-							 —
+							 — 
 							<code>
 								[対象]
 							</code>
@@ -651,7 +651,7 @@
 							<code>
 								MotionChangeXBy
 							</code>
-							 — x座標を
+							 — x座標を 
 							<code>
 								[数値]
 							</code>
@@ -661,7 +661,7 @@
 							<code>
 								MotionSetX
 							</code>
-							 — x座標を
+							 — x座標を 
 							<code>
 								[数値]
 							</code>
@@ -671,7 +671,7 @@
 							<code>
 								MotionChangeYBy
 							</code>
-							 — y座標を
+							 — y座標を 
 							<code>
 								[数値]
 							</code>
@@ -681,7 +681,7 @@
 							<code>
 								MotionSetY
 							</code>
-							 — y座標を
+							 — y座標を 
 							<code>
 								[数値]
 							</code>
@@ -697,7 +697,7 @@
 							<code>
 								MotionSetRotationStyle
 							</code>
-							 — 回転方法を
+							 — 回転方法を 
 							<code>
 								[スタイル]
 							</code>
@@ -724,13 +724,13 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
 				</li>
 				<li>
-					IR: 一部のみ（位置・向き更新系 +
+					IR: 一部のみ（位置・向き更新系 + 
 					<code>
 						glide secs to x/y
 					</code>
@@ -746,11 +746,11 @@
 							<code>
 								MotionSetX
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
-							 で X フィールドを取り出して
+							 で X フィールドを取り出して 
 							<code>
 								store
 							</code>
@@ -759,19 +759,19 @@
 							<code>
 								MotionChangeXBy
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
-							 +
+							 + 
 							<code>
 								load
 							</code>
-							 +
+							 + 
 							<code>
 								fadd
 							</code>
-							 +
+							 + 
 							<code>
 								store
 							</code>
@@ -781,11 +781,11 @@
 							<code>
 								MotionSetY
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
-							 で Y フィールドを取り出して
+							 で Y フィールドを取り出して 
 							<code>
 								store
 							</code>
@@ -794,19 +794,19 @@
 							<code>
 								MotionChangeYBy
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
-							 +
+							 + 
 							<code>
 								load
 							</code>
-							 +
+							 + 
 							<code>
 								fadd
 							</code>
-							 +
+							 + 
 							<code>
 								store
 							</code>
@@ -816,11 +816,11 @@
 							<code>
 								MotionGoToXY
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
-							 した X・Y フィールドへそれぞれ
+							 した X・Y フィールドへそれぞれ 
 							<code>
 								store
 							</code>
@@ -829,7 +829,7 @@
 							<code>
 								MotionTurnRight
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
@@ -839,7 +839,7 @@
 							<code>
 								MotionTurnLeft
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
@@ -849,11 +849,11 @@
 							<code>
 								MotionPointInDirection
 							</code>
-							 →
+							 → 
 							<code>
 								build_struct_gep
 							</code>
-							 した向きフィールドへ
+							 した向きフィールドへ 
 							<code>
 								store
 							</code>
@@ -862,7 +862,7 @@
 							<code>
 								MotionGlideSecsToXY
 							</code>
-							 →
+							 → 
 							<code>
 								secs * fps
 							</code>
@@ -876,11 +876,11 @@
 							<code>
 								MotionSetRotationStyle
 							</code>
-							 → 回転方法を
+							 → 回転方法を 
 							<code>
 								SpriteStruct
 							</code>
-							 の
+							 の 
 							<code>
 								sprite_rotation_style
 							</code>
@@ -890,11 +890,11 @@
 							<code>
 								MotionAlignScene
 							</code>
-							 /
+							 / 
 							<code>
 								MotionScrollRight
 							</code>
-							 /
+							 / 
 							<code>
 								MotionScrollUp
 							</code>
@@ -903,23 +903,23 @@
 					</ul>
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						MotionGoTo
 					</code>
-					,
+					, 
 					<code>
 						MotionGlideTo
 					</code>
-					,
+					, 
 					<code>
 						MotionIfOnEdgeBounce
 					</code>
-					,
+					, 
 					<code>
 						MotionPointTowards
 					</code>
-					 は
+					 は 
 					<code>
 						parse_motion_stmt
 					</code>
@@ -930,7 +930,7 @@
 				見た目
 			</h3>
 			<p>
-				見た目カテゴリはスプライトの外観（コスチューム・大きさ・エフェクト・表示/非表示など）を制御する命令です。現在は IR 生成未対応で、パーサー段階のみです。
+				見た目カテゴリはスプライトの外観（コスチューム・大きさ・エフェクト・表示/非表示など）を制御する命令です。IR 生成では、現在はスプライトの大きさ変更のみ対応しています。
 			</p>
 			<ul>
 				<li>
@@ -940,11 +940,11 @@
 							<code>
 								LooksSayForSecs
 							</code>
-							 —
+							 — 
 							<code>
 								[テキスト]
 							</code>
-							 を
+							 を 
 							<code>
 								[数値]
 							</code>
@@ -954,7 +954,7 @@
 							<code>
 								LooksSay
 							</code>
-							 —
+							 — 
 							<code>
 								[テキスト]
 							</code>
@@ -964,11 +964,11 @@
 							<code>
 								LooksThinkForSecs
 							</code>
-							 —
+							 — 
 							<code>
 								[テキスト]
 							</code>
-							 を
+							 を 
 							<code>
 								[数値]
 							</code>
@@ -978,7 +978,7 @@
 							<code>
 								LooksThink
 							</code>
-							 —
+							 — 
 							<code>
 								[テキスト]
 							</code>
@@ -988,7 +988,7 @@
 							<code>
 								LooksSwitchCostumeTo
 							</code>
-							 — コスチュームを
+							 — コスチュームを 
 							<code>
 								[名前]
 							</code>
@@ -1004,7 +1004,7 @@
 							<code>
 								LooksSwitchBackdropTo
 							</code>
-							 — 背景を
+							 — 背景を 
 							<code>
 								[名前]
 							</code>
@@ -1020,7 +1020,7 @@
 							<code>
 								LooksChangeSizeBy
 							</code>
-							 — 大きさを
+							 — 大きさを 
 							<code>
 								[数値]
 							</code>
@@ -1030,7 +1030,7 @@
 							<code>
 								LooksSetSizeTo
 							</code>
-							 — 大きさを
+							 — 大きさを 
 							<code>
 								[数値]
 							</code>
@@ -1040,11 +1040,11 @@
 							<code>
 								LooksChangeEffectBy
 							</code>
-							 —
+							 — 
 							<code>
 								[効果]
 							</code>
-							 の効果を
+							 の効果を 
 							<code>
 								[数値]
 							</code>
@@ -1054,11 +1054,11 @@
 							<code>
 								LooksSetEffectTo
 							</code>
-							 —
+							 — 
 							<code>
 								[効果]
 							</code>
-							 の効果を
+							 の効果を 
 							<code>
 								[数値]
 							</code>
@@ -1086,7 +1086,7 @@
 							<code>
 								LooksGotoFrontBack
 							</code>
-							 —
+							 — 
 							<code>
 								[前/後]
 							</code>
@@ -1096,11 +1096,11 @@
 							<code>
 								LooksGoForwardBackwardLayers
 							</code>
-							 — 表示順を
+							 — 表示順を 
 							<code>
 								[数値]
 							</code>
-							 層
+							 層 
 							<code>
 								[前/後]
 							</code>
@@ -1110,7 +1110,7 @@
 							<code>
 								LooksChangeStretchBy
 							</code>
-							 — 横幅を
+							 — 横幅を 
 							<code>
 								[数値]
 							</code>
@@ -1120,7 +1120,7 @@
 							<code>
 								LooksSetStretchTo
 							</code>
-							 — 横幅を
+							 — 横幅を 
 							<code>
 								[数値]
 							</code>
@@ -1136,7 +1136,7 @@
 							<code>
 								LooksSwitchBackdropToAndWait
 							</code>
-							 — 背景を
+							 — 背景を 
 							<code>
 								[名前]
 							</code>
@@ -1145,28 +1145,66 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
 				</li>
 				<li>
-					IR: なし
+					IR: 一部のみ（大きさ更新系）
+					<ul>
+						<li>
+							<code>
+								LooksSetSizeTo
+							</code>
+							 → 入力値を数値へ変換し、現在コスチュームの幅・高さから Scratch 互換の範囲に丸めて 
+							<code>
+								sprite_size
+							</code>
+							 へ保存
+						</li>
+						<li>
+							<code>
+								LooksChangeSizeBy
+							</code>
+							 → 現在の 
+							<code>
+								sprite_size
+							</code>
+							 を読み出して加算し、
+							<code>
+								LooksSetSizeTo
+							</code>
+							 と同じ丸め処理を通して保存
+						</li>
+					</ul>
 				</li>
 				<li>
 					備考: グラフィックエフェクトのパラメータ（
 					<code>
 						COLOR
 					</code>
-					,
+					, 
 					<code>
 						FISHEYE
 					</code>
-					 など）は
+					 など）は 
 					<code>
 						LooksEffects
 					</code>
-					 列挙型として解釈されます
+					 列挙型として解釈されます。大きさの丸めには現在コスチュームの幅・高さを使うため、
+					<code>
+						SpriteStruct
+					</code>
+					 の 
+					<code>
+						sprite_costumes
+					</code>
+					 と 
+					<code>
+						sprite_costume_id
+					</code>
+					 も参照します
 				</li>
 			</ul>
 			<h3>
@@ -1183,7 +1221,7 @@
 							<code>
 								SoundPlayUntilDone
 							</code>
-							 —
+							 — 
 							<code>
 								[サウンド名]
 							</code>
@@ -1193,7 +1231,7 @@
 							<code>
 								SoundPlay
 							</code>
-							 —
+							 — 
 							<code>
 								[サウンド名]
 							</code>
@@ -1209,11 +1247,11 @@
 							<code>
 								SoundChangeEffectBy
 							</code>
-							 —
+							 — 
 							<code>
 								[効果]
 							</code>
-							 の効果を
+							 の効果を 
 							<code>
 								[数値]
 							</code>
@@ -1223,11 +1261,11 @@
 							<code>
 								SoundSetEffectTo
 							</code>
-							 —
+							 — 
 							<code>
 								[効果]
 							</code>
-							 の効果を
+							 の効果を 
 							<code>
 								[数値]
 							</code>
@@ -1243,7 +1281,7 @@
 							<code>
 								SoundChangeVolumeBy
 							</code>
-							 — 音量を
+							 — 音量を 
 							<code>
 								[数値]
 							</code>
@@ -1253,7 +1291,7 @@
 							<code>
 								SoundSetVolumeTo
 							</code>
-							 — 音量を
+							 — 音量を 
 							<code>
 								[数値]
 							</code>
@@ -1262,7 +1300,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1275,11 +1313,11 @@
 					<code>
 						PITCH
 					</code>
-					 /
+					 / 
 					<code>
 						PAN
 					</code>
-					）は
+					）は 
 					<code>
 						SoundEffect
 					</code>
@@ -1300,7 +1338,7 @@
 							<code>
 								EventBroadcast
 							</code>
-							 —
+							 — 
 							<code>
 								[メッセージ]
 							</code>
@@ -1310,7 +1348,7 @@
 							<code>
 								EventBroadcastAndWait
 							</code>
-							 —
+							 — 
 							<code>
 								[メッセージ]
 							</code>
@@ -1319,7 +1357,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1328,7 +1366,7 @@
 					IR: なし
 				</li>
 				<li>
-					備考: ブロードキャスト入力（メッセージ名）は
+					備考: ブロードキャスト入力（メッセージ名）は 
 					<code>
 						Expr
 					</code>
@@ -1339,7 +1377,7 @@
 				制御
 			</h3>
 			<p>
-				制御カテゴリは繰り返し・条件分岐・クローン操作・スクリプト停止などの制御構造です。現在はパーサーで
+				制御カテゴリは繰り返し・条件分岐・クローン操作・スクリプト停止などの制御構造です。現在はパーサーで 
 				<code>
 					SUBSTACK
 				</code>
@@ -1353,7 +1391,7 @@
 							<code>
 								ControlWait
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -1363,7 +1401,7 @@
 							<code>
 								ControlRepeat
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -1379,7 +1417,7 @@
 							<code>
 								ControlIf
 							</code>
-							 — もし
+							 — もし 
 							<code>
 								[条件]
 							</code>
@@ -1389,7 +1427,7 @@
 							<code>
 								ControlIfElse
 							</code>
-							 — もし
+							 — もし 
 							<code>
 								[条件]
 							</code>
@@ -1399,7 +1437,7 @@
 							<code>
 								ControlWaitUntil
 							</code>
-							 —
+							 — 
 							<code>
 								[条件]
 							</code>
@@ -1409,7 +1447,7 @@
 							<code>
 								ControlRepeatUntil
 							</code>
-							 —
+							 — 
 							<code>
 								[条件]
 							</code>
@@ -1419,7 +1457,7 @@
 							<code>
 								ControlWhile
 							</code>
-							 —
+							 — 
 							<code>
 								[条件]
 							</code>
@@ -1435,7 +1473,7 @@
 							<code>
 								ControlCreateCloneOf
 							</code>
-							 —
+							 — 
 							<code>
 								[対象]
 							</code>
@@ -1451,7 +1489,7 @@
 							<code>
 								ControlStop
 							</code>
-							 —
+							 — 
 							<code>
 								[全部/このスクリプト/他のスクリプト]
 							</code>
@@ -1461,11 +1499,11 @@
 							<code>
 								ControlForEach
 							</code>
-							 —
+							 — 
 							<code>
 								[変数]
 							</code>
-							 を
+							 を 
 							<code>
 								[数値]
 							</code>
@@ -1486,7 +1524,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1495,27 +1533,27 @@
 					IR: なし
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						ControlRepeat
 					</code>
-					,
+					, 
 					<code>
 						ControlForever
 					</code>
-					,
+					, 
 					<code>
 						ControlIf
 					</code>
-					,
+					, 
 					<code>
 						ControlIfElse
 					</code>
-					 は入れ子の
+					 は入れ子の 
 					<code>
 						SUBSTACK
 					</code>
-					 を再帰的にパースして
+					 を再帰的にパースして 
 					<code>
 						Option&lt;Vec&lt;Stmt&gt;&gt;
 					</code>
@@ -1536,7 +1574,7 @@
 							<code>
 								SensingAskAndWait
 							</code>
-							 —
+							 — 
 							<code>
 								[質問]
 							</code>
@@ -1557,7 +1595,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1566,7 +1604,7 @@
 					IR: なし
 				</li>
 				<li>
-					備考: ドラッグ可否の設定は
+					備考: ドラッグ可否の設定は 
 					<code>
 						SetDraggable { draggable: bool }
 					</code>
@@ -1587,11 +1625,11 @@
 							<code>
 								DataSetVariableTo
 							</code>
-							 —
+							 — 
 							<code>
 								[変数]
 							</code>
-							 を
+							 を 
 							<code>
 								[値]
 							</code>
@@ -1601,11 +1639,11 @@
 							<code>
 								DataChangeVariableBy
 							</code>
-							 —
+							 — 
 							<code>
 								[変数]
 							</code>
-							 を
+							 を 
 							<code>
 								[値]
 							</code>
@@ -1615,7 +1653,7 @@
 							<code>
 								DataShowVariable
 							</code>
-							 — 変数
+							 — 変数 
 							<code>
 								[変数]
 							</code>
@@ -1625,7 +1663,7 @@
 							<code>
 								DataHideVariable
 							</code>
-							 — 変数
+							 — 変数 
 							<code>
 								[変数]
 							</code>
@@ -1635,11 +1673,11 @@
 							<code>
 								DataAddToList
 							</code>
-							 —
+							 — 
 							<code>
 								[値]
 							</code>
-							 を
+							 を 
 							<code>
 								[リスト]
 							</code>
@@ -1649,11 +1687,11 @@
 							<code>
 								DataDeleteOfList
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
-							 の
+							 の 
 							<code>
 								[番号]
 							</code>
@@ -1663,7 +1701,7 @@
 							<code>
 								DataDeleteAllOfList
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
@@ -1673,15 +1711,15 @@
 							<code>
 								DataInsertAtList
 							</code>
-							 —
+							 — 
 							<code>
 								[値]
 							</code>
-							 を
+							 を 
 							<code>
 								[リスト]
 							</code>
-							 の
+							 の 
 							<code>
 								[番号]
 							</code>
@@ -1691,15 +1729,15 @@
 							<code>
 								DataReplaceItemOfList
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
-							 の
+							 の 
 							<code>
 								[番号]
 							</code>
-							 番目を
+							 番目を 
 							<code>
 								[値]
 							</code>
@@ -1709,7 +1747,7 @@
 							<code>
 								DataShowList
 							</code>
-							 — リスト
+							 — リスト 
 							<code>
 								[リスト]
 							</code>
@@ -1719,7 +1757,7 @@
 							<code>
 								DataHideList
 							</code>
-							 — リスト
+							 — リスト 
 							<code>
 								[リスト]
 							</code>
@@ -1728,7 +1766,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1778,7 +1816,7 @@
 							<code>
 								PenSetPenColorToColor
 							</code>
-							 — ペンの色を
+							 — ペンの色を 
 							<code>
 								[色]
 							</code>
@@ -1788,11 +1826,11 @@
 							<code>
 								PenChangePenColorParamBy
 							</code>
-							 — ペンの
+							 — ペンの 
 							<code>
 								[パラメータ]
 							</code>
-							 を
+							 を 
 							<code>
 								[数値]
 							</code>
@@ -1802,11 +1840,11 @@
 							<code>
 								PenSetPenColorParamTo
 							</code>
-							 — ペンの
+							 — ペンの 
 							<code>
 								[パラメータ]
 							</code>
-							 を
+							 を 
 							<code>
 								[数値]
 							</code>
@@ -1816,7 +1854,7 @@
 							<code>
 								PenChangePenSizeBy
 							</code>
-							 — ペンの太さを
+							 — ペンの太さを 
 							<code>
 								[数値]
 							</code>
@@ -1826,7 +1864,7 @@
 							<code>
 								PenSetPenSizeTo
 							</code>
-							 — ペンの太さを
+							 — ペンの太さを 
 							<code>
 								[数値]
 							</code>
@@ -1836,7 +1874,7 @@
 							<code>
 								PenChangePenHueBy
 							</code>
-							 — ペンの色相を
+							 — ペンの色相を 
 							<code>
 								[数値]
 							</code>
@@ -1846,7 +1884,7 @@
 							<code>
 								PenSetPenHueToNumber
 							</code>
-							 — ペンの色相を
+							 — ペンの色相を 
 							<code>
 								[数値]
 							</code>
@@ -1856,7 +1894,7 @@
 							<code>
 								PenChangePenShadeBy
 							</code>
-							 — ペンの明るさを
+							 — ペンの明るさを 
 							<code>
 								[数値]
 							</code>
@@ -1866,7 +1904,7 @@
 							<code>
 								PenSetPenShadeToNumber
 							</code>
-							 — ペンの明るさを
+							 — ペンの明るさを 
 							<code>
 								[数値]
 							</code>
@@ -1875,7 +1913,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1895,13 +1933,13 @@
 			</p>
 			<ul>
 				<li>
-					対応 opcode:
+					対応 opcode: 
 					<code>
 						ProceduresCall
 					</code>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Stmt
 					</code>
@@ -1910,7 +1948,7 @@
 					IR: なし
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						mutation
 					</code>
@@ -1991,7 +2029,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -2004,11 +2042,11 @@
 					<code>
 						GoToMenu
 					</code>
-					,
+					, 
 					<code>
 						GlideToMenu
 					</code>
-					,
+					, 
 					<code>
 						PointTowardsMenu
 					</code>
@@ -2058,32 +2096,52 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
 				</li>
 				<li>
-					IR: なし
+					IR: 一部のみ（
+					<code>
+						LooksSize
+					</code>
+					）
+					<ul>
+						<li>
+							<code>
+								LooksSize
+							</code>
+							 → 
+							<code>
+								SpriteStruct
+							</code>
+							 の 
+							<code>
+								sprite_size
+							</code>
+							 を読み出して数値として返す
+						</li>
+					</ul>
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						LooksCostumeNumberName
 					</code>
-					 /
+					 / 
 					<code>
 						LooksBackdropNumberName
 					</code>
-					 は
+					 は 
 					<code>
 						number
 					</code>
-					 または
+					 または 
 					<code>
 						name
 					</code>
-					 の区別を
+					 の区別を 
 					<code>
 						CostumeStatueTarget
 					</code>
@@ -2127,7 +2185,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -2164,7 +2222,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -2173,11 +2231,11 @@
 					IR: なし
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						ControlGetCounter
 					</code>
-					 は内部式
+					 は内部式 
 					<code>
 						ControlExpr::GetCounter
 					</code>
@@ -2198,7 +2256,7 @@
 							<code>
 								SensingTouchingObject
 							</code>
-							 —
+							 — 
 							<code>
 								[対象]
 							</code>
@@ -2214,7 +2272,7 @@
 							<code>
 								SensingTouchingColor
 							</code>
-							 —
+							 — 
 							<code>
 								[色]
 							</code>
@@ -2224,11 +2282,11 @@
 							<code>
 								SensingColorIsTouchingColor
 							</code>
-							 —
+							 — 
 							<code>
 								[色]
 							</code>
-							 が
+							 が 
 							<code>
 								[色]
 							</code>
@@ -2238,7 +2296,7 @@
 							<code>
 								SensingDistanceTo
 							</code>
-							 —
+							 — 
 							<code>
 								[対象]
 							</code>
@@ -2264,7 +2322,7 @@
 							<code>
 								SensingKeyPressed
 							</code>
-							 —
+							 — 
 							<code>
 								[キー]
 							</code>
@@ -2310,11 +2368,11 @@
 							<code>
 								SensingOf
 							</code>
-							 —
+							 — 
 							<code>
 								[スプライト/ステージ]
 							</code>
-							 の
+							 の 
 							<code>
 								[プロパティ]
 							</code>
@@ -2353,7 +2411,7 @@
 							<code>
 								SensingCurrent
 							</code>
-							 — 現在の
+							 — 現在の 
 							<code>
 								[年/月/日/時/分/秒]
 							</code>
@@ -2367,7 +2425,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -2376,7 +2434,7 @@
 					IR: なし
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						SensingOf
 					</code>
@@ -2384,19 +2442,19 @@
 					<code>
 						x position
 					</code>
-					,
+					, 
 					<code>
 						y position
 					</code>
-					,
+					, 
 					<code>
 						direction
 					</code>
-					 など）は
+					 など）は 
 					<code>
 						StatusTarget
 					</code>
-					 列挙型、時刻の種類は
+					 列挙型、時刻の種類は 
 					<code>
 						TimeTarget
 					</code>
@@ -2407,7 +2465,7 @@
 				演算
 			</h3>
 			<p>
-				数値・文字列・真偽値の演算を行うレポーターです。IR 生成が最も充実しているカテゴリですが、スレッド本体の文として実行されるのではなく、動きブロックなどの入力式として
+				数値・文字列・真偽値の演算を行うレポーターです。IR 生成が最も充実しているカテゴリですが、スレッド本体の文として実行されるのではなく、動きブロックなどの入力式として 
 				<code>
 					generate_expr_ir
 				</code>
@@ -2421,11 +2479,11 @@
 							<code>
 								OperatorAdd
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 +
+							 + 
 							<code>
 								[数値]
 							</code>
@@ -2434,11 +2492,11 @@
 							<code>
 								OperatorSubtract
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 -
+							 - 
 							<code>
 								[数値]
 							</code>
@@ -2447,11 +2505,11 @@
 							<code>
 								OperatorMultiply
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 *
+							 * 
 							<code>
 								[数値]
 							</code>
@@ -2460,11 +2518,11 @@
 							<code>
 								OperatorDivide
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 /
+							 / 
 							<code>
 								[数値]
 							</code>
@@ -2473,11 +2531,11 @@
 							<code>
 								OperatorRandom
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 から
+							 から 
 							<code>
 								[数値]
 							</code>
@@ -2487,11 +2545,11 @@
 							<code>
 								OperatorGt
 							</code>
-							 —
+							 — 
 							<code>
 								[値]
 							</code>
-							 &gt;
+							 &gt; 
 							<code>
 								[値]
 							</code>
@@ -2500,11 +2558,11 @@
 							<code>
 								OperatorLt
 							</code>
-							 —
+							 — 
 							<code>
 								[値]
 							</code>
-							 &lt;
+							 &lt; 
 							<code>
 								[値]
 							</code>
@@ -2513,11 +2571,11 @@
 							<code>
 								OperatorEquals
 							</code>
-							 —
+							 — 
 							<code>
 								[値]
 							</code>
-							 =
+							 = 
 							<code>
 								[値]
 							</code>
@@ -2526,11 +2584,11 @@
 							<code>
 								OperatorAnd
 							</code>
-							 —
+							 — 
 							<code>
 								[条件]
 							</code>
-							 かつ
+							 かつ 
 							<code>
 								[条件]
 							</code>
@@ -2539,11 +2597,11 @@
 							<code>
 								OperatorOr
 							</code>
-							 —
+							 — 
 							<code>
 								[条件]
 							</code>
-							 または
+							 または 
 							<code>
 								[条件]
 							</code>
@@ -2552,7 +2610,7 @@
 							<code>
 								OperatorNot
 							</code>
-							 —
+							 — 
 							<code>
 								[条件]
 							</code>
@@ -2562,11 +2620,11 @@
 							<code>
 								OperatorJoin
 							</code>
-							 —
+							 — 
 							<code>
 								[文字列]
 							</code>
-							 と
+							 と 
 							<code>
 								[文字列]
 							</code>
@@ -2576,11 +2634,11 @@
 							<code>
 								OperatorLetterOf
 							</code>
-							 —
+							 — 
 							<code>
 								[文字列]
 							</code>
-							 の
+							 の 
 							<code>
 								[番号]
 							</code>
@@ -2590,7 +2648,7 @@
 							<code>
 								OperatorLength
 							</code>
-							 —
+							 — 
 							<code>
 								[文字列]
 							</code>
@@ -2600,11 +2658,11 @@
 							<code>
 								OperatorContains
 							</code>
-							 —
+							 — 
 							<code>
 								[文字列]
 							</code>
-							 に
+							 に 
 							<code>
 								[文字列]
 							</code>
@@ -2614,11 +2672,11 @@
 							<code>
 								OperatorMod
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
-							 を
+							 を 
 							<code>
 								[数値]
 							</code>
@@ -2628,7 +2686,7 @@
 							<code>
 								OperatorRound
 							</code>
-							 —
+							 — 
 							<code>
 								[数値]
 							</code>
@@ -2643,7 +2701,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -2655,7 +2713,7 @@
 							<code>
 								OperatorAdd
 							</code>
-							 →
+							 → 
 							<code>
 								fadd double
 							</code>
@@ -2664,7 +2722,7 @@
 							<code>
 								OperatorSubtract
 							</code>
-							 →
+							 → 
 							<code>
 								fsub double
 							</code>
@@ -2673,7 +2731,7 @@
 							<code>
 								OperatorMultiply
 							</code>
-							 →
+							 → 
 							<code>
 								fmul double
 							</code>
@@ -2682,7 +2740,7 @@
 							<code>
 								OperatorDivide
 							</code>
-							 →
+							 → 
 							<code>
 								fdiv double
 							</code>
@@ -2691,7 +2749,7 @@
 							<code>
 								OperatorRandom
 							</code>
-							 →
+							 → 
 							<code>
 								xorshift128plus
 							</code>
@@ -2701,7 +2759,7 @@
 							<code>
 								OperatorGt
 							</code>
-							 → 数値同士は
+							 → 数値同士は 
 							<code>
 								fcmp ogt double
 							</code>
@@ -2711,7 +2769,7 @@
 							<code>
 								OperatorLt
 							</code>
-							 → 数値同士は
+							 → 数値同士は 
 							<code>
 								fcmp olt double
 							</code>
@@ -2721,7 +2779,7 @@
 							<code>
 								OperatorEquals
 							</code>
-							 → 数値同士は
+							 → 数値同士は 
 							<code>
 								fcmp oeq double
 							</code>
@@ -2731,7 +2789,7 @@
 							<code>
 								OperatorAnd
 							</code>
-							 →
+							 → 
 							<code>
 								and i1
 							</code>
@@ -2740,7 +2798,7 @@
 							<code>
 								OperatorOr
 							</code>
-							 →
+							 → 
 							<code>
 								or i1
 							</code>
@@ -2749,7 +2807,7 @@
 							<code>
 								OperatorNot
 							</code>
-							 →
+							 → 
 							<code>
 								xor i1 %v, true
 							</code>
@@ -2758,7 +2816,7 @@
 							<code>
 								OperatorMod
 							</code>
-							 →
+							 → 
 							<code>
 								frem double
 							</code>
@@ -2771,7 +2829,7 @@
 							<code>
 								floor(x + 0.5)
 							</code>
-							 と
+							 と 
 							<code>
 								-0
 							</code>
@@ -2781,7 +2839,7 @@
 							<code>
 								OperatorMathOp (Abs)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.fabs.f64
 							</code>
@@ -2790,7 +2848,7 @@
 							<code>
 								OperatorMathOp (Floor)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.floor.f64
 							</code>
@@ -2799,7 +2857,7 @@
 							<code>
 								OperatorMathOp (Ceil)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.ceil.f64
 							</code>
@@ -2808,7 +2866,7 @@
 							<code>
 								OperatorMathOp (Sqrt)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.sqrt.f64
 							</code>
@@ -2817,15 +2875,15 @@
 							<code>
 								OperatorMathOp (Sin/Cos/Tan)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.sin.f64
 							</code>
-							 /
+							 / 
 							<code>
 								llvm.cos.f64
 							</code>
-							 /
+							 / 
 							<code>
 								tan
 							</code>
@@ -2835,15 +2893,15 @@
 							<code>
 								OperatorMathOp (Asin/Acos/Atan)
 							</code>
-							 →
+							 → 
 							<code>
 								asin
 							</code>
-							 /
+							 / 
 							<code>
 								acos
 							</code>
-							 /
+							 / 
 							<code>
 								atan
 							</code>
@@ -2853,7 +2911,7 @@
 							<code>
 								OperatorMathOp (LogE)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.log.f64
 							</code>
@@ -2862,7 +2920,7 @@
 							<code>
 								OperatorMathOp (Log10)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.log10.f64
 							</code>
@@ -2871,7 +2929,7 @@
 							<code>
 								OperatorMathOp (PowE)
 							</code>
-							 →
+							 → 
 							<code>
 								llvm.exp.f64
 							</code>
@@ -2880,7 +2938,7 @@
 							<code>
 								OperatorMathOp (Pow10)
 							</code>
-							 →
+							 → 
 							<code>
 								pow10
 							</code>
@@ -2889,50 +2947,50 @@
 					</ul>
 				</li>
 				<li>
-					未実装:
+					未実装: 
 					<code>
 						OperatorJoin
 					</code>
-					,
+					, 
 					<code>
 						OperatorLetterOf
 					</code>
-					,
+					, 
 					<code>
 						OperatorLength
 					</code>
-					,
+					, 
 					<code>
 						OperatorContains
 					</code>
-					 はパーサーでは
+					 はパーサーでは 
 					<code>
 						Expr
 					</code>
-					 になりますが、IR 生成ではまだ
+					 になりますが、IR 生成ではまだ 
 					<code>
 						todo!()
 					</code>
 					 に到達します
 				</li>
 				<li>
-					備考: 四則演算はすべて
+					備考: 四則演算はすべて 
 					<code>
 						double
 					</code>
-					 (f64) 精度の浮動小数点演算です。文字列 / 数値 / 真偽値 / Dynamic の相互変換は
+					 (f64) 精度の浮動小数点演算です。文字列 / 数値 / 真偽値 / Dynamic の相互変換は 
 					<code>
 						scratch_return_to_number
 					</code>
-					,
+					, 
 					<code>
 						scratch_return_to_string
 					</code>
-					,
+					, 
 					<code>
 						scratch_return_to_bool
 					</code>
-					,
+					, 
 					<code>
 						is_num
 					</code>
@@ -2953,11 +3011,11 @@
 							<code>
 								DataItemOfList
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
-							 の
+							 の 
 							<code>
 								[番号]
 							</code>
@@ -2967,11 +3025,11 @@
 							<code>
 								DataItemNumOfList
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
-							 の中の
+							 の中の 
 							<code>
 								[値]
 							</code>
@@ -2981,7 +3039,7 @@
 							<code>
 								DataLengthOfList
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
@@ -2991,11 +3049,11 @@
 							<code>
 								DataListContainsItem
 							</code>
-							 —
+							 — 
 							<code>
 								[リスト]
 							</code>
-							 に
+							 に 
 							<code>
 								[値]
 							</code>
@@ -3016,7 +3074,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -3067,7 +3125,7 @@
 					</ul>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -3076,7 +3134,7 @@
 					IR: なし
 				</li>
 				<li>
-					備考:
+					備考: 
 					<code>
 						ProceduresPrototype
 					</code>
@@ -3088,7 +3146,7 @@
 					<code>
 						warp
 					</code>
-					 フラグ）を
+					 フラグ）を 
 					<code>
 						ProceduresPrototypeStruct
 					</code>
@@ -3103,13 +3161,13 @@
 			</p>
 			<ul>
 				<li>
-					対応 opcode:
+					対応 opcode: 
 					<code>
 						PenMenuColorParam
 					</code>
 				</li>
 				<li>
-					Parser:
+					Parser: 
 					<code>
 						Expr
 					</code>
@@ -3122,15 +3180,15 @@
 					<code>
 						color
 					</code>
-					,
+					, 
 					<code>
 						saturation
 					</code>
-					,
+					, 
 					<code>
 						brightness
 					</code>
-					,
+					, 
 					<code>
 						transparency
 					</code>
@@ -3140,7 +3198,7 @@
 		</section>
 		<section title="入力プリミティブ">
 			<p>
-				ブロック参照以外に、次の入力プリミティブも内部表現へ変換されます。これらは
+				ブロック参照以外に、次の入力プリミティブも内部表現へ変換されます。これらは 
 				<code>
 					Expr::Literal(Literal)
 				</code>
@@ -3171,7 +3229,7 @@
 						<code>
 							"10"
 						</code>
-						,
+						, 
 						<code>
 							"3.14"
 						</code>
@@ -3261,7 +3319,7 @@
 				</tr>
 			</table>
 			<p>
-				数値は文字列として保持されることに注意してください。IR 生成時に
+				数値は文字列として保持されることに注意してください。IR 生成時に 
 				<code>
 					str.parse::&lt;f64&gt;()
 				</code>
@@ -3289,43 +3347,43 @@
 						<code>
 							MotionMoveSteps
 						</code>
-						,
+						, 
 						<code>
 							MotionSetX
 						</code>
-						,
+						, 
 						<code>
 							MotionChangeXBy
 						</code>
-						,
+						, 
 						<code>
 							MotionSetY
 						</code>
-						,
+						, 
 						<code>
 							MotionChangeYBy
 						</code>
-						,
+						, 
 						<code>
 							MotionGoToXY
 						</code>
-						,
+						, 
 						<code>
 							MotionGlideSecsToXY
 						</code>
-						,
+						, 
 						<code>
 							MotionTurnRight
 						</code>
-						,
+						, 
 						<code>
 							MotionTurnLeft
 						</code>
-						,
+						, 
 						<code>
 							MotionPointInDirection
 						</code>
-						,
+						, 
 						<code>
 							MotionSetRotationStyle
 						</code>
@@ -3333,11 +3391,11 @@
 						<code>
 							MotionAlignScene
 						</code>
-						 /
+						 / 
 						<code>
 							MotionScrollRight
 						</code>
-						 /
+						 / 
 						<code>
 							MotionScrollUp
 						</code>
@@ -3352,55 +3410,55 @@
 						<code>
 							OperatorAdd
 						</code>
-						,
+						, 
 						<code>
 							OperatorSubtract
 						</code>
-						,
+						, 
 						<code>
 							OperatorMultiply
 						</code>
-						,
+						, 
 						<code>
 							OperatorDivide
 						</code>
-						,
+						, 
 						<code>
 							OperatorRandom
 						</code>
-						,
+						, 
 						<code>
 							OperatorGreaterThan
 						</code>
-						,
+						, 
 						<code>
 							OperatorLessThan
 						</code>
-						,
+						, 
 						<code>
 							OperatorEq
 						</code>
-						,
+						, 
 						<code>
 							OperatorAnd
 						</code>
-						,
+						, 
 						<code>
 							OperatorOr
 						</code>
-						,
+						, 
 						<code>
 							OperatorNot
 						</code>
-						,
+						, 
 						<code>
 							OperatorMod
 						</code>
-						,
+						, 
 						<code>
 							OperatorRound
 						</code>
-						,
+						, 
 						<code>
 							OperatorCalc
 						</code>
@@ -3412,7 +3470,7 @@
 						Literal
 					</td>
 					<td>
-						数値入力と文字列入力の変換経路あり。どちらも現状は
+						数値入力と文字列入力の変換経路あり。どちらも現状は 
 						<code>
 							StringStruct
 						</code>
@@ -3437,19 +3495,19 @@
 			<pre><code># 使用 opcode を確認する
 cargo run -- stats my_project.sb3
 
-# 確認後、IR 生成を試す
+# 確認後、JIT 実行を試す
 cargo run -- run my_project.sb3
 
 # LLVM IR をファイルに保存して確認する
-cargo run -- run my_project.sb3 --emit-llvm out.ll
+cargo run -- compile my_project.sb3 --output out.ll
 </code></pre>
 			<p>
-				前のページ:
+				前のページ: 
 				<a href="../cli/">
 					CLI
 				</a>
 				<br />
-				次のページ:
+				次のページ: 
 				<a href="../architecture/">
 					アーキテクチャ
 				</a>

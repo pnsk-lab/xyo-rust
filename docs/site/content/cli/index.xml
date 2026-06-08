@@ -7,25 +7,25 @@
 			<a href="../">
 				はじめに
 			</a>
-			 /
+			 / 
 			<a href="../getting-started/">
 				セットアップ
 			</a>
-			 /
+			 / 
 			<a href="../blocks/">
 				対応ブロック一覧
 			</a>
-			 /
+			 / 
 			<a href="../architecture/">
 				アーキテクチャ
 			</a>
 		</p>
 		<p>
-			実行ファイル名は
+			実行ファイル名は 
 			<code>
 				xyo
 			</code>
-			 です。開発中は
+			 です。開発中は 
 			<code>
 				cargo run -- ...
 			</code>
@@ -39,17 +39,18 @@
 		<pre><code>Usage: xyo &lt;COMMAND&gt;
 
 Commands:
-  run    run &lt;path&gt;
-  stats  stats &lt;path&gt;
-  json   json &lt;path&gt;
-  help   Print this message or the help of the given subcommand(s)
+  run      run &lt;path&gt;
+  compile  compile &lt;path&gt;
+  stats    stats &lt;path&gt;
+  json     json &lt;path&gt;
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
   -V, --version  Print version
   -h, --help  Print help
 </code></pre>
 		<p>
-			現時点のサブコマンドは 3 つです。
+			現時点のサブコマンドは 4 つです。
 		</p>
 		<code>
 		</code>
@@ -61,7 +62,7 @@ xyo json &lt;path-to-project.sb3&gt;
 				<code>
 					.sb3
 				</code>
-				 に含まれる
+				 に含まれる 
 				<code>
 					project.json
 				</code>
@@ -254,7 +255,7 @@ Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright"
 				<code>
 					stats
 				</code>
-				 で表示された opcode 一覧を
+				 で表示された opcode 一覧を 
 				<a href="../blocks/">
 					対応ブロック一覧
 				</a>
@@ -267,14 +268,14 @@ Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright"
 			<pre><code>Using Op Codes: ["event_whenflagclicked", "motion_setx", "operator_add"]
 </code></pre>
 			<p>
-				上記の場合、文ブロックは動き系で、入力式も演算子だけなので
+				上記の場合、文ブロックは動き系で、入力式も演算子だけなので 
 				<code>
 					run
 				</code>
 				 が成功する可能性が高いです。
 			</p>
 			<p>
-				一方、次のような opcode が含まれている場合は
+				一方、次のような opcode が含まれている場合は 
 				<code>
 					run
 				</code>
@@ -286,7 +287,7 @@ Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright"
 				<code>
 					looks_sayforsecs
 				</code>
-				 や
+				 や 
 				<code>
 					control_if
 				</code>
@@ -310,22 +311,6 @@ xyo run &lt;path-to-project.sb3&gt;
 6. JIT 実行         (生成した各 thread 関数を起動し、実行中の状態を表示する)
 7. 状態表示        (各 thread の状態スナップショットを Debug 形式で表示)
 </code></pre>
-			<p>
-				LLVM IR をファイルに保存したい場合は
-				<code>
-					--emit-llvm
-				</code>
-				 を指定します。
-			</p>
-			<pre><code>cargo run -- run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
-xyo run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
-</code></pre>
-			<p>
-				<code>
-					--emit-llvm
-				</code>
-				 は IR を保存するためのデバッグ用オプションです。指定しても JIT 実行は省略されず、IR 生成後も各 thread の状態が定期的に表示されます。
-			</p>
 			<warning>
 				<p>
 					<code>
@@ -412,11 +397,11 @@ xyo run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
 				<code>
 					run
 				</code>
-				 は
+				 は 
 				<code>
 					default&lt;O3&gt;
 				</code>
-				 最適化パスを適用します。次のオプションが有効です。
+				 最適化パスを適用してから JIT 実行します。次のオプションが有効です。
 			</p>
 			<table>
 				<tr>
@@ -467,12 +452,42 @@ xyo run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
 				<code>
 					run
 				</code>
-				 の標準出力には、既定では各 thread の状態スナップショットが表示されます。LLVM IR テキストを確認したい場合は
+				 の標準出力には、既定では各 thread の状態スナップショットが表示されます。LLVM IR テキストを確認したい場合は 
 				<code>
-					--emit-llvm &lt;path&gt;
+					compile
 				</code>
-				 で保存先を指定してください。
+				 を使ってください。
 			</p>
+			<code>
+			</code>
+		</section>
+		<section title="compile">
+			<pre><code>cargo run -- compile &lt;path-to-project.sb3&gt; --output out.ll
+xyo compile &lt;path-to-project.sb3&gt; --output out.ll
+</code></pre>
+			<p>
+				<code>
+					.sb3
+				</code>
+				 を読み込み、hat block から thread を抽出して LLVM IR を生成し、指定した 
+				<code>
+					.ll
+				</code>
+				 ファイルへ保存します。JIT 実行は行いません。
+			</p>
+			<p>
+				<code>
+					--output
+				</code>
+				 を省略した場合は 
+				<code>
+					out.ll
+				</code>
+				 に保存します。
+			</p>
+			<pre><code>cargo run -- compile &lt;path-to-project.sb3&gt;
+xyo compile &lt;path-to-project.sb3&gt;
+</code></pre>
 		</section>
 		<section title="エラー表示">
 			<p>
@@ -512,11 +527,11 @@ xyo run &lt;path-to-project.sb3&gt; --emit-llvm out.ll
 			<pre><code>Load error: `project.json` not found in archive: `project.sb3`
 </code></pre>
 			<p>
-				ZIP アーカイブ内に
+				ZIP アーカイブ内に 
 				<code>
 					project.json
 				</code>
-				 が見つかりません。有効な
+				 が見つかりません。有効な 
 				<code>
 					.sb3
 				</code>
@@ -548,7 +563,7 @@ Context:
 							Location:
 						</code>
 					</strong>
-					:
+					: 
 					<code>
 						project.json
 					</code>
@@ -560,7 +575,7 @@ Context:
 							Context:
 						</code>
 					</strong>
-					: 周辺テキストとエラー位置を示す
+					: 周辺テキストとエラー位置を示す 
 					<code>
 						^
 					</code>
@@ -618,7 +633,7 @@ Context:
 						<code>
 							stats
 						</code>
-						 で opcode を確認後 →
+						 で opcode を確認後 → 
 						<code>
 							run
 						</code>
@@ -630,7 +645,7 @@ Context:
 					</td>
 					<td>
 						<code>
-							run --emit-llvm out.ll
+							compile --output out.ll
 						</code>
 					</td>
 				</tr>
@@ -642,7 +657,7 @@ Context:
 						<code>
 							json
 						</code>
-						 +
+						 + 
 						<code>
 							jq
 						</code>
@@ -654,13 +669,13 @@ Context:
 					</td>
 					<td>
 						<code>
-							run
+							compile
 						</code>
 					</td>
 				</tr>
 			</table>
 			<p>
-				次は
+				次は 
 				<a href="../architecture/">
 					アーキテクチャ
 				</a>

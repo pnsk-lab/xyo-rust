@@ -21,7 +21,7 @@ Parser で通ることと、`run` サブコマンドで最後まで通ること�
 | カテゴリ | Stmt 対応 | Expr 対応 | IR Stmt | IR Expr |
 | -------- | --------- | --------- | ------- | ------- |
 | 動き | ✅ 全 18 opcode | ✅ 全 8 opcode | 🟡 一部 (11/18 + 3 NoOp) | ❌ なし |
-| 見た目 | ✅ 全 21 opcode | ✅ 全 5 opcode | ❌ なし | ❌ なし |
+| 見た目 | ✅ 全 21 opcode | ✅ 全 5 opcode | 🟡 一部 (2/21) | 🟡 一部 (1/5) |
 | 音 | ✅ 全 8 opcode | ✅ 全 4 opcode | ❌ なし | ❌ なし |
 | イベント | ✅ 全 2 opcode | — | ❌ なし | — |
 | 制御 | ✅ 全 15 opcode | ✅ 全 2 opcode | ❌ なし | ❌ なし |
@@ -95,7 +95,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ### 見た目
 
-見た目カテゴリはスプライトの外観（コスチューム・大きさ・エフェクト・表示/非表示など）を制御する命令です。現在は IR 生成未対応で、パーサー段階のみです。
+見た目カテゴリはスプライトの外観（コスチューム・大きさ・エフェクト・表示/非表示など）を制御する命令です。IR 生成では、現在はスプライトの大きさ変更のみ対応しています。
 
 - 対応 opcode:
     - `LooksSayForSecs` — `[テキスト]` を `[数値]` 秒言う
@@ -120,8 +120,10 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `LooksHideAllSprites` — すべてのスプライトを隠す
     - `LooksSwitchBackdropToAndWait` — 背景を `[名前]` にして待つ
 - Parser: `Stmt`
-- IR: なし
-- 備考: グラフィックエフェクトのパラメータ（`COLOR`, `FISHEYE` など）は `LooksEffects` 列挙型として解釈されます
+- IR: 一部のみ（大きさ更新系）
+    - `LooksSetSizeTo` → 入力値を数値へ変換し、現在コスチュームの幅・高さから Scratch 互換の範囲に丸めて `sprite_size` へ保存
+    - `LooksChangeSizeBy` → 現在の `sprite_size` を読み出して加算し、`LooksSetSizeTo` と同じ丸め処理を通して保存
+- 備考: グラフィックエフェクトのパラメータ（`COLOR`, `FISHEYE` など）は `LooksEffects` 列挙型として解釈されます。大きさの丸めには現在コスチュームの幅・高さを使うため、`SpriteStruct` の `sprite_costumes` と `sprite_costume_id` も参照します
 
 ### 音
 
@@ -270,7 +272,8 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `LooksCostume` — コスチュームメニュー
     - `LooksBackdrops` — 背景メニュー
 - Parser: `Expr`
-- IR: なし
+- IR: 一部のみ（`LooksSize`）
+    - `LooksSize` → `SpriteStruct` の `sprite_size` を読み出して数値として返す
 - 備考: `LooksCostumeNumberName` / `LooksBackdropNumberName` は `number` または `name` の区別を `CostumeStatueTarget` 列挙型として保持します
 
 ### 音

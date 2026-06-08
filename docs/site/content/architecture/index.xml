@@ -7,15 +7,15 @@
 			<a href="../">
 				はじめに
 			</a>
-			 /
+			 / 
 			<a href="../getting-started/">
 				セットアップ
 			</a>
-			 /
+			 / 
 			<a href="../cli/">
 				CLI
 			</a>
-			 /
+			 / 
 			<a href="../blocks/">
 				対応ブロック一覧
 			</a>
@@ -31,7 +31,7 @@
 				<code>
 					.sb3
 				</code>
-				 から
+				 から 
 				<code>
 					project.json
 				</code>
@@ -70,7 +70,7 @@
 						</code>
 					</td>
 					<td>
-						ZIP アーカイブとして
+						ZIP アーカイブとして 
 						<code>
 							.sb3
 						</code>
@@ -98,11 +98,11 @@
 						</code>
 					</td>
 					<td>
-						Scratch ブロックを
+						Scratch ブロックを 
 						<code>
 							Stmt
 						</code>
-						 /
+						 / 
 						<code>
 							Expr
 						</code>
@@ -179,7 +179,7 @@
 				<code>
 					sb3.rs
 				</code>
-				 はこのアーカイブを開いて
+				 はこのアーカイブを開いて 
 				<code>
 					project.json
 				</code>
@@ -223,7 +223,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						read_sb3
 					</code>
-					 の場合は
+					 の場合は 
 					<code>
 						serde_path_to_error::deserialize
 					</code>
@@ -257,22 +257,22 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 				<code>
 					serde_path_to_error
 				</code>
-				 クレートを使うことで、デシリアライズが失敗した JSON パスを正確に特定できます。さらに
+				 クレートを使うことで、デシリアライズが失敗した JSON パスを正確に特定できます。さらに 
 				<code>
 					refine_json_path
 				</code>
 				 関数によって、エラーの起きたブロック ID までパスを絞り込む場合があります。
 			</p>
 			<p>
-				エラー表示には
+				エラー表示には 
 				<code>
 					json_error_context
 				</code>
-				 関数が使われ、行番号・列番号とともに前後 1 行の周辺テキスト（長い行は
+				 関数が使われ、行番号・列番号とともに前後 1 行の周辺テキスト（長い行は 
 				<code>
 					...
 				</code>
-				 で省略）と
+				 で省略）と 
 				<code>
 					^
 				</code>
@@ -286,7 +286,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 				<code>
 					types/
 				</code>
-				 モジュールは Scratch の
+				 モジュールは Scratch の 
 				<code>
 					project.json
 				</code>
@@ -363,7 +363,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						opcode
 					</code>
-					:
+					: 
 					<code>
 						BlockOpCodes
 					</code>
@@ -389,7 +389,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						next
 					</code>
-					 /
+					 / 
 					<code>
 						parent
 					</code>
@@ -455,11 +455,11 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 		</section>
 		<section title="ステージ 3: パーサー ( src/parser/ )">
 			<p>
-				パーサーは
+				パーサーは 
 				<code>
 					ScratchProject
 				</code>
-				 を受け取り、各スレッドを表す
+				 を受け取り、各スレッドを表す 
 				<code>
 					Vec&lt;Thread&gt;
 				</code>
@@ -574,7 +574,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 						</code>
 					</td>
 					<td>
-						背景が
+						背景が 
 						<code>
 							[名前]
 						</code>
@@ -596,7 +596,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 						<code>
 							[音量/タイマー]
 						</code>
-						 が
+						 が 
 						<code>
 							[値]
 						</code>
@@ -698,11 +698,11 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					 かつ hat block の opcode を持つブロックを見つける
 				</li>
 				<li>
-					hat block の種別を
+					hat block の種別を 
 					<code>
 						hat.rs
 					</code>
-					 で判定して
+					 で判定して 
 					<code>
 						HatStmt
 					</code>
@@ -729,7 +729,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 				AST 型
 			</h3>
 			<p>
-				パーサーが生成する AST は
+				パーサーが生成する AST は 
 				<code>
 					parser/types.rs
 				</code>
@@ -755,11 +755,11 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 }
 </code></pre>
 			<p>
-				各カテゴリは対応する Scratch ブロックのすべての入力・フィールドを保持します。例えば
+				各カテゴリは対応する Scratch ブロックのすべての入力・フィールドを保持します。例えば 
 				<code>
 					MotionStmt::GlideToXY
 				</code>
-				 は秒数・X 座標・Y 座標を
+				 は秒数・X 座標・Y 座標を 
 				<code>
 					Expr
 				</code>
@@ -825,11 +825,11 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 }
 </code></pre>
 			<p>
-				数値は
+				数値は 
 				<code>
 					String
 				</code>
-				 として保持されており、IR 生成時に
+				 として保持されており、IR 生成時に 
 				<code>
 					f64
 				</code>
@@ -1019,15 +1019,19 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 		</section>
 		<section title="ステージ 4: IR 生成と JIT 実行 ( src/compiler/ )">
 			<p>
-				コンパイラは
+				コンパイラは 
 				<code>
 					Vec&lt;Thread&gt;
 				</code>
-				 を受け取り、各スレッドを LLVM IR の関数として生成したあと、JIT で実行して状態を定期表示します。CLI から
+				 を受け取り、各スレッドを LLVM IR の関数として生成します。CLI の 
 				<code>
-					run --emit-llvm &lt;path&gt;
+					compile --output &lt;path&gt;
 				</code>
-				 を指定した場合は、JIT 実行前にモジュール全体の LLVM IR を指定パスへ保存します。
+				 はモジュール全体の LLVM IR を指定パスへ保存し、
+				<code>
+					run
+				</code>
+				 は生成した関数を JIT で実行して状態を定期表示します。
 			</p>
 			<h3>
 				<code>
@@ -1039,7 +1043,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 				<code>
 					compiler/types.rs
 				</code>
-				 では、LLVM の基本オブジェクトに加えて、実行時 ABI や変数割り当てをまとめた
+				 では、LLVM の基本オブジェクトに加えて、実行時 ABI や変数割り当てをまとめた 
 				<code>
 					Builders
 				</code>
@@ -1056,11 +1060,11 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						context
 					</code>
-					 /
+					 / 
 					<code>
 						module
 					</code>
-					 /
+					 / 
 					<code>
 						builder
 					</code>
@@ -1070,43 +1074,51 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						functions
 					</code>
-					:
+					: 
 					<code>
 						llvm.*
 					</code>
-					 intrinsic と
+					 intrinsic、
+					<code>
+						fmin
+					</code>
+					 / 
+					<code>
+						fmax
+					</code>
+					 と 
 					<code>
 						xyo_atod
 					</code>
-					,
+					, 
 					<code>
 						xyo_dtoa
 					</code>
-					,
+					, 
 					<code>
 						xyo_bool_to_str
 					</code>
-					,
+					, 
 					<code>
 						xyo_str_cmp_gt
 					</code>
-					,
+					, 
 					<code>
 						xyo_str_cmp_lt
 					</code>
-					,
+					, 
 					<code>
 						xyo_str_cmp_eq
 					</code>
-					,
+					, 
 					<code>
 						str_to_bool
 					</code>
-					,
+					, 
 					<code>
 						str_is_num
 					</code>
-					,
+					, 
 					<code>
 						xorshift128plus
 					</code>
@@ -1116,7 +1128,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						global_variables
 					</code>
-					 /
+					 / 
 					<code>
 						local_variables
 					</code>
@@ -1126,7 +1138,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						get_variable()
 					</code>
-					: 変数 ID を
+					: 変数 ID を 
 					<code>
 						VariableInfo
 					</code>
@@ -1136,7 +1148,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						rolling_hash_seed_*
 					</code>
-					 /
+					 / 
 					<code>
 						rolling_hash_base_*
 					</code>
@@ -1146,7 +1158,7 @@ pub fn read_sb3(path: impl AsRef&lt;Path&gt;) -&gt; Result&lt;ScratchProject, Re
 					<code>
 						string_literals
 					</code>
-					: 生成済みの
+					: 生成済みの 
 					<code>
 						StringStruct
 					</code>
@@ -1192,14 +1204,14 @@ pub struct SpriteStruct {
 				<code>
 					StringKeys
 				</code>
-				 と
+				 と 
 				<code>
 					SpriteKeys
 				</code>
 				 はこれらの構造体の field index を LLVM から扱いやすくするための列挙型です。
 			</p>
 			<p>
-				動的に型が決まる値は
+				動的に型が決まる値は 
 				<code>
 					DynamicStruct
 				</code>
@@ -1228,7 +1240,7 @@ pub struct DynamicStruct {
 				スレッドごとの IR 生成
 			</h3>
 			<p>
-				各
+				各 
 				<code>
 					Thread
 				</code>
@@ -1246,6 +1258,7 @@ builder.position_at_end(entry);
 for stmt in &amp;thread.stmts {
     match stmt {
         Stmt::Motion(v) =&gt; parse_motion_stmt(builders, v, &amp;function, thread.target_idx),
+        Stmt::Looks(v) =&gt; parse_looks_stmt(builders, v, &amp;function, thread.target_idx),
         _ =&gt; todo!("やります"),  // 未実装
     }
 }
@@ -1256,7 +1269,7 @@ builder.build_return(None);  // void return
 				実行状態
 			</h3>
 			<p>
-				各スレッドは
+				各スレッドは 
 				<code>
 					SpriteStruct
 				</code>
@@ -1264,15 +1277,31 @@ builder.build_return(None);  // void return
 				<code>
 					MotionSetX
 				</code>
-				 などは
+				 や 
+				<code>
+					LooksSetSizeTo
+				</code>
+				 などは 
 				<code>
 					build_struct_gep
 				</code>
-				 を使ってそのフィールドを更新します。JIT 実行時にも同じ
+				 を使ってそのフィールドを更新します。大きさ変更系の Looks ブロックは、現在コスチュームの幅・高さから Scratch と同じ最小・最大スケールを計算し、
+				<code>
+					fmin
+				</code>
+				 / 
+				<code>
+					fmax
+				</code>
+				 で丸めた値を 
+				<code>
+					sprite_size
+				</code>
+				 に保存します。JIT 実行時にも同じ 
 				<code>
 					SpriteStruct
 				</code>
-				 が
+				 が 
 				<code>
 					Debug
 				</code>
@@ -1285,7 +1314,7 @@ builder.build_return(None);  // void return
 				<code>
 					generate_expr_ir
 				</code>
-				 関数が式を LLVM の値に変換します。戻り値の型は
+				 関数が式を LLVM の値に変換します。戻り値の型は 
 				<code>
 					ScratchReturnTypes
 				</code>
@@ -1295,7 +1324,7 @@ builder.build_return(None);  // void return
     Number(FloatValue&lt;'ctx&gt;),                    // f64 の LLVM 値
     String(PointerValue&lt;'ctx&gt;),                  // 文字列ポインタ
     Bool(IntValue&lt;'ctx&gt;),                        // i1 の LLVM 値（真偽値）
-    NumberLiteral(f64),                          // コンパイル時定数（数値）
+    NumberLiteral((f64, FloatValue&lt;'ctx&gt;)),     // コンパイル時定数（数値）
     StringLiteral((String, PointerValue&lt;'ctx&gt;)), // コンパイル時定数（文字列）
     BoolLiteral((bool, IntValue&lt;'ctx&gt;)),         // コンパイル時定数（真偽値）
     Dynamic(PointerValue&lt;'ctx&gt;),                 // kind + payload pointer
@@ -1309,11 +1338,11 @@ builder.build_return(None);  // void return
 				<code>
 					String
 				</code>
-				 /
+				 / 
 				<code>
 					StringLiteral
 				</code>
-				 は
+				 は 
 				<code>
 					StringStruct
 				</code>
@@ -1321,7 +1350,7 @@ builder.build_return(None);  // void return
 				<code>
 					BoolLiteral
 				</code>
-				 /
+				 / 
 				<code>
 					NumberLiteral
 				</code>
@@ -1331,19 +1360,19 @@ builder.build_return(None);  // void return
 				<code>
 					Dynamic
 				</code>
-				 は実行時に
+				 は実行時に 
 				<code>
 					DynamicKind
 				</code>
-				 を見て
+				 を見て 
 				<code>
 					Number
 				</code>
-				 /
+				 / 
 				<code>
 					String
 				</code>
-				 /
+				 / 
 				<code>
 					Bool
 				</code>
@@ -1351,15 +1380,15 @@ builder.build_return(None);  // void return
 				<code>
 					scratch_return_to_number
 				</code>
-				,
+				, 
 				<code>
 					scratch_return_to_string
 				</code>
-				,
+				, 
 				<code>
 					scratch_return_to_bool
 				</code>
-				,
+				, 
 				<code>
 					is_num
 				</code>
@@ -1367,11 +1396,11 @@ builder.build_return(None);  // void return
 				<code>
 					OperatorGt
 				</code>
-				 /
+				 / 
 				<code>
 					OperatorLt
 				</code>
-				 /
+				 / 
 				<code>
 					OperatorEquals
 				</code>
@@ -1421,7 +1450,7 @@ builder.build_return(None);  // void return
 				<code>
 					cargo build
 				</code>
-				 時に
+				 時に 
 				<code>
 					build.rs
 				</code>
@@ -1429,11 +1458,11 @@ builder.build_return(None);  // void return
 				<code>
 					bitcodes/c/
 				</code>
-				 にあるトップレベルの C ソースを LLVM bitcode と LLVM IR に変換します。各ソースは
+				 にあるトップレベルの C ソースを LLVM bitcode と LLVM IR に変換します。各ソースは 
 				<code>
 					clang -emit-llvm -c -O3
 				</code>
-				 で
+				 で 
 				<code>
 					.bc
 				</code>
@@ -1441,23 +1470,23 @@ builder.build_return(None);  // void return
 				<code>
 					clang -S -emit-llvm -O3
 				</code>
-				 で
+				 で 
 				<code>
 					.ll
 				</code>
-				 に変換され、出力は
+				 に変換され、出力は 
 				<code>
 					bitcodes/bc/
 				</code>
-				 と
+				 と 
 				<code>
 					bitcodes/ll/
 				</code>
-				 に保存されます。生成済み
+				 に保存されます。生成済み 
 				<code>
 					.bc
 				</code>
-				 は
+				 は 
 				<code>
 					embedded_bitcodes.rs
 				</code>
@@ -1488,7 +1517,7 @@ builder.build_return(None);  // void return
 						<code>
 							bitcodes/bc/numeric.bc
 						</code>
-						,
+						, 
 						<code>
 							bitcodes/ll/numeric.ll
 						</code>
@@ -1507,7 +1536,7 @@ builder.build_return(None);  // void return
 						<code>
 							bitcodes/bc/str.bc
 						</code>
-						,
+						, 
 						<code>
 							bitcodes/ll/str.ll
 						</code>
@@ -1526,7 +1555,7 @@ builder.build_return(None);  // void return
 						<code>
 							bitcodes/bc/tick.bc
 						</code>
-						,
+						, 
 						<code>
 							bitcodes/ll/tick.ll
 						</code>
@@ -1540,11 +1569,11 @@ builder.build_return(None);  // void return
 				<code>
 					numeric.c
 				</code>
-				 は
+				 は 
 				<code>
 					bitcodes/c/lib/dtoa.c
 				</code>
-				 と
+				 と 
 				<code>
 					bitcodes/c/lib/cutils.c
 				</code>
@@ -1552,15 +1581,15 @@ builder.build_return(None);  // void return
 				<code>
 					xyo_atod
 				</code>
-				 /
+				 / 
 				<code>
 					xyo_dtoa
 				</code>
-				 /
+				 / 
 				<code>
 					str_is_num
 				</code>
-				 /
+				 / 
 				<code>
 					str_is_double
 				</code>
@@ -1568,7 +1597,7 @@ builder.build_return(None);  // void return
 				<code>
 					str.c
 				</code>
-				 は ICU の Unicode API を使って
+				 は ICU の Unicode API を使って 
 				<code>
 					string_to_bool
 				</code>
@@ -1576,11 +1605,11 @@ builder.build_return(None);  // void return
 				<code>
 					tick.c
 				</code>
-				 は
+				 は 
 				<code>
 					xyo_now_ns
 				</code>
-				 /
+				 / 
 				<code>
 					xyo_sleep_until_ns
 				</code>
@@ -1590,7 +1619,7 @@ builder.build_return(None);  // void return
 				<code>
 					build.rs
 				</code>
-				 は
+				 は 
 				<code>
 					CLANG
 				</code>
@@ -1598,7 +1627,7 @@ builder.build_return(None);  // void return
 				<code>
 					PATH
 				</code>
-				 上の
+				 上の 
 				<code>
 					clang
 				</code>
@@ -1606,7 +1635,7 @@ builder.build_return(None);  // void return
 				<code>
 					llvm-config --bindir
 				</code>
-				 の順で
+				 の順で 
 				<code>
 					clang
 				</code>
@@ -1614,11 +1643,11 @@ builder.build_return(None);  // void return
 				<code>
 					bitcodes/c/lib
 				</code>
-				 と ICU の include path を追加して各ソースをコンパイルします。ICU ヘッダは
+				 と ICU の include path を追加して各ソースをコンパイルします。ICU ヘッダは 
 				<code>
 					XYO_ICU_PREBUILT_DIR/include
 				</code>
-				 か
+				 か 
 				<code>
 					XYO_ICU_ROOT/source/common
 				</code>
@@ -1636,7 +1665,7 @@ builder.build_return(None);  // void return
 					<code>
 						PATH
 					</code>
-					 上の
+					 上の 
 					<code>
 						clang
 					</code>
@@ -1644,7 +1673,7 @@ builder.build_return(None);  // void return
 					<code>
 						llvm-config --bindir
 					</code>
-					 の順で
+					 の順で 
 					<code>
 						clang
 					</code>
@@ -1654,33 +1683,33 @@ builder.build_return(None);  // void return
 					<code>
 						bitcodes/c/
 					</code>
-					 配下のトップレベル
+					 配下のトップレベル 
 					<code>
 						.c
 					</code>
 					 を列挙する
 				</li>
 				<li>
-					各ソースに
+					各ソースに 
 					<code>
 						-I bitcodes/c/lib
 					</code>
-					 と ICU の include path を足して
+					 と ICU の include path を足して 
 					<code>
 						clang -emit-llvm -c -O3
 					</code>
-					 と
+					 と 
 					<code>
 						clang -S -emit-llvm -O3
 					</code>
 					 を実行する
 				</li>
 				<li>
-					生成した
+					生成した 
 					<code>
 						.bc
 					</code>
-					 を
+					 を 
 					<code>
 						bitcodes/bc/
 					</code>
@@ -1688,7 +1717,7 @@ builder.build_return(None);  // void return
 					<code>
 						.ll
 					</code>
-					 を
+					 を 
 					<code>
 						bitcodes/ll/
 					</code>
@@ -1698,7 +1727,7 @@ builder.build_return(None);  // void return
 					<code>
 						.bc
 					</code>
-					 一覧をもとに
+					 一覧をもとに 
 					<code>
 						embedded_bitcodes.rs
 					</code>
@@ -1715,11 +1744,11 @@ builder.build_return(None);  // void return
 					<strong>
 						IR 生成
 					</strong>
-					: スレッド本体は動き系命令のみ。式はリテラルと演算子のみ。
+					: スレッド本体は動き系命令と見た目の大きさ変更系のみ。式はリテラル、演算子、見た目の大きさレポーターが中心。
 					<code>
 						run
 					</code>
-					 で残りの文 opcode や未実装式に当たると
+					 で残りの文 opcode や未実装式に当たると 
 					<code>
 						todo!()
 					</code>
@@ -1729,7 +1758,7 @@ builder.build_return(None);  // void return
 					<strong>
 						ランタイム
 					</strong>
-					: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの
+					: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの 
 					<code>
 						run
 					</code>
@@ -1739,7 +1768,7 @@ builder.build_return(None);  // void return
 					<strong>
 						コスチューム・サウンド
 					</strong>
-					: メタデータは読み込めるが IR 生成には未対応
+					: コスチューム寸法は大きさの丸めに使うが、コスチューム切り替えやサウンド再生の IR 生成は未対応
 				</li>
 				<li>
 					<strong>
@@ -1768,7 +1797,7 @@ builder.build_return(None);  // void return
 					<code>
 						LooksStmt
 					</code>
-					 (見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
+					 (大きさ以外の見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
 				</li>
 				<li>
 					<code>
@@ -1777,11 +1806,11 @@ builder.build_return(None);  // void return
 					 の未実装分岐に対する安全なフォールバック（パニックを避けてエラー報告する）
 				</li>
 				<li>
-					生成した IR を
+					生成した IR を 
 					<code>
 						clang
 					</code>
-					 や
+					 や 
 					<code>
 						llc
 					</code>
@@ -1789,7 +1818,7 @@ builder.build_return(None);  // void return
 				</li>
 			</ul>
 			<p>
-				前のページ:
+				前のページ: 
 				<a href="../cli/">
 					CLI
 				</a>

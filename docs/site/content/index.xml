@@ -10,13 +10,16 @@
 			<a href="https://github.com/pnsk-lab/xyo-rust/releases/latest">
 				latest release
 			</a>
+			<a href="https://技術者倫理.com">
+				<img src="https://img.shields.io/badge/%E6%8A%80%E8%A1%93%E8%80%85%E5%80%AB%E7%90%86-%E9%81%B5%E5%AE%88%E6%B8%88%E3%81%BF-0a0a0a?style=for-the-badge&amp;labelColor=ffffff" alt="技術者倫理 遵守済み" />
+			</a>
 		</p>
 		<p>
-			Scratch の
+			Scratch の 
 			<code>
 				.sb3
 			</code>
-			 プロジェクトを読み込み、解析し、LLVM IR を生成して JIT で動かす実験プロジェクト
+			 プロジェクトを読み込み、解析し、LLVM IR を生成して JIT で動かす実験プロジェクト 
 			<code>
 				xyo-rust
 			</code>
@@ -24,11 +27,11 @@
 		</p>
 		<section title="このドキュメントについて">
 			<p>
-				このドキュメントは
+				このドキュメントは 
 				<code>
 					xyo-rust
 				</code>
-				 の利用者・開発者向けの技術解説書です。Scratch プロジェクトのコンパイル基盤として
+				 の利用者・開発者向けの技術解説書です。Scratch プロジェクトのコンパイル基盤として 
 				<code>
 					xyo-rust
 				</code>
@@ -75,7 +78,7 @@
 				 は MIT メディアラボが開発したビジュアルプログラミング環境で、ブロックをドラッグ＆ドロップして組み合わせることでプログラムを作れます。
 			</p>
 			<p>
-				Scratch プロジェクトは
+				Scratch プロジェクトは 
 				<code>
 					.sb3
 				</code>
@@ -83,7 +86,7 @@
 				<code>
 					.sb3
 				</code>
-				 の正体は ZIP アーカイブで、内部に
+				 の正体は ZIP アーカイブで、内部に 
 				<code>
 					project.json
 				</code>
@@ -99,7 +102,7 @@
 				<code>
 					project.json
 				</code>
-				 の最上位には
+				 の最上位には 
 				<code>
 					targets
 				</code>
@@ -262,7 +265,7 @@
 			</p>
 			<ul>
 				<li>
-					Scratch プロジェクトを
+					Scratch プロジェクトを 
 					<strong>
 						静的解析
 					</strong>
@@ -275,7 +278,7 @@
 					LLVM IR を生成し、現在は JIT 実行で挙動確認を行う
 				</li>
 				<li>
-					SB3 解析系の
+					SB3 解析系の 
 					<strong>
 						検証用ツールチェーン
 					</strong>
@@ -307,7 +310,7 @@
 						<code>
 							.sb3
 						</code>
-						 を ZIP として開き
+						 を ZIP として開き 
 						<code>
 							project.json
 						</code>
@@ -350,7 +353,7 @@
 						<code>
 							Stmt
 						</code>
-						 /
+						 / 
 						<code>
 							Expr
 						</code>
@@ -368,7 +371,7 @@
 						一部の式 / 文を LLVM IR へ変換し、JIT で実行する
 					</td>
 					<td>
-						🚧 一部実装（文は動き系、式はリテラル + 演算子）
+						🚧 一部実装（文は動き系と見た目の大きさ変更系、式はリテラル + 演算子 + 一部レポーター）
 					</td>
 				</tr>
 				<tr>
@@ -385,7 +388,7 @@
 			</table>
 			<warning>
 				<p>
-					完全な Scratch 実行互換はまだ未実装です。特に
+					完全な Scratch 実行互換はまだ未実装です。特に 
 					<code>
 						run
 					</code>
@@ -424,7 +427,7 @@ IR 生成（src/compiler/）
    → 標準出力へ実行結果を表示
 </code></pre>
 			<p>
-				詳細は
+				詳細は 
 				<a href="architecture/">
 					アーキテクチャ
 				</a>
@@ -492,7 +495,7 @@ IR 生成（src/compiler/）
 						<a href="architecture/">
 							アーキテクチャ
 						</a>
-						 →
+						 → 
 						<a href="blocks/">
 							対応ブロック一覧
 						</a>
@@ -509,7 +512,7 @@ IR 生成（src/compiler/）
 					LLVM 21.1.x 系を前提にしています（他のバージョンではビルドが失敗します）
 				</li>
 				<li>
-					配布用の
+					配布用の 
 					<code>
 						.sb3
 					</code>
@@ -519,7 +522,7 @@ IR 生成（src/compiler/）
 					<code>
 						run
 					</code>
-					 サブコマンドは実験的で、スレッド本体は動き系文ブロックのみ、入力式はリテラルと演算子のみ対応しています
+					 サブコマンドは実験的で、スレッド本体は動き系文ブロックと見た目の大きさ変更系のみ、入力式はリテラルと演算子と一部レポーターのみ対応しています
 				</li>
 			</ul>
 		</section>
@@ -557,7 +560,7 @@ IR 生成（src/compiler/）
 				<img src="https://api.star-history.com/chart?repos=pnsk-lab/xyo-rust&amp;type=date&amp;legend=top-left" alt="star history" />
 			</p>
 			<p>
-				続きは
+				続きは 
 				<a href="getting-started/">
 					セットアップ
 				</a>
