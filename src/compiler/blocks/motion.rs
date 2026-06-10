@@ -1,9 +1,6 @@
 use std::f64::consts::PI;
 
-use inkwell::{
-    FloatPredicate,
-    values::{FloatValue, FunctionValue, PointerValue},
-};
+use inkwell::values::{FloatValue, FunctionValue, PointerValue};
 
 use crate::{
     compiler::{
@@ -49,15 +46,34 @@ fn build_float_min<'ctx>(
 ) -> FloatValue<'ctx> {
     builders
         .builder
-        .build_select(
-            builders
-                .builder
-                .build_float_compare(FloatPredicate::OGT, left, right, &format!("{name}_cmp"))
-                .unwrap(),
-            right,
-            left,
+        .build_call(
+            builders.functions.llvm_min,
+            &[left.into(), right.into()],
             name,
         )
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_float_value()
+}
+
+fn build_float_max<'ctx>(
+    builders: &Builders<'ctx>,
+    left: FloatValue<'ctx>,
+    right: FloatValue<'ctx>,
+    name: &str,
+) -> FloatValue<'ctx> {
+    builders
+        .builder
+        .build_call(
+            builders.functions.llvm_max,
+            &[left.into(), right.into()],
+            name,
+        )
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
         .unwrap()
         .into_float_value()
 }
@@ -129,45 +145,18 @@ fn build_scratch_fenced_axis<'ctx>(
 
     let min_rounded = build_ceil(builders, min_unrounded, &format!("{axis_name}_min_ceil"));
     let max_rounded = build_floor(builders, max_unrounded, &format!("{axis_name}_max_floor"));
-    let below_min = builders
-        .builder
-        .build_float_compare(
-            FloatPredicate::OLT,
-            value,
-            min_unrounded,
-            &format!("{axis_name}_below_min"),
-        )
-        .unwrap();
-    let above_max = builders
-        .builder
-        .build_float_compare(
-            FloatPredicate::OGT,
-            value,
-            max_unrounded,
-            &format!("{axis_name}_above_max"),
-        )
-        .unwrap();
-    let low_fenced = builders
-        .builder
-        .build_select(
-            below_min,
-            min_rounded,
-            value,
-            &format!("{axis_name}_low_fenced"),
-        )
-        .unwrap()
-        .into_float_value();
-
-    builders
-        .builder
-        .build_select(
-            above_max,
-            max_rounded,
-            low_fenced,
-            &format!("{axis_name}_fenced"),
-        )
-        .unwrap()
-        .into_float_value()
+    let low_fenced = build_float_max(
+        builders,
+        value,
+        min_rounded,
+        &format!("{axis_name}_low_fenced"),
+    );
+    build_float_min(
+        builders,
+        low_fenced,
+        max_rounded,
+        &format!("{axis_name}_fenced"),
+    )
 }
 
 pub fn fence_goto<'ctx>(
@@ -305,24 +294,8 @@ pub fn fence_goto<'ctx>(
         .build_float_div(min_axis, f64_type.const_float(2.0), "fence_half_min_axis")
         .unwrap();
     let inset_with_costume = build_floor(builders, half_min_axis, "fence_inset_floor");
-    let inset_with_costume = builders
-        .builder
-        .build_select(
-            builders
-                .builder
-                .build_float_compare(
-                    FloatPredicate::OLT,
-                    fence_width,
-                    inset_with_costume,
-                    "fence_width_lt_inset",
-                )
-                .unwrap(),
-            fence_width,
-            inset_with_costume,
-            "fence_inset",
-        )
-        .unwrap()
-        .into_float_value();
+    let inset_with_costume =
+        build_float_min(builders, fence_width, inset_with_costume, "fence_inset");
     builders
         .builder
         .build_unconditional_branch(merge_block)

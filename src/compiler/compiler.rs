@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crate::{
     compiler::{
         blocks::{
+            data::parse_data_stmt,
             literal::parse_literal_expr,
             looks::{parse_looks_expr, parse_looks_stmt},
             motion::parse_motion_stmt,
@@ -57,6 +58,7 @@ pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread) -> String {
         match block {
             Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
             Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx),
+            Stmt::DataStmt(v) => parse_data_stmt(builders, v, &function, thread.target_idx),
             _ => todo!("やります"),
         }
     }

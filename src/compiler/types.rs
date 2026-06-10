@@ -12,13 +12,14 @@ use inkwell::{
     memory_buffer::MemoryBuffer,
     module::Module,
     types::StructType,
+    values::BasicValue,
     values::{FunctionValue, PointerValue},
 };
 use llvm_sys::core::LLVMCreateMemoryBufferWithMemoryRange;
 
 use crate::{
     compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
-    types::{ScratchProject, StageOrSprite},
+    types::{ScalarVal, ScalarVariable, ScratchProject, StageOrSprite},
 };
 
 include!(concat!(env!("OUT_DIR"), "/embedded_bitcodes.rs"));
@@ -184,6 +185,7 @@ pub struct Builders<'ctx> {
     pub local_variables: HashMap<usize, HashMap<String, usize>>,
     local_variables_increments: HashMap<usize, usize>,
     global_variable_increment: usize,
+    global_variable_globals: HashMap<usize, PointerValue<'ctx>>,
     counter: usize,
     pub functions: Functions<'ctx>,
     pub rolling_hash_seed_1: u64,
@@ -224,6 +226,22 @@ pub struct Functions<'ctx> {
 pub struct VariableInfo {
     is_global: bool,
     variable_idx: usize,
+}
+
+fn calc_rolling_hash_with_params(
+    s: &str,
+    base1: u64,
+    base2: u64,
+    mod1: u64,
+    mod2: u64,
+) -> (u64, u64) {
+    let mut hash1 = 0u64;
+    let mut hash2 = 0u64;
+    for c in s.encode_utf16() {
+        hash1 = (hash1.wrapping_mul(base1).wrapping_add(c as u64)) % mod1;
+        hash2 = (hash2.wrapping_mul(base2).wrapping_add(c as u64)) % mod2;
+    }
+    (hash1, hash2)
 }
 
 fn get_libm_f64_to_f64<'a>(
@@ -306,7 +324,16 @@ impl<'ctx> Builders<'ctx> {
             local_variables,
             global_variable_increment,
             local_variables_increments,
-        ) = Self::create_variable_map(project);
+            global_variable_globals,
+        ) = Self::create_variable_map(
+            project,
+            &module,
+            context,
+            hash_base_1,
+            hash_base_2,
+            hash_seed_1,
+            hash_seed_2,
+        );
         Self {
             context,
             module,
@@ -323,6 +350,7 @@ impl<'ctx> Builders<'ctx> {
             rolling_hash_base_2: hash_base_2,
             string_literals: HashMap::new(),
             fps: 30.0,
+            global_variable_globals,
         }
     }
     fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context) {
@@ -343,24 +371,138 @@ impl<'ctx> Builders<'ctx> {
                 .unwrap_or_else(|err| panic!("failed to link embedded {name}: {err}"));
         }
     }
+    pub fn get_global_variable_ptr(&self, v: VariableInfo) -> PointerValue<'ctx> {
+        if !v.is_global {
+            panic!("ローカル変数じゃないわﾎﾞｹ")
+        }
+        *self.global_variable_globals.get(&v.variable_idx).unwrap()
+    }
+    fn scalar_variable_to_global_variable_ptr(
+        variable: &ScalarVariable,
+        variable_idx: usize,
+        module: &Module<'ctx>,
+        context: &'ctx Context,
+        hash_base_1: u64,
+        hash_base_2: u64,
+        hash_seed_1: u64,
+        hash_seed_2: u64,
+    ) -> PointerValue<'ctx> {
+        let dynamic_struct_ty = create_dynamic_struct_type(context);
+        let global = module.add_global(
+            context.ptr_type(AddressSpace::default()),
+            Some(AddressSpace::default()),
+            &format!("global_{variable_idx}"),
+        );
+        let payload = match variable.default_value() {
+            ScalarVal::Boolean(v) => {
+                let payload_global = module.add_global(
+                    context.bool_type(),
+                    Some(AddressSpace::default()),
+                    &format!("global_{variable_idx}_bool"),
+                );
+                payload_global.set_initializer(&context.bool_type().const_int(v as u64, false));
+                (DynamicKind::Bool, payload_global.as_pointer_value())
+            }
+            ScalarVal::Number(v) => {
+                let payload_global = module.add_global(
+                    context.f64_type(),
+                    Some(AddressSpace::default()),
+                    &format!("global_{variable_idx}_number"),
+                );
+                payload_global.set_initializer(&context.f64_type().const_float(v));
+                (DynamicKind::Number, payload_global.as_pointer_value())
+            }
+            ScalarVal::String(v) => {
+                let utf16_str = v.encode_utf16().collect::<Vec<_>>();
+                let length = utf16_str.len() as u64;
+                let (hash1, hash2) = calc_rolling_hash_with_params(
+                    &v,
+                    hash_base_1,
+                    hash_base_2,
+                    hash_seed_1,
+                    hash_seed_2,
+                );
+                let i16_type = context.i16_type();
+                let data_global = module.add_global(
+                    i16_type.array_type(length as u32),
+                    Some(AddressSpace::default()),
+                    &format!("global_{variable_idx}_string_data"),
+                );
+                let values = utf16_str
+                    .iter()
+                    .map(|&v| i16_type.const_int(v as u64, false))
+                    .collect::<Vec<_>>();
+                data_global.set_initializer(&i16_type.const_array(&values));
+
+                let string_struct_ty = create_string_struct_type(context);
+                let string_global = module.add_global(
+                    string_struct_ty,
+                    Some(AddressSpace::default()),
+                    &format!("global_{variable_idx}_string"),
+                );
+                string_global.set_initializer(&string_struct_ty.const_named_struct(&[
+                    context.i64_type().const_int(length, false).into(),
+                    data_global.as_pointer_value().into(),
+                    context.i64_type().const_int(hash1, false).into(),
+                    context.i64_type().const_int(hash2, false).into(),
+                ]));
+                (DynamicKind::String, string_global.as_pointer_value())
+            }
+        };
+        let dynamic_inner_global = module.add_global(
+            dynamic_struct_ty,
+            Some(AddressSpace::default()),
+            &format!("global_dynamic_{variable_idx}"),
+        );
+        dynamic_inner_global.set_initializer(
+            &dynamic_struct_ty.const_named_struct(&[
+                context
+                    .i8_type()
+                    .const_int(payload.0 as u64, false)
+                    .as_basic_value_enum(),
+                payload.1.as_basic_value_enum(),
+            ]),
+        );
+        global.set_initializer(&dynamic_inner_global);
+        global.as_pointer_value()
+    }
     fn create_variable_map(
         project: &ScratchProject,
+        module: &Module<'ctx>,
+        context: &'ctx Context,
+        hash_base_1: u64,
+        hash_base_2: u64,
+        hash_seed_1: u64,
+        hash_seed_2: u64,
     ) -> (
         HashMap<String, usize>,
         HashMap<usize, HashMap<String, usize>>,
         usize,
         HashMap<usize, usize>,
+        HashMap<usize, PointerValue<'ctx>>,
     ) {
         let targets = &project.targets;
         let mut local_variable: HashMap<usize, HashMap<String, usize>> = HashMap::new();
         let mut global_variable: HashMap<String, usize> = HashMap::new();
         let mut global_variables_increment: usize = 0;
         let mut local_variables_increments: HashMap<usize, usize> = HashMap::new();
+        let mut global_variable_globals: HashMap<usize, PointerValue> = HashMap::new();
         for (target_idx, target) in targets.iter().enumerate() {
             match target {
                 StageOrSprite::Stage(v) => {
                     for i in &v.variables {
                         global_variable.insert(i.0.clone(), global_variables_increment);
+                        let global_ptr = Self::scalar_variable_to_global_variable_ptr(
+                            i.1,
+                            global_variables_increment,
+                            module,
+                            context,
+                            hash_base_1,
+                            hash_base_2,
+                            hash_seed_1,
+                            hash_seed_2,
+                        );
+                        global_variable_globals.insert(global_variables_increment, global_ptr);
                         global_variables_increment += 1;
                     }
                 }
@@ -381,6 +523,7 @@ impl<'ctx> Builders<'ctx> {
             local_variable,
             global_variables_increment,
             local_variables_increments,
+            global_variable_globals,
         )
     }
     pub fn get_variable(&self, target_idx: usize, variable_id: &str) -> Option<VariableInfo> {
@@ -513,6 +656,23 @@ mod tests {
 
         assert!(variable.is_global);
         assert!(variable.variable_idx < 2);
+    }
+
+    #[test]
+    fn builders_materialize_global_variable_pointers_from_scalar_defaults() {
+        let context = Context::create();
+        let project = project_with_variables();
+        let builders = Builders::new(&context, &project);
+
+        let variable = builders.get_variable(0, "global-score").unwrap();
+        let pointer = builders.get_global_variable_ptr(variable);
+
+        assert_eq!(pointer.get_name().to_str().unwrap(), "global_0");
+        assert!(
+            builders.module.verify().is_ok(),
+            "{}",
+            builders.module.to_string()
+        );
     }
 
     #[test]
