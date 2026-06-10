@@ -13,7 +13,7 @@
 | Hat / Stmt / Expr | それぞれ hat block / 文ブロック / 値ブロックを表します |
 
 ```warn
-Parser で通ることと、`run` サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は移動命令と一部演算に限定されています。
+Parser で通ることと、`run` サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は動き系命令、見た目の大きさ変更系、変数代入、一部演算に限定されています。
 ```
 
 ## 対応状況サマリー
@@ -27,7 +27,7 @@ Parser で通ることと、`run` サブコマンドで最後まで通ること�
 | 制御 | ✅ 全 15 opcode | ✅ 全 2 opcode | ❌ なし | ❌ なし |
 | 調べる | ✅ 全 3 opcode | ✅ 全 22 opcode | ❌ なし | ❌ なし |
 | 演算 | — | ✅ 全 18 opcode | — | 🟡 一部 (14/18、比較は文字列 / Dynamic 分岐あり) |
-| データ | ✅ 全 11 opcode | ✅ 全 6 opcode | ❌ なし | ❌ なし |
+| データ | ✅ 全 11 opcode | ✅ 全 6 opcode | 🟡 一部 (1/11) | 🟡 一部 (変数参照のみ) |
 | 独自ブロック | ✅ 全 1 opcode | ✅ 全 3 opcode | ❌ なし | ❌ なし |
 | ペン | ✅ 全 13 opcode | ✅ 全 1 opcode | ❌ なし | ❌ なし |
 
@@ -206,8 +206,9 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `DataShowList` — リスト `[リスト]` を表示する
     - `DataHideList` — リスト `[リスト]` を隠す
 - Parser: `Stmt`
-- IR: なし
-- 備考: 変数・リストは名前ではなく ID（文字列）で参照されます。実行時に ID から名前を解決する仕組みは未実装です
+- IR: 一部のみ
+    - `DataSetVariableTo` → 対象の変数 ID を `Builders::get_variable()` で解決し、入力値を `DynamicStruct` に変換してグローバル変数スロットへ保存
+- 備考: 変数・リストは名前ではなく ID（文字列）で参照されます。現状の IR 生成で扱える文は変数代入のみで、変数の加算・モニター表示・リスト操作は未実装です
 
 ### ペン
 
@@ -394,8 +395,9 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `DataVariable` — 変数の値
     - `DataListContents` — リスト全体（文字列として）
 - Parser: `Expr`
-- IR: なし
-- 備考: 変数参照 (`DataVariable`) とリスト参照 (`DataListContents`) は変数 ID / リスト ID を保持します。実行時の値解決は未実装です
+- IR: 一部のみ
+    - `DataVariable` / 入力プリミティブの変数参照 → 変数 ID を解決し、グローバル変数スロットから `DynamicStruct` を読み出す
+- 備考: 変数参照 (`DataVariable`) とリスト参照 (`DataListContents`) は変数 ID / リスト ID を保持します。現状の IR 生成で扱える値は変数参照のみで、リスト参照は未実装です
 
 ### 独自ブロック
 
@@ -436,13 +438,13 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ## IR 生成の現状
 
-現在の LLVM IR 生成は、スレッド本体では移動系の一部命令だけを扱います。式側はリテラルと演算子を扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
+現在の LLVM IR 生成は、スレッド本体では動き系の一部命令、見た目の大きさ変更系、変数代入を扱います。式側はリテラル、演算子、変数参照、見た目の大きさレポーターを扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
 
 | 層      | 対応内容                                                                                                                                                                                                                                                         |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
-| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc`（数学関数） |
-| Literal | 数値入力と文字列入力の変換経路あり。どちらも現状は `StringStruct` として作られ、利用側の coercion で数値・真偽値へ変換されます |
+| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`, `LooksSetSizeTo`, `LooksChangeSizeBy`, `DataSetVariableTo`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
+| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc`（数学関数）, `LooksSize`, 変数参照 |
+| Literal | 数値入力と文字列入力、変数参照の変換経路あり。数値・文字列は現状 `StringStruct` として作られ、利用側の coercion で数値・真偽値へ変換されます。変数参照は `DynamicStruct` として読み出されます |
 
 ## `run` の前に使える確認コマンド
 

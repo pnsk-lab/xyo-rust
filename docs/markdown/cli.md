@@ -157,7 +157,7 @@ Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright"
 Using Op Codes: ["event_whenflagclicked", "motion_setx", "operator_add"]
 ```
 
-上記の場合、文ブロックは動き系で、入力式も演算子だけなので `run` が成功する可能性が高いです。
+上記の場合、文ブロックは動き系で、入力式も演算子だけなので `run` が成功する可能性が高いです。見た目の大きさ変更系や変数代入も、未実装式を含まなければ IR 生成の対象です。
 
 一方、次のような opcode が含まれている場合は `run` が途中で停止することがあります。
 

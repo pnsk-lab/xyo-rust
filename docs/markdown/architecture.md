@@ -438,6 +438,7 @@ for stmt in &thread.stmts {
     match stmt {
         Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
         Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx),
+        Stmt::DataStmt(v) => parse_data_stmt(builders, v, &function, thread.target_idx),
         _ => todo!("やります"),  // 未実装
     }
 }
@@ -447,7 +448,7 @@ builder.build_return(None);  // void return
 
 ### 実行状態
 
-各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` や `LooksSetSizeTo` などは `build_struct_gep` を使ってそのフィールドを更新します。大きさ変更系の Looks ブロックは、現在コスチュームの幅・高さから Scratch と同じ最小・最大スケールを計算し、`fmin` / `fmax` で丸めた値を `sprite_size` に保存します。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
+各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` や `LooksSetSizeTo` などは `build_struct_gep` を使ってそのフィールドを更新します。大きさ変更系の Looks ブロックは、現在コスチュームの幅・高さから Scratch と同じ最小・最大スケールを計算し、`fmin` / `fmax` で丸めた値を `sprite_size` に保存します。`DataSetVariableTo` は対象変数 ID を解決し、入力値を `DynamicStruct` へ変換してグローバル変数スロットへ保存します。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
 
 ### 式の IR 変換
 
@@ -467,7 +468,7 @@ pub enum ScratchReturnTypes<'ctx> {
 
 `Literal` バリアントは実際の LLVM 値と Rust 側の定数の両方を保持します。これにより、定数畳み込みなどの最適化が可能になります。`String` / `StringLiteral` は `StringStruct` で表現された文字列を指し、`BoolLiteral` / `NumberLiteral` は coercion のための定数としても使われます。
 
-`Dynamic` は実行時に `DynamicKind` を見て `Number` / `String` / `Bool` へ分岐します。`scratch_return_to_number`, `scratch_return_to_string`, `scratch_return_to_bool`, `is_num` は、静的型だけでなく Dynamic 値も扱います。`OperatorGt` / `OperatorLt` / `OperatorEquals` は片側が文字列または Dynamic の場合、文字列比較と数値比較の分岐を生成します。
+`Dynamic` は実行時に `DynamicKind` を見て `Number` / `String` / `Bool` へ分岐します。変数参照はグローバル変数スロットから `Dynamic` として読み出されます。`scratch_return_to_number`, `scratch_return_to_string`, `scratch_return_to_bool`, `is_num` は、静的型だけでなく Dynamic 値も扱います。`OperatorGt` / `OperatorLt` / `OperatorEquals` は片側が文字列または Dynamic の場合、文字列比較と数値比較の分岐を生成します。
 
 ### 最適化
 
@@ -506,7 +507,7 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 
 ### 現在の制約
 
-- **IR 生成**: スレッド本体は動き系命令と見た目の大きさ変更系のみ。式はリテラル、演算子、見た目の大きさレポーターが中心。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
+- **IR 生成**: スレッド本体は動き系命令、見た目の大きさ変更系、変数代入のみ。式はリテラル、演算子、変数参照、見た目の大きさレポーターが中心。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
 - **ランタイム**: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの `run` は JIT で各 thread を実行し、状態を標準出力へ定期的に返す
 - **コスチューム・サウンド**: コスチューム寸法は大きさの丸めに使うが、コスチューム切り替えやサウンド再生の IR 生成は未対応
 - **スレッド間通信**: ブロードキャスト・メッセージ処理は未実装
@@ -514,7 +515,7 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 ### 今後の実装が期待される部分
 
 - `ControlStmt` (if/else, repeat, forever など) の IR 生成
-- `DataStmt` (変数操作) の IR 生成
+- `DataStmt` (変数加算、モニター表示、リスト操作) の IR 生成
 - `LooksStmt` (大きさ以外の見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
 - `run` の未実装分岐に対する安全なフォールバック（パニックを避けてエラー報告する）
 - 生成した IR を `clang` や `llc` でリンク・コンパイルするフロー
