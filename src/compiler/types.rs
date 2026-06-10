@@ -490,10 +490,12 @@ impl<'ctx> Builders<'ctx> {
         for (target_idx, target) in targets.iter().enumerate() {
             match target {
                 StageOrSprite::Stage(v) => {
-                    for i in &v.variables {
-                        global_variable.insert(i.0.clone(), global_variables_increment);
+                    let mut variables = v.variables.iter().collect::<Vec<_>>();
+                    variables.sort_by(|(a, _), (b, _)| a.cmp(b));
+                    for (variable_id, variable) in variables {
+                        global_variable.insert(variable_id.clone(), global_variables_increment);
                         let global_ptr = Self::scalar_variable_to_global_variable_ptr(
-                            i.1,
+                            variable,
                             global_variables_increment,
                             module,
                             context,
@@ -509,8 +511,10 @@ impl<'ctx> Builders<'ctx> {
                 StageOrSprite::Sprite(v) => {
                     let mut counter: usize = 0;
                     let mut local_variable_temp: HashMap<String, usize> = HashMap::new();
-                    for i in &v.variables {
-                        local_variable_temp.insert(i.0.clone(), counter);
+                    let mut variables = v.variables.iter().collect::<Vec<_>>();
+                    variables.sort_by(|(a, _), (b, _)| a.cmp(b));
+                    for (variable_id, _) in variables {
+                        local_variable_temp.insert(variable_id.clone(), counter);
                         counter += 1;
                     }
                     local_variable.insert(target_idx, local_variable_temp);
