@@ -276,97 +276,241 @@ pub fn is_num<'ctx>(
         }
     }
 }
+fn build_reusable_dynamic<'ctx, BuildNew, ReuseOld>(
+    builders: &Builders<'ctx>,
+    function: &FunctionValue<'ctx>,
+    current_dynamic: Option<PointerValue<'ctx>>,
+    current_kind: Option<IntValue<'ctx>>,
+    expected_kind: DynamicKind,
+    build_new: BuildNew,
+    reuse_old: ReuseOld,
+) -> PointerValue<'ctx>
+where
+    BuildNew: FnOnce() -> PointerValue<'ctx>,
+    ReuseOld: FnOnce(PointerValue<'ctx>),
+{
+    let Some(current_dynamic) = current_dynamic else {
+        return build_new();
+    };
+    let Some(current_kind) = current_kind else {
+        return build_new();
+    };
+
+    let new_value_block = builders.context.append_basic_block(*function, "new_value");
+    let use_old_value_block = builders.context.append_basic_block(*function, "use_old_value");
+    let finally_block = builders.context.append_basic_block(*function, "finally");
+    builders
+        .builder
+        .build_conditional_branch(
+            builders
+                .builder
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    current_kind,
+                    builders.context.i8_type().const_int(expected_kind as u64, false),
+                    "dynamic_kind_matches",
+                )
+                .unwrap(),
+            use_old_value_block,
+            new_value_block,
+        )
+        .unwrap();
+
+    builders.builder.position_at_end(new_value_block);
+    let new_dynamic = build_new();
+    builders.builder.build_unconditional_branch(finally_block).unwrap();
+
+    builders.builder.position_at_end(use_old_value_block);
+    reuse_old(current_dynamic);
+    builders.builder.build_unconditional_branch(finally_block).unwrap();
+
+    builders.builder.position_at_end(finally_block);
+    let phi = builders
+        .builder
+        .build_phi(builders.context.ptr_type(AddressSpace::default()), "dynamic")
+        .unwrap();
+    phi.add_incoming(&[(&new_dynamic, new_value_block), (&current_dynamic, use_old_value_block)]);
+    phi.as_basic_value().into_pointer_value()
+}
+
 pub fn scratch_return_to_dynamic<'ctx>(
     builders: &Builders<'ctx>,
     from: &ScratchReturnTypes<'ctx>,
-    _: &FunctionValue<'ctx>,
+    function: &FunctionValue<'ctx>,
+    from_v: Option<PointerValue<'ctx>>,
 ) -> PointerValue<'ctx> {
+    let struct_ty = create_dynamic_struct_type(builders.context);
+    let current_dynamic = from_v.map(|from_v| {
+        builders
+            .builder
+            .build_load(
+                builders.context.ptr_type(AddressSpace::default()),
+                from_v,
+                "current_dynamic",
+            )
+            .unwrap()
+            .into_pointer_value()
+    });
+    let current_kind = current_dynamic.map(|current_dynamic| {
+        builders
+            .builder
+            .build_load(
+                builders.context.i8_type(),
+                builders
+                    .builder
+                    .build_struct_gep(struct_ty, current_dynamic, 0, "current_dynamic_kind_ptr")
+                    .unwrap(),
+                "current_dynamic_kind",
+            )
+            .unwrap()
+            .into_int_value()
+    });
     match from {
-        ScratchReturnTypes::Bool(v) | ScratchReturnTypes::BoolLiteral((_, v)) => {
-            let bool_ptr = builders
-                .builder
-                .build_malloc(builders.context.bool_type(), "bool_ptr")
-                .unwrap();
-            builders.builder.build_store(bool_ptr, *v).unwrap();
-            let struct_ty = create_dynamic_struct_type(builders.context);
-            let struct_ptr = builders.builder.build_malloc(struct_ty, "malloc").unwrap();
-            builders
-                .builder
-                .build_store(
-                    builders
-                        .builder
-                        .build_struct_gep(struct_ty, struct_ptr, 0, "type")
-                        .unwrap(),
-                    builders.context.i8_type().const_int(DynamicKind::Bool as u64, false),
-                )
-                .unwrap();
-            builders
-                .builder
-                .build_store(
-                    builders
-                        .builder
-                        .build_struct_gep(struct_ty, struct_ptr, 1, "ptr")
-                        .unwrap(),
-                    bool_ptr,
-                )
-                .unwrap();
-            struct_ptr
-        }
-        ScratchReturnTypes::Number(v) | ScratchReturnTypes::NumberLiteral((_, v)) => {
-            let number_ptr = builders
-                .builder
-                .build_malloc(builders.context.f64_type(), "number_ptr")
-                .unwrap();
-            builders.builder.build_store(number_ptr, *v).unwrap();
-            let struct_ty = create_dynamic_struct_type(builders.context);
-            let struct_ptr = builders.builder.build_malloc(struct_ty, "malloc").unwrap();
-            builders
-                .builder
-                .build_store(
-                    builders
-                        .builder
-                        .build_struct_gep(struct_ty, struct_ptr, 0, "type")
-                        .unwrap(),
-                    builders.context.i8_type().const_int(DynamicKind::Number as u64, false),
-                )
-                .unwrap();
-            builders
-                .builder
-                .build_store(
-                    builders
-                        .builder
-                        .build_struct_gep(struct_ty, struct_ptr, 1, "ptr")
-                        .unwrap(),
-                    number_ptr,
-                )
-                .unwrap();
-            struct_ptr
-        }
-        ScratchReturnTypes::String(v) | ScratchReturnTypes::StringLiteral((_, v)) => {
-            let struct_ty = create_dynamic_struct_type(builders.context);
-            let struct_ptr = builders.builder.build_malloc(struct_ty, "malloc").unwrap();
-            builders
-                .builder
-                .build_store(
-                    builders
-                        .builder
-                        .build_struct_gep(struct_ty, struct_ptr, 0, "type")
-                        .unwrap(),
-                    builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                )
-                .unwrap();
-            builders
-                .builder
-                .build_store(
-                    builders
-                        .builder
-                        .build_struct_gep(struct_ty, struct_ptr, 1, "ptr")
-                        .unwrap(),
-                    *v,
-                )
-                .unwrap();
-            struct_ptr
-        }
+        ScratchReturnTypes::Bool(v) | ScratchReturnTypes::BoolLiteral((_, v)) => build_reusable_dynamic(
+            builders,
+            function,
+            current_dynamic,
+            current_kind,
+            DynamicKind::Bool,
+            || {
+                let bool_ptr = builders
+                    .builder
+                    .build_malloc(builders.context.bool_type(), "bool_ptr")
+                    .unwrap();
+                builders.builder.build_store(bool_ptr, *v).unwrap();
+                let struct_ptr = builders.builder.build_malloc(struct_ty, "malloc").unwrap();
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, struct_ptr, 0, "type")
+                            .unwrap(),
+                        builders.context.i8_type().const_int(DynamicKind::Bool as u64, false),
+                    )
+                    .unwrap();
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, struct_ptr, 1, "ptr")
+                            .unwrap(),
+                        bool_ptr,
+                    )
+                    .unwrap();
+                struct_ptr
+            },
+            |old_struct_ptr| {
+                let old_bool_ptr = builders
+                    .builder
+                    .build_load(
+                        builders.context.ptr_type(AddressSpace::default()),
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, old_struct_ptr, 1, "old_bool_ptr_slot")
+                            .unwrap(),
+                        "old_bool_ptr",
+                    )
+                    .unwrap()
+                    .into_pointer_value();
+                builders.builder.build_store(old_bool_ptr, *v).unwrap();
+            },
+        ),
+        ScratchReturnTypes::Number(v) | ScratchReturnTypes::NumberLiteral((_, v)) => build_reusable_dynamic(
+            builders,
+            function,
+            current_dynamic,
+            current_kind,
+            DynamicKind::Number,
+            || {
+                let number_ptr = builders
+                    .builder
+                    .build_malloc(builders.context.f64_type(), "number_ptr")
+                    .unwrap();
+                builders.builder.build_store(number_ptr, *v).unwrap();
+                let struct_ptr = builders.builder.build_malloc(struct_ty, "malloc").unwrap();
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, struct_ptr, 0, "type")
+                            .unwrap(),
+                        builders.context.i8_type().const_int(DynamicKind::Number as u64, false),
+                    )
+                    .unwrap();
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, struct_ptr, 1, "ptr")
+                            .unwrap(),
+                        number_ptr,
+                    )
+                    .unwrap();
+                struct_ptr
+            },
+            |old_struct_ptr| {
+                let old_number_ptr = builders
+                    .builder
+                    .build_load(
+                        builders.context.ptr_type(AddressSpace::default()),
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, old_struct_ptr, 1, "old_number_ptr_slot")
+                            .unwrap(),
+                        "old_number_ptr",
+                    )
+                    .unwrap()
+                    .into_pointer_value();
+                builders.builder.build_store(old_number_ptr, *v).unwrap();
+            },
+        ),
+        ScratchReturnTypes::String(v) | ScratchReturnTypes::StringLiteral((_, v)) => build_reusable_dynamic(
+            builders,
+            function,
+            current_dynamic,
+            current_kind,
+            DynamicKind::String,
+            || {
+                let struct_ptr = builders.builder.build_malloc(struct_ty, "malloc").unwrap();
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, struct_ptr, 0, "type")
+                            .unwrap(),
+                        builders.context.i8_type().const_int(DynamicKind::String as u64, false),
+                    )
+                    .unwrap();
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, struct_ptr, 1, "ptr")
+                            .unwrap(),
+                        *v,
+                    )
+                    .unwrap();
+                struct_ptr
+            },
+            |old_struct_ptr| {
+                builders
+                    .builder
+                    .build_store(
+                        builders
+                            .builder
+                            .build_struct_gep(struct_ty, old_struct_ptr, 1, "old_string_ptr_slot")
+                            .unwrap(),
+                        *v,
+                    )
+                    .unwrap();
+            },
+        ),
         ScratchReturnTypes::Dynamic(v) => *v,
     }
 }
@@ -899,6 +1043,57 @@ mod tests {
         let _ = scratch_return_to_number(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
         let _ = scratch_return_to_string(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
         let _ = scratch_return_to_bool(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
+        builders.builder.build_return(None).unwrap();
+
+        assert!(builders.module.verify().is_ok(), "{}", builders.module.to_string());
+    }
+
+    #[test]
+    fn scratch_return_to_dynamic_reuses_matching_dynamic_payloads() {
+        let context = Context::create();
+        let project = empty_project();
+        let builders = Builders::new(&context, &project);
+        let function = test_function(&context, &builders);
+        let ptr_type = builders.context.ptr_type(AddressSpace::default());
+
+        let bool_payload = builders
+            .builder
+            .build_alloca(builders.context.bool_type(), "bool_payload")
+            .unwrap();
+        let bool_dynamic = create_dynamic(&builders, DynamicKind::Bool, bool_payload);
+        let bool_slot = builders.builder.build_alloca(ptr_type, "bool_slot").unwrap();
+        builders.builder.build_store(bool_slot, bool_dynamic).unwrap();
+        let _ = scratch_return_to_dynamic(
+            &builders,
+            &ScratchReturnTypes::BoolLiteral((true, builders.context.bool_type().const_int(1, false))),
+            &function,
+            Some(bool_slot),
+        );
+
+        let number_payload = builders
+            .builder
+            .build_alloca(builders.context.f64_type(), "number_payload")
+            .unwrap();
+        let number_dynamic = create_dynamic(&builders, DynamicKind::Number, number_payload);
+        let number_slot = builders.builder.build_alloca(ptr_type, "number_slot").unwrap();
+        builders.builder.build_store(number_slot, number_dynamic).unwrap();
+        let _ = scratch_return_to_dynamic(
+            &builders,
+            &ScratchReturnTypes::Number(builders.context.f64_type().const_float(42.0)),
+            &function,
+            Some(number_slot),
+        );
+
+        let string_dynamic = create_dynamic(&builders, DynamicKind::String, create_string_struct(&builders, "old"));
+        let string_slot = builders.builder.build_alloca(ptr_type, "string_slot").unwrap();
+        builders.builder.build_store(string_slot, string_dynamic).unwrap();
+        let _ = scratch_return_to_dynamic(
+            &builders,
+            &ScratchReturnTypes::StringLiteral(("new".to_string(), create_string_struct(&builders, "new"))),
+            &function,
+            Some(string_slot),
+        );
+
         builders.builder.build_return(None).unwrap();
 
         assert!(builders.module.verify().is_ok(), "{}", builders.module.to_string());

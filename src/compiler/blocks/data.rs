@@ -24,6 +24,7 @@ pub fn parse_data_stmt<'ctx>(
                 builders,
                 &generate_expr_ir(builders, value, function, target_idx),
                 function,
+                Some(variable_global),
             );
             builders.builder.build_store(variable_global, dynamic_value).unwrap();
         }
