@@ -3,14 +3,11 @@ use std::collections::HashMap;
 use crate::{
     parser::{
         parser::parse_input,
-        types::{
-            Argument, Expr, ParseResult, ParserError, ProceduresExpr, ProceduresPrototypeStruct,
-            ProceduresStmt,
-        },
+        types::{Argument, Expr, ParseResult, ParserError, ProceduresExpr, ProceduresPrototypeStruct, ProceduresStmt},
     },
     types::{
-        Block, BlockOpCodes, Fields, Input, Mutation, ScratchProject, StringOrStringArray,
-        WarpValue, primitive::StringOrNumber,
+        Block, BlockOpCodes, Fields, Input, Mutation, ScratchProject, StringOrStringArray, WarpValue,
+        primitive::StringOrNumber,
     },
 };
 
@@ -39,9 +36,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -59,42 +54,27 @@ fn required_expr_input<'a>(
     missing_input_error: &'a str,
     parse_error: &str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
-pub fn parse_procedures_expr<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, ProceduresExpr> {
+pub fn parse_procedures_expr<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, ProceduresExpr> {
     match block.opcode {
         BlockOpCodes::ProceduresPrototype => {
-            let mutation = block.mutation.as_ref().ok_or(ParserError::InvalidValue(
-                "missing mutation in ProceduresPrototype",
-            ))?;
+            let mutation = block
+                .mutation
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing mutation in ProceduresPrototype"))?;
             match mutation {
                 Mutation::MutationProceduresPrototype(v) => {
-                    let argument_ids: Vec<String> =
-                        serde_json::from_str::<Vec<String>>(&v.argumentids).map_err(|_| {
-                            ParserError::InvalidValue("JSON parsing error on mutation.argumentids")
+                    let argument_ids: Vec<String> = serde_json::from_str::<Vec<String>>(&v.argumentids)
+                        .map_err(|_| ParserError::InvalidValue("JSON parsing error on mutation.argumentids"))?;
+                    let argument_names: Vec<String> = serde_json::from_str::<Vec<String>>(&v.argumentnames)
+                        .map_err(|_| ParserError::InvalidValue("JSON parsing error on mutation.argumentnames"))?;
+                    let argument_defaults: Vec<StringOrNumber> =
+                        serde_json::from_str::<Vec<StringOrNumber>>(&v.argumentdefaults).map_err(|_| {
+                            ParserError::InvalidValue("JSON parsing error on mutation.argumentdefaults")
                         })?;
-                    let argument_names: Vec<String> =
-                        serde_json::from_str::<Vec<String>>(&v.argumentnames).map_err(|_| {
-                            ParserError::InvalidValue(
-                                "JSON parsing error on mutation.argumentnames",
-                            )
-                        })?;
-                    let argument_defaults: Vec<StringOrNumber> = serde_json::from_str::<
-                        Vec<StringOrNumber>,
-                    >(
-                        &v.argumentdefaults
-                    )
-                    .map_err(|_| {
-                        ParserError::InvalidValue("JSON parsing error on mutation.argumentdefaults")
-                    })?;
                     let warp = v.warp.clone().unwrap_or(WarpValue::Bool(false));
                     let warp = match warp {
                         WarpValue::Bool(v) => v,
@@ -102,9 +82,7 @@ pub fn parse_procedures_expr<'a>(
                             "true" => true,
                             "false" => false,
                             _ => {
-                                return Err(ParserError::InvalidValue(
-                                    "warp value must be 'true' or 'false'",
-                                ));
+                                return Err(ParserError::InvalidValue("warp value must be 'true' or 'false'"));
                             }
                         },
                         _ => {
@@ -123,9 +101,7 @@ pub fn parse_procedures_expr<'a>(
                         .map(|(id, name)| Argument {
                             id,
                             name,
-                            default: defaults_iter
-                                .next()
-                                .unwrap_or(StringOrNumber::String(String::new())),
+                            default: defaults_iter.next().unwrap_or(StringOrNumber::String(String::new())),
                         })
                         .collect();
                     Ok(ProceduresExpr::ProceduresPrototype {
@@ -143,19 +119,12 @@ pub fn parse_procedures_expr<'a>(
         }
         BlockOpCodes::ArgumentReporterBoolean => {
             let fields = block_fields(block, "missing fields in ArgumentReporterBoolean block")?;
-            let field = required_field(
-                fields,
-                "VALUE",
-                "missing VALUE field in ArgumentReporterBoolean block",
-            )?;
+            let field = required_field(fields, "VALUE", "missing VALUE field in ArgumentReporterBoolean block")?;
             let name = field_text(&field);
             Ok(ProceduresExpr::ArgumentReporterBoolean { name: name.clone() })
         }
         BlockOpCodes::ArgumentReporterStringNumber => {
-            let fields = block_fields(
-                block,
-                "missing fields in ArgumentReporterStringNumber block",
-            )?;
+            let fields = block_fields(block, "missing fields in ArgumentReporterStringNumber block")?;
             let field = required_field(
                 fields,
                 "VALUE",
@@ -175,18 +144,16 @@ pub fn parse_procedures_stmt<'a>(
 ) -> ParseResult<'a, ProceduresStmt> {
     match block.opcode {
         BlockOpCodes::ProceduresCall => {
-            let mutation = block.mutation.as_ref().ok_or(ParserError::InvalidValue(
-                "missing mutation in ProceduresPrototype",
-            ))?;
+            let mutation = block
+                .mutation
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing mutation in ProceduresPrototype"))?;
             match mutation {
                 Mutation::MutationProceduresCall(v) => {
-                    let input_field =
-                        block_inputs(block, "missing inputs in MutationProceduresCall block")?;
+                    let input_field = block_inputs(block, "missing inputs in MutationProceduresCall block")?;
                     let argument_ids: Vec<String> = match &v.argumentids {
                         StringOrStringArray::String(v) => serde_json::from_str::<Vec<String>>(&v)
-                            .map_err(|_| {
-                            ParserError::InvalidValue("JSON parsing error on mutation.argumentids")
-                        })?,
+                            .map_err(|_| ParserError::InvalidValue("JSON parsing error on mutation.argumentids"))?,
                         StringOrStringArray::StringArray(v) => v.clone(),
                     };
                     let mut inputs: HashMap<String, Expr> = HashMap::new();

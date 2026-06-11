@@ -32,9 +32,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -52,17 +50,11 @@ fn required_expr_input<'a>(
     missing_input_error: &'static str,
     parse_error: &'static str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
-pub fn parse_motion_expr<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, Expr> {
+pub fn parse_motion_expr<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, Expr> {
     match block.opcode {
         BlockOpCodes::MotionXPosition => Ok(Expr::Motion(MotionExpr::XPosition)),
         BlockOpCodes::MotionYPosition => Ok(Expr::Motion(MotionExpr::YPosition)),
@@ -75,8 +67,7 @@ pub fn parse_motion_expr<'a>(
         }
         BlockOpCodes::MotionGlideToMenu => {
             let fields = block_fields(block, "missing fields in MotionGlideToMenu block")?;
-            let field =
-                required_field(fields, "TO", "missing TO field in MotionGlideToMenu block")?;
+            let field = required_field(fields, "TO", "missing TO field in MotionGlideToMenu block")?;
             let operator = field_text(field);
             Ok(Expr::Literal(Literal::String(operator.clone())))
         }
@@ -292,11 +283,7 @@ pub fn parse_motion_stmt<'a>(
         BlockOpCodes::MotionIfOnEdgeBounce => Ok(MotionStmt::IfOnEdgeBounce),
         BlockOpCodes::MotionSetRotationStyle => {
             let fields = block_fields(block, "missing fields in MotionSetRotationStyle block")?;
-            let field = required_field(
-                fields,
-                "STYLE",
-                "missing STYLE field in MotionSetRotationStyle block",
-            )?;
+            let field = required_field(fields, "STYLE", "missing STYLE field in MotionSetRotationStyle block")?;
             let style = field_text(field);
             let style = match style.as_str() {
                 "left-right" => RotationStyle::LeftRight,

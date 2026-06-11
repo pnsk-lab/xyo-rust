@@ -32,9 +32,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -52,9 +50,7 @@ fn required_expr_input<'a>(
     missing_input_error: &'static str,
     parse_error: &'static str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
@@ -103,8 +99,7 @@ pub fn parse_sensing_expr<'a>(
             }))
         }
         BlockOpCodes::SensingColorIsTouchingColor => {
-            let inputs =
-                block_inputs(block, "missing inputs in SensingColorIsTouchingColor block")?;
+            let inputs = block_inputs(block, "missing inputs in SensingColorIsTouchingColor block")?;
             let color = required_expr_input(
                 project,
                 target_idx,
@@ -191,11 +186,7 @@ pub fn parse_sensing_expr<'a>(
                 "failed to parse OBJECT input in SensingOf block",
             )?;
             let fields = block_fields(block, "missing fields in SensingOf block")?;
-            let field = required_field(
-                fields,
-                "PROPERTY",
-                "missing PROPERTY field in SensingOf block",
-            )?;
+            let field = required_field(fields, "PROPERTY", "missing PROPERTY field in SensingOf block")?;
             let operator = field_text(field);
             let operator = match operator.as_str() {
                 "backdrop #" => crate::parser::types::StatusTarget::CostumeNumber,
@@ -216,11 +207,7 @@ pub fn parse_sensing_expr<'a>(
         }
         BlockOpCodes::SensingOfObjectMenu => {
             let fields = block_fields(block, "missing fields in SensingOfObjectMenu block")?;
-            let field = required_field(
-                fields,
-                "OBJECT",
-                "missing OBJECT field in SensingOfObjectMenu block",
-            )?;
+            let field = required_field(fields, "OBJECT", "missing OBJECT field in SensingOfObjectMenu block")?;
             let operator = field_text(field);
             Ok(Expr::Literal(Literal::String(operator.clone())))
         }
@@ -249,9 +236,7 @@ pub fn parse_sensing_expr<'a>(
             Ok(Expr::Sensing(SensingExpr::NowTime { time: time_target }))
         }
         BlockOpCodes::SensingLoud => Ok(Expr::Sensing(SensingExpr::IsLoud)),
-        _ => Err(crate::parser::types::ParserError::NotHandledOp(
-            block.opcode,
-        )),
+        _ => Err(crate::parser::types::ParserError::NotHandledOp(block.opcode)),
     }
 }
 
@@ -262,15 +247,15 @@ pub fn parse_sensing_stmt<'a>(
 ) -> ParseResult<'a, SensingStmt> {
     match block.opcode {
         BlockOpCodes::SensingAskAndWait => {
-            let inputs = block.inputs.as_ref().ok_or(ParserError::InvalidValue(
-                "missing inputs in SensingAskAndWait block",
-            ))?;
+            let inputs = block
+                .inputs
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing inputs in SensingAskAndWait block"))?;
             let question = inputs
                 .get("QUESTION")
                 .ok_or(ParserError::InvalidValue("missing QUESTION input"))?;
-            let question = parse_input(project, target_idx, question).map_err(|err| {
-                err.context("failed to parse QUESTION in SensingAskAndWait block")
-            })?;
+            let question = parse_input(project, target_idx, question)
+                .map_err(|err| err.context("failed to parse QUESTION in SensingAskAndWait block"))?;
             Ok(SensingStmt::AskAndWait { question })
         }
         BlockOpCodes::SensingSetDragMode => {

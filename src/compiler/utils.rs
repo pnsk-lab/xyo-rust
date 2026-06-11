@@ -20,10 +20,7 @@ struct DynamicParts<'ctx> {
 }
 
 fn dynamic_kind<'ctx>(builders: &Builders<'ctx>, kind: DynamicKind) -> IntValue<'ctx> {
-    builders
-        .context
-        .i8_type()
-        .const_int((kind as u8).into(), false)
+    builders.context.i8_type().const_int((kind as u8).into(), false)
 }
 
 fn enter_dynamic_dispatch<'ctx>(
@@ -31,13 +28,8 @@ fn enter_dynamic_dispatch<'ctx>(
     dynamic: PointerValue<'ctx>,
     function: &FunctionValue<'ctx>,
 ) -> DynamicParts<'ctx> {
-    let dispatch_block = builders
-        .context
-        .append_basic_block(*function, "dynamic_dispatch");
-    builders
-        .builder
-        .build_unconditional_branch(dispatch_block)
-        .unwrap();
+    let dispatch_block = builders.context.append_basic_block(*function, "dynamic_dispatch");
+    builders.builder.build_unconditional_branch(dispatch_block).unwrap();
     builders.builder.position_at_end(dispatch_block);
 
     let dynamic_struct = create_dynamic_struct_type(builders.context);
@@ -71,10 +63,7 @@ fn enter_dynamic_dispatch<'ctx>(
     }
 }
 
-fn build_number_to_string<'ctx>(
-    builders: &Builders<'ctx>,
-    value: FloatValue<'ctx>,
-) -> PointerValue<'ctx> {
+fn build_number_to_string<'ctx>(builders: &Builders<'ctx>, value: FloatValue<'ctx>) -> PointerValue<'ctx> {
     builders
         .builder
         .build_call(
@@ -111,10 +100,7 @@ fn build_number_to_string<'ctx>(
         .into_pointer_value()
 }
 
-fn build_bool_to_string<'ctx>(
-    builders: &Builders<'ctx>,
-    value: IntValue<'ctx>,
-) -> PointerValue<'ctx> {
+fn build_bool_to_string<'ctx>(builders: &Builders<'ctx>, value: IntValue<'ctx>) -> PointerValue<'ctx> {
     builders
         .builder
         .build_select(
@@ -135,10 +121,7 @@ fn build_bool_to_string<'ctx>(
         .into_pointer_value()
 }
 
-fn build_number_to_bool<'ctx>(
-    builders: &Builders<'ctx>,
-    value: FloatValue<'ctx>,
-) -> IntValue<'ctx> {
+fn build_number_to_bool<'ctx>(builders: &Builders<'ctx>, value: FloatValue<'ctx>) -> IntValue<'ctx> {
     builders
         .builder
         .build_select(
@@ -210,9 +193,7 @@ pub fn is_num<'ctx>(
             builder.build_or(is_nan, is_int, "is_num").unwrap()
         }
 
-        ScratchReturnTypes::Bool(_) | ScratchReturnTypes::BoolLiteral(_) => {
-            bool_t.const_int(1, false)
-        }
+        ScratchReturnTypes::Bool(_) | ScratchReturnTypes::BoolLiteral(_) => bool_t.const_int(1, false),
 
         ScratchReturnTypes::String(v) => builders
             .builder
@@ -228,9 +209,7 @@ pub fn is_num<'ctx>(
             bool_t.const_int(result as u64, false)
         }
 
-        ScratchReturnTypes::StringLiteral(v) => {
-            bool_t.const_int((!v.0.contains('.')) as u64, false)
-        }
+        ScratchReturnTypes::StringLiteral(v) => bool_t.const_int((!v.0.contains('.')) as u64, false),
 
         ScratchReturnTypes::Dynamic(v) => {
             let dynamic = enter_dynamic_dispatch(builders, v, function);
@@ -275,32 +254,19 @@ pub fn is_num<'ctx>(
                 .unwrap();
 
             let number_ret = builders.builder.build_or(is_nan, is_int, "is_num").unwrap();
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
             builders.builder.position_at_end(string_block);
             let string_ret = builders
                 .builder
-                .build_call(
-                    builders.functions.is_num,
-                    &[dynamic.payload.into()],
-                    "is_num",
-                )
+                .build_call(builders.functions.is_num, &[dynamic.payload.into()], "is_num")
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
                 .unwrap()
                 .into_int_value();
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
             builders.builder.position_at_end(finally);
-            let phi = builders
-                .builder
-                .build_phi(builders.context.bool_type(), "phi")
-                .unwrap();
+            let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
             phi.add_incoming(&[
                 (&false_value, dynamic.dispatch_block),
                 (&number_ret, number_block),
@@ -331,10 +297,7 @@ pub fn scratch_return_to_dynamic<'ctx>(
                         .builder
                         .build_struct_gep(struct_ty, struct_ptr, 0, "type")
                         .unwrap(),
-                    builders
-                        .context
-                        .i8_type()
-                        .const_int(DynamicKind::Bool as u64, false),
+                    builders.context.i8_type().const_int(DynamicKind::Bool as u64, false),
                 )
                 .unwrap();
             builders
@@ -364,10 +327,7 @@ pub fn scratch_return_to_dynamic<'ctx>(
                         .builder
                         .build_struct_gep(struct_ty, struct_ptr, 0, "type")
                         .unwrap(),
-                    builders
-                        .context
-                        .i8_type()
-                        .const_int(DynamicKind::Number as u64, false),
+                    builders.context.i8_type().const_int(DynamicKind::Number as u64, false),
                 )
                 .unwrap();
             builders
@@ -392,10 +352,7 @@ pub fn scratch_return_to_dynamic<'ctx>(
                         .builder
                         .build_struct_gep(struct_ty, struct_ptr, 0, "type")
                         .unwrap(),
-                    builders
-                        .context
-                        .i8_type()
-                        .const_int(DynamicKind::String as u64, false),
+                    builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                 )
                 .unwrap();
             builders
@@ -443,9 +400,7 @@ pub fn scratch_return_to_number<'ctx>(
             .context
             .f64_type()
             .const_float(v.0.parse::<f64>().unwrap_or(f64::NAN)),
-        ScratchReturnTypes::BoolLiteral(v) => {
-            builders.context.f64_type().const_float(v.0 as u8 as f64)
-        }
+        ScratchReturnTypes::BoolLiteral(v) => builders.context.f64_type().const_float(v.0 as u8 as f64),
         ScratchReturnTypes::Dynamic(v) => {
             let dynamic = enter_dynamic_dispatch(builders, *v, function);
             let number_block = builders.context.append_basic_block(*function, "double");
@@ -470,27 +425,17 @@ pub fn scratch_return_to_number<'ctx>(
                 .build_load(builders.context.f64_type(), dynamic.payload, "float")
                 .unwrap()
                 .into_float_value();
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
             builders.builder.position_at_end(string_block);
             let string_ret = builders
                 .builder
-                .build_call(
-                    builders.functions.str_to_num,
-                    &[dynamic.payload.into()],
-                    "xyo_atod",
-                )
+                .build_call(builders.functions.str_to_num, &[dynamic.payload.into()], "xyo_atod")
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
                 .unwrap()
                 .into_float_value();
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
             builders.builder.position_at_end(boolean_block);
             let bool_value = builders
                 .builder
@@ -507,15 +452,9 @@ pub fn scratch_return_to_number<'ctx>(
                 )
                 .unwrap()
                 .into_float_value();
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
             builders.builder.position_at_end(finally);
-            let phi = builders
-                .builder
-                .build_phi(builders.context.f64_type(), "phi")
-                .unwrap();
+            let phi = builders.builder.build_phi(builders.context.f64_type(), "phi").unwrap();
             phi.add_incoming(&[
                 (
                     &builders.context.f64_type().const_float(f64::NAN),
@@ -542,9 +481,7 @@ pub fn scratch_return_to_string<'ctx>(
         ScratchReturnTypes::Number(v) => build_number_to_string(builders, *v),
         ScratchReturnTypes::Bool(v) => build_bool_to_string(builders, *v),
         ScratchReturnTypes::String(v) => *v,
-        ScratchReturnTypes::NumberLiteral((v, _)) => {
-            create_string_struct(builders, &js_number_to_string(*v))
-        }
+        ScratchReturnTypes::NumberLiteral((v, _)) => create_string_struct(builders, &js_number_to_string(*v)),
         ScratchReturnTypes::StringLiteral(v) => v.1,
         ScratchReturnTypes::BoolLiteral(v) => create_string_struct(builders, &v.0.to_string()),
         ScratchReturnTypes::Dynamic(v) => {
@@ -569,50 +506,30 @@ pub fn scratch_return_to_string<'ctx>(
             builders.builder.position_at_end(number_block);
             let number_value = builders
                 .builder
-                .build_load(
-                    builders.context.f64_type(),
-                    dynamic.payload,
-                    "dynamic_number",
-                )
+                .build_load(builders.context.f64_type(), dynamic.payload, "dynamic_number")
                 .unwrap()
                 .into_float_value();
             let number_ret = build_number_to_string(builders, number_value);
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
 
             builders.builder.position_at_end(string_block);
             let string_ret = dynamic.payload;
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
 
             builders.builder.position_at_end(boolean_block);
             let bool_value = builders
                 .builder
-                .build_load(
-                    builders.context.bool_type(),
-                    dynamic.payload,
-                    "dynamic_bool",
-                )
+                .build_load(builders.context.bool_type(), dynamic.payload, "dynamic_bool")
                 .unwrap()
                 .into_int_value();
             let bool_ret = build_bool_to_string(builders, bool_value);
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
 
             builders.builder.position_at_end(finally);
             let default_ret = create_string_struct(builders, "");
             let phi = builders
                 .builder
-                .build_phi(
-                    builders.context.ptr_type(AddressSpace::default()),
-                    "dynamic_to_string",
-                )
+                .build_phi(builders.context.ptr_type(AddressSpace::default()), "dynamic_to_string")
                 .unwrap();
             phi.add_incoming(&[
                 (&default_ret, dynamic.dispatch_block),
@@ -634,10 +551,7 @@ pub fn scratch_return_to_bool<'ctx>(
         ScratchReturnTypes::Number(v) => build_number_to_bool(builders, *v),
         ScratchReturnTypes::Bool(v) => *v,
         ScratchReturnTypes::String(v) => build_string_to_bool(builders, func, *v),
-        ScratchReturnTypes::NumberLiteral((v, _)) => builders
-            .context
-            .bool_type()
-            .const_int((*v != 0.0) as u64, false),
+        ScratchReturnTypes::NumberLiteral((v, _)) => builders.context.bool_type().const_int((*v != 0.0) as u64, false),
         ScratchReturnTypes::StringLiteral(v) => {
             let string_bool = match v.0.to_lowercase().as_str() {
                 "" => false,
@@ -645,10 +559,7 @@ pub fn scratch_return_to_bool<'ctx>(
                 "false" => false,
                 _ => true,
             };
-            builders
-                .context
-                .bool_type()
-                .const_int(string_bool as u64, false)
+            builders.context.bool_type().const_int(string_bool as u64, false)
         }
         ScratchReturnTypes::BoolLiteral(v) => v.1,
         ScratchReturnTypes::Dynamic(v) => {
@@ -674,40 +585,23 @@ pub fn scratch_return_to_bool<'ctx>(
             builders.builder.position_at_end(number_block);
             let number_value = builders
                 .builder
-                .build_load(
-                    builders.context.f64_type(),
-                    dynamic.payload,
-                    "dynamic_number",
-                )
+                .build_load(builders.context.f64_type(), dynamic.payload, "dynamic_number")
                 .unwrap()
                 .into_float_value();
             let number_ret = build_number_to_bool(builders, number_value);
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
 
             builders.builder.position_at_end(string_block);
             let string_ret = build_string_to_bool(builders, func, dynamic.payload);
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
 
             builders.builder.position_at_end(boolean_block);
             let bool_ret = builders
                 .builder
-                .build_load(
-                    builders.context.bool_type(),
-                    dynamic.payload,
-                    "dynamic_bool",
-                )
+                .build_load(builders.context.bool_type(), dynamic.payload, "dynamic_bool")
                 .unwrap()
                 .into_int_value();
-            builders
-                .builder
-                .build_unconditional_branch(finally)
-                .unwrap();
+            builders.builder.build_unconditional_branch(finally).unwrap();
 
             builders.builder.position_at_end(finally);
             let phi = builders
@@ -725,22 +619,11 @@ pub fn scratch_return_to_bool<'ctx>(
     }
 }
 
-pub fn build_xor_shift_128_plus<'ctx>(
-    context: &'ctx Context,
-    module: &Module<'ctx>,
-) -> FunctionValue<'ctx> {
+pub fn build_xor_shift_128_plus<'ctx>(context: &'ctx Context, module: &Module<'ctx>) -> FunctionValue<'ctx> {
     let i64_type = context.i64_type();
 
-    let state0 = module.add_global(
-        i64_type,
-        Some(AddressSpace::default()),
-        "xorshift128_state_0",
-    );
-    let state1 = module.add_global(
-        i64_type,
-        Some(AddressSpace::default()),
-        "xorshift128_state_1",
-    );
+    let state0 = module.add_global(i64_type, Some(AddressSpace::default()), "xorshift128_state_0");
+    let state1 = module.add_global(i64_type, Some(AddressSpace::default()), "xorshift128_state_1");
 
     let mut rng = rand::rng();
     let (s0, s1) = loop {
@@ -900,11 +783,9 @@ pub fn create_string_struct<'ctx>(builders: &Builders<'ctx>, s: &str) -> Pointer
     let length = utf16_str.len() as u64;
     let (hash1, hash2) = calc_rolling_hash(s, builders);
     let string_struct_type = create_string_struct_type(builders.context);
-    let global = builders.module.add_global(
-        string_struct_type,
-        Some(AddressSpace::default()),
-        "string_struct",
-    );
+    let global = builders
+        .module
+        .add_global(string_struct_type, Some(AddressSpace::default()), "string_struct");
     let data_global = builders.module.add_global(
         builders.context.i16_type().array_type(length as u32),
         Some(AddressSpace::default()),
@@ -964,16 +845,11 @@ mod tests {
         .unwrap()
     }
 
-    fn test_function<'ctx>(
-        context: &'ctx Context,
-        builders: &Builders<'ctx>,
-    ) -> FunctionValue<'ctx> {
+    fn test_function<'ctx>(context: &'ctx Context, builders: &Builders<'ctx>) -> FunctionValue<'ctx> {
         let fn_type = context
             .void_type()
             .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false);
-        let function = builders
-            .module
-            .add_function("dynamic_test_func", fn_type, None);
+        let function = builders.module.add_function("dynamic_test_func", fn_type, None);
         let entry = context.append_basic_block(function, "entry");
         builders.builder.position_at_end(entry);
         function
@@ -985,10 +861,7 @@ mod tests {
         payload: PointerValue<'ctx>,
     ) -> PointerValue<'ctx> {
         let dynamic_struct = create_dynamic_struct_type(builders.context);
-        let dynamic = builders
-            .builder
-            .build_alloca(dynamic_struct, "dynamic")
-            .unwrap();
+        let dynamic = builders.builder.build_alloca(dynamic_struct, "dynamic").unwrap();
         let kind_ptr = builders
             .builder
             .build_struct_gep(dynamic_struct, dynamic, 0, "dynamic_kind")
@@ -1023,17 +896,11 @@ mod tests {
         let dynamic = create_dynamic(&builders, DynamicKind::Number, number_payload);
 
         let _ = is_num(&builders, ScratchReturnTypes::Dynamic(dynamic), &function);
-        let _ =
-            scratch_return_to_number(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
-        let _ =
-            scratch_return_to_string(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
+        let _ = scratch_return_to_number(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
+        let _ = scratch_return_to_string(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
         let _ = scratch_return_to_bool(&builders, &ScratchReturnTypes::Dynamic(dynamic), &function);
         builders.builder.build_return(None).unwrap();
 
-        assert!(
-            builders.module.verify().is_ok(),
-            "{}",
-            builders.module.to_string()
-        );
+        assert!(builders.module.verify().is_ok(), "{}", builders.module.to_string());
     }
 }

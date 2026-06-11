@@ -33,9 +33,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -53,9 +51,7 @@ fn required_expr_input<'a>(
     missing_input_error: &'static str,
     parse_error: &'static str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
@@ -68,8 +64,7 @@ fn optional_expr_input<'a>(
 ) -> ParseResult<'a, Option<Box<Expr>>> {
     match inputs.get(key) {
         Some(input) => {
-            let expr =
-                parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))?;
+            let expr = parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))?;
             Ok(Some(Box::new(expr)))
         }
         None => Ok(None),
@@ -435,17 +430,11 @@ pub fn parse_operator_expr<'a>(
                 "missing NUM input",
                 "failed to parse NUM input in OperatorRound block",
             )?;
-            Ok(OperatorExpr::Round {
-                target: Box::new(num),
-            })
+            Ok(OperatorExpr::Round { target: Box::new(num) })
         }
         BlockOpCodes::OperatorMathOp => {
             let fields = block_fields(block, "missing fields in OperatorMathOp block")?;
-            let field = required_field(
-                fields,
-                "OPERATOR",
-                "missing OPERATOR field in OperatorMathOp block",
-            )?;
+            let field = required_field(fields, "OPERATOR", "missing OPERATOR field in OperatorMathOp block")?;
             let operator = field_text(field);
             let operator = match operator.as_str() {
                 "abs" => CalcOp::Abs,
@@ -482,10 +471,6 @@ pub fn parse_operator_expr<'a>(
     }
 }
 
-pub fn parse_operator_stmt<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, OperatorStmt> {
+pub fn parse_operator_stmt<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, OperatorStmt> {
     Err(ParserError::NotHandledOp(block.opcode))
 }

@@ -449,12 +449,10 @@ impl<'de> Deserialize<'de> for StageOrSprite {
             .ok_or_else(|| D::Error::custom("missing or non-bool field: isStage"))?;
 
         if is_stage {
-            let stage: Stage =
-                serde_json::from_value(v).map_err(|e| D::Error::custom(e.to_string()))?;
+            let stage: Stage = serde_json::from_value(v).map_err(|e| D::Error::custom(e.to_string()))?;
             Ok(StageOrSprite::Stage(stage))
         } else {
-            let sprite: Sprite =
-                serde_json::from_value(v).map_err(|e| D::Error::custom(e.to_string()))?;
+            let sprite: Sprite = serde_json::from_value(v).map_err(|e| D::Error::custom(e.to_string()))?;
             Ok(StageOrSprite::Sprite(sprite))
         }
     }
@@ -517,7 +515,7 @@ pub enum VideoState {
     #[serde(rename = "on-flipped")]
     OnFlipped,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub enum RotationStyle {
     #[serde(rename = "all around")]
     AllAround,

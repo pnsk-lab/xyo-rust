@@ -16,12 +16,8 @@ pub fn parse_literal_expr<'ctx>(
     target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
-        Literal::Number(v) => {
-            ScratchReturnTypes::StringLiteral((v.clone(), create_string_struct(builders, v)))
-        }
-        Literal::String(v) => {
-            ScratchReturnTypes::StringLiteral((v.clone(), create_string_struct(builders, v)))
-        }
+        Literal::Number(v) => ScratchReturnTypes::StringLiteral((v.clone(), create_string_struct(builders, v))),
+        Literal::String(v) => ScratchReturnTypes::StringLiteral((v.clone(), create_string_struct(builders, v))),
         Literal::Variable { target } => {
             let variable = builders.get_variable(target_idx, target);
             if variable.is_none() {
@@ -31,11 +27,7 @@ pub fn parse_literal_expr<'ctx>(
             let global_ref = builders.get_global_variable_ptr(variable);
             let global_ref_ref = builders
                 .builder
-                .build_load(
-                    builders.context.ptr_type(AddressSpace::default()),
-                    global_ref,
-                    "f",
-                )
+                .build_load(builders.context.ptr_type(AddressSpace::default()), global_ref, "f")
                 .unwrap()
                 .into_pointer_value();
             ScratchReturnTypes::Dynamic(global_ref_ref)

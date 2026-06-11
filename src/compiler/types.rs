@@ -92,10 +92,7 @@ pub struct CostumeInfo {
     pub height: f64,
 }
 pub fn create_costume_struct_type<'a>(context: &'a Context) -> StructType<'a> {
-    context.struct_type(
-        &[context.f64_type().into(), context.f64_type().into()],
-        false,
-    )
+    context.struct_type(&[context.f64_type().into(), context.f64_type().into()], false)
 }
 pub enum CostumeInfoKeys {
     Width,
@@ -182,6 +179,7 @@ pub struct Builders<'ctx> {
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
     pub global_variables: HashMap<String, usize>,
+    pub global_variable_metadata: Vec<GlobalVariableMetadata>,
     pub local_variables: HashMap<usize, HashMap<String, usize>>,
     local_variables_increments: HashMap<usize, usize>,
     global_variable_increment: usize,
@@ -228,13 +226,14 @@ pub struct VariableInfo {
     variable_idx: usize,
 }
 
-fn calc_rolling_hash_with_params(
-    s: &str,
-    base1: u64,
-    base2: u64,
-    mod1: u64,
-    mod2: u64,
-) -> (u64, u64) {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GlobalVariableMetadata {
+    pub variable_id: String,
+    pub display_name: String,
+    pub variable_idx: usize,
+}
+
+fn calc_rolling_hash_with_params(s: &str, base1: u64, base2: u64, mod1: u64, mod2: u64) -> (u64, u64) {
     let mut hash1 = 0u64;
     let mut hash2 = 0u64;
     for c in s.encode_utf16() {
@@ -244,11 +243,7 @@ fn calc_rolling_hash_with_params(
     (hash1, hash2)
 }
 
-fn get_libm_f64_to_f64<'a>(
-    module: &Module<'a>,
-    context: &'a Context,
-    name: &str,
-) -> FunctionValue<'a> {
+fn get_libm_f64_to_f64<'a>(module: &Module<'a>, context: &'a Context, name: &str) -> FunctionValue<'a> {
     let f64_type = context.f64_type();
     let floor_type = f64_type.fn_type(&[f64_type.into()], false);
     let func = module.add_function(name, floor_type, None);
@@ -257,11 +252,7 @@ fn get_libm_f64_to_f64<'a>(
     func.add_attribute(AttributeLoc::Function, nobuiltin_attr);
     func
 }
-fn get_libm_double_f64_to_f64<'a>(
-    module: &Module<'a>,
-    context: &'a Context,
-    name: &str,
-) -> FunctionValue<'a> {
+fn get_libm_double_f64_to_f64<'a>(module: &Module<'a>, context: &'a Context, name: &str) -> FunctionValue<'a> {
     let f64_type = context.f64_type();
     let floor_type = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
     let func = module.add_function(name, floor_type, None);
@@ -325,6 +316,7 @@ impl<'ctx> Builders<'ctx> {
             global_variable_increment,
             local_variables_increments,
             global_variable_globals,
+            global_variable_metadata,
         ) = Self::create_variable_map(
             project,
             &module,
@@ -341,6 +333,7 @@ impl<'ctx> Builders<'ctx> {
             counter: 0,
             functions,
             global_variables,
+            global_variable_metadata,
             local_variables,
             global_variable_increment,
             local_variables_increments,
@@ -415,13 +408,8 @@ impl<'ctx> Builders<'ctx> {
             ScalarVal::String(v) => {
                 let utf16_str = v.encode_utf16().collect::<Vec<_>>();
                 let length = utf16_str.len() as u64;
-                let (hash1, hash2) = calc_rolling_hash_with_params(
-                    &v,
-                    hash_base_1,
-                    hash_base_2,
-                    hash_seed_1,
-                    hash_seed_2,
-                );
+                let (hash1, hash2) =
+                    calc_rolling_hash_with_params(&v, hash_base_1, hash_base_2, hash_seed_1, hash_seed_2);
                 let i16_type = context.i16_type();
                 let data_global = module.add_global(
                     i16_type.array_type(length as u32),
@@ -480,10 +468,12 @@ impl<'ctx> Builders<'ctx> {
         usize,
         HashMap<usize, usize>,
         HashMap<usize, PointerValue<'ctx>>,
+        Vec<GlobalVariableMetadata>,
     ) {
         let targets = &project.targets;
         let mut local_variable: HashMap<usize, HashMap<String, usize>> = HashMap::new();
         let mut global_variable: HashMap<String, usize> = HashMap::new();
+        let mut global_variable_metadata = Vec::new();
         let mut global_variables_increment: usize = 0;
         let mut local_variables_increments: HashMap<usize, usize> = HashMap::new();
         let mut global_variable_globals: HashMap<usize, PointerValue> = HashMap::new();
@@ -494,6 +484,11 @@ impl<'ctx> Builders<'ctx> {
                     variables.sort_by(|(a, _), (b, _)| a.cmp(b));
                     for (variable_id, variable) in variables {
                         global_variable.insert(variable_id.clone(), global_variables_increment);
+                        global_variable_metadata.push(GlobalVariableMetadata {
+                            variable_id: variable_id.clone(),
+                            display_name: variable.display_name(),
+                            variable_idx: global_variables_increment,
+                        });
                         let global_ptr = Self::scalar_variable_to_global_variable_ptr(
                             variable,
                             global_variables_increment,
@@ -528,6 +523,7 @@ impl<'ctx> Builders<'ctx> {
             global_variables_increment,
             local_variables_increments,
             global_variable_globals,
+            global_variable_metadata,
         )
     }
     pub fn get_variable(&self, target_idx: usize, variable_id: &str) -> Option<VariableInfo> {
@@ -566,6 +562,10 @@ impl<'ctx> Builders<'ctx> {
 
         format!("func_{}", chars.iter().rev().collect::<String>())
     }
+}
+pub struct CompilerState {
+    pub request_redraw: bool,
+    pub has_terminator: bool,
 }
 
 #[cfg(test)]
@@ -651,6 +651,27 @@ mod tests {
     }
 
     #[test]
+    fn builders_record_global_variable_metadata() {
+        let context = Context::create();
+        let project = project_with_variables();
+        let builders = Builders::new(&context, &project);
+
+        let metadata = builders
+            .global_variable_metadata
+            .iter()
+            .map(|variable| {
+                (
+                    variable.variable_id.as_str(),
+                    variable.display_name.as_str(),
+                    variable.variable_idx,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(metadata, vec![("global-score", "score", 0), ("shared-id", "shared", 1)]);
+    }
+
+    #[test]
     fn get_variable_prefers_stage_global_when_ids_overlap() {
         let context = Context::create();
         let project = project_with_variables();
@@ -672,11 +693,7 @@ mod tests {
         let pointer = builders.get_global_variable_ptr(variable);
 
         assert_eq!(pointer.get_name().to_str().unwrap(), "global_0");
-        assert!(
-            builders.module.verify().is_ok(),
-            "{}",
-            builders.module.to_string()
-        );
+        assert!(builders.module.verify().is_ok(), "{}", builders.module.to_string());
     }
 
     #[test]
@@ -685,9 +702,7 @@ mod tests {
         let project = project_with_variables();
         let mut builders = Builders::new(&context, &project);
 
-        let names = (0..28)
-            .map(|_| builders.create_function_name())
-            .collect::<Vec<_>>();
+        let names = (0..28).map(|_| builders.create_function_name()).collect::<Vec<_>>();
 
         assert_eq!(names[0], "func_a");
         assert_eq!(names[1], "func_b");

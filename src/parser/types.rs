@@ -8,47 +8,34 @@ use crate::{
 };
 use std::{error::Error, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Thread {
-    pub hat: HatStmt,
+    pub hat: Option<HatStmt>,
     pub stmts: Vec<Stmt>,
     pub target_idx: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GreaterTarget {
     Volume,
     Timer,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HatStmt {
     WhenFlagClicked,
-    WhenKeyPressed {
-        key: String,
-    },
+    WhenKeyPressed { key: String },
     WhenThisSpriteClicked,
     WhenStageClicked,
-    WhenBacdropSwitchesTo {
-        backdrop: usize,
-    },
-    WhenGreaterThan {
-        target: GreaterTarget,
-        value: Expr,
-    },
-    WhenBroadcastReceived {
-        target: String,
-    },
+    WhenBacdropSwitchesTo { backdrop: usize },
+    WhenGreaterThan { target: GreaterTarget, value: Expr },
+    WhenBroadcastReceived { target: String },
     ControlStartAsClone,
-    ProcedureDefinition {
-        prototype: ProceduresPrototypeStruct,
-    },
-    WhenTouchingObject {
-        object: Expr,
-    },
+    ProcedureDefinition { prototype: ProceduresPrototypeStruct },
+    WhenTouchingObject { object: Expr },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Motion(MotionStmt),
     Looks(LooksStmt),
@@ -61,7 +48,7 @@ pub enum Stmt {
     Procedures(ProceduresStmt),
     PenStmt(PenStmt),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MotionStmt {
     MoveStep { steps: Expr },
     TurnRight { degrees: Expr },
@@ -82,7 +69,7 @@ pub enum MotionStmt {
     ScrollRight, // NoOpだから引数いらない
     ScrollUp,    // NoOpだから引数いらない
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LooksEffects {
     Color,
     Fisheye,
@@ -92,80 +79,46 @@ pub enum LooksEffects {
     Brightness,
     Ghost,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LooksFrontback {
     Front,
     Back,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LooksFowardBackward {
     Forward,
     Backward,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LooksStmt {
-    SayForSecs {
-        message: Expr,
-        secs: Expr,
-    },
-    Say {
-        message: Expr,
-    },
-    ThinkForSecs {
-        message: Expr,
-        secs: Expr,
-    },
-    Think {
-        message: Expr,
-    },
-    SwitchCostumeTo {
-        costume: Expr,
-    },
+    SayForSecs { message: Expr, secs: Expr },
+    Say { message: Expr },
+    ThinkForSecs { message: Expr, secs: Expr },
+    Think { message: Expr },
+    SwitchCostumeTo { costume: Expr },
     NextCostume,
-    SwitchBackdropTo {
-        backdrop: Expr,
-    },
+    SwitchBackdropTo { backdrop: Expr },
     NextBackdrop,
-    ChangeSizeBy {
-        change: Expr,
-    },
-    SetSizeTo {
-        size: Expr,
-    },
-    ChangeEffectBy {
-        change: Expr,
-        effect: LooksEffects,
-    },
-    SetEffectTo {
-        value: Expr,
-        effect: LooksEffects,
-    },
+    ChangeSizeBy { change: Expr },
+    SetSizeTo { size: Expr },
+    ChangeEffectBy { change: Expr, effect: LooksEffects },
+    SetEffectTo { value: Expr, effect: LooksEffects },
     ClearEffects,
     Show,
     Hide,
-    GotoFrontback {
-        frontback: LooksFrontback,
-    },
-    GotoForwardBackwardLayers {
-        forward_backward: LooksFowardBackward,
-    },
-    ChangeStretchBy {
-        change: Expr,
-    },
-    SetStretchTo {
-        stretch: Expr,
-    },
+    GotoFrontback { frontback: LooksFrontback },
+    GotoForwardBackwardLayers { forward_backward: LooksFowardBackward },
+    ChangeStretchBy { change: Expr },
+    SetStretchTo { stretch: Expr },
     HideAllSprites,
-    SwitchBackdropToAndWait {
-        backdrop: Expr,
-    },
+    SwitchBackdropToAndWait { backdrop: Expr },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SoundEffect {
     Pitch,
     Pan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SoundStmt {
     PlayUntilDone { sound: Expr },
     Play { sound: Expr },
@@ -176,18 +129,18 @@ pub enum SoundStmt {
     ChangeVolumeBy { value: Expr },
     SetVolumeTo { value: Expr },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EventStmt {
     Broadcast { target: Expr },
     BroadcastAndWait { target: Expr },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StopOption {
     All,
     ThisScript,
     OtherScrriptInSprite,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ControlStmt {
     Wait {
         duration: Expr,
@@ -238,15 +191,15 @@ pub enum ControlStmt {
     ClearCounter,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SensingStmt {
     AskAndWait { question: Expr },
     SetDraggable { draggable: bool },
     ResetTimer,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OperatorStmt {}
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DataStmt {
     SetVariable { value: Expr, variable: String },
     ChangeVariableBy { value: Expr, variable: String },
@@ -260,14 +213,14 @@ pub enum DataStmt {
     ShowList { list: String },
     HideList { list: String },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProceduresStmt {
     ProceduresCall {
         proccode: String,
         inputs: HashMap<String, Expr>,
     },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PenStmt {
     PenClear,
     PenStamp,
@@ -284,7 +237,7 @@ pub enum PenStmt {
     SetPenShadeTo { shade: Expr },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Motion(MotionExpr),
     Looks(LooksExpr),
@@ -298,7 +251,7 @@ pub enum Expr {
     Pen(PenExpr),
     Literal(Literal),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MotionExpr {
     XPosition,
     YPosition,
@@ -306,28 +259,28 @@ pub enum MotionExpr {
     XScroll,
     YScroll,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CostumeStatueTarget {
     Name,
     Number,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LooksExpr {
     CostumeStatus { target: CostumeStatueTarget },
     BackdropStatus { target: CostumeStatueTarget },
     Size,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SoundExpr {
     Volume,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EventExpr {}
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ControlExpr {
     GetCounter,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TimeTarget {
     Year,
     Month,
@@ -337,7 +290,7 @@ pub enum TimeTarget {
     Minute,
     Second,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatusTarget {
     XPosition,
     YPosition,
@@ -348,36 +301,20 @@ pub enum StatusTarget {
     Volume,
     Variable(String),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SensingExpr {
-    TouchingObject {
-        target: Box<Expr>,
-    },
-    TouchingColor {
-        target: Box<Expr>,
-    },
-    ColorTouchingColor {
-        base: Box<Expr>,
-        target: Box<Expr>,
-    },
-    DistanceBy {
-        target: Box<Expr>,
-    },
+    TouchingObject { target: Box<Expr> },
+    TouchingColor { target: Box<Expr> },
+    ColorTouchingColor { base: Box<Expr>, target: Box<Expr> },
+    DistanceBy { target: Box<Expr> },
     Answer,
-    IsKeyDown {
-        target: Box<Expr>,
-    },
+    IsKeyDown { target: Box<Expr> },
     IsMouseDown,
     MouseX,
     MouseY,
     Volume,
-    NowTime {
-        time: TimeTarget,
-    },
-    SpriteStatus {
-        target: Box<Expr>,
-        item: StatusTarget,
-    },
+    NowTime { time: TimeTarget },
+    SpriteStatus { target: Box<Expr>, item: StatusTarget },
     Timer,
     Since2000Days,
     Username,
@@ -385,7 +322,7 @@ pub enum SensingExpr {
     Online,
     IsLoud,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CalcOp {
     Abs,
     Floor,
@@ -402,7 +339,7 @@ pub enum CalcOp {
     PowE,
     Pow10,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OperatorExpr {
     Add {
         left: Box<Expr>,
@@ -474,40 +411,34 @@ pub enum OperatorExpr {
         op: CalcOp,
     },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DataExpr {
     GetItemOf { target: String, idx: Box<Expr> },
     GetItemIndex { target: String, content: Box<Expr> },
     GetLen { target: String },
     IsInclude { target: String, content: Box<Expr> },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProceduresExpr {
-    ArgumentReporterBoolean {
-        name: String,
-    },
-    ArgumentReporterStringNumber {
-        name: String,
-    },
-    ProceduresPrototype {
-        prototype: ProceduresPrototypeStruct,
-    },
+    ArgumentReporterBoolean { name: String },
+    ArgumentReporterStringNumber { name: String },
+    ProceduresPrototype { prototype: ProceduresPrototypeStruct },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProceduresPrototypeStruct {
     pub proccode: String,
     pub arguments: Vec<Argument>,
     pub warp: bool,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Argument {
     pub id: String,
     pub default: StringOrNumber,
     pub name: String,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PenExpr {}
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Literal {
     String(String),
     Number(String),
@@ -518,7 +449,7 @@ pub enum Literal {
     Null,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParserError<'a> {
     NotHandledOp(BlockOpCodes),
     InvalidValue(&'a str),

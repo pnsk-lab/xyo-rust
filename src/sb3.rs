@@ -160,8 +160,7 @@ fn refine_json_path(input: &str, json_path: &str) -> Option<String> {
     let blocks = target.get("blocks")?.as_object()?;
 
     for (block_id, block_value) in blocks.iter() {
-        if serde_json::from_value::<types::BlockAndTopLevelPrimitive>(block_value.clone()).is_err()
-        {
+        if serde_json::from_value::<types::BlockAndTopLevelPrimitive>(block_value.clone()).is_err() {
             return Some(format!(".targets[{target_index}].blocks[{block_id}]"));
         }
     }
@@ -179,13 +178,12 @@ fn read_project_json_bytes(path: &Path) -> Result<Vec<u8>, ReadSb3Error> {
         path: path_label.clone(),
         source,
     })?;
-    let mut entry =
-        archive
-            .by_name("project.json")
-            .map_err(|source| ReadSb3Error::MissingProjectJson {
-                path: path_label.clone(),
-                source,
-            })?;
+    let mut entry = archive
+        .by_name("project.json")
+        .map_err(|source| ReadSb3Error::MissingProjectJson {
+            path: path_label.clone(),
+            source,
+        })?;
     let mut buf = Vec::with_capacity(entry.size() as usize);
     entry
         .read_to_end(&mut buf)

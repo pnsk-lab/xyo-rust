@@ -23,9 +23,7 @@ fn main() {
     }
 
     let clang = resolve_clang().unwrap_or_else(|| {
-        panic!(
-            "clang is required to build bitcodes; set CLANG or LLVM_CONFIG_PATH, or put clang on PATH"
-        )
+        panic!("clang is required to build bitcodes; set CLANG or LLVM_CONFIG_PATH, or put clang on PATH")
     });
 
     fs::create_dir_all(&output_bc_dir).unwrap();
@@ -78,14 +76,11 @@ fn write_embedded_bitcodes_rs(output_bc_dir: &Path, destination: &Path) {
             .and_then(OsStr::to_str)
             .unwrap_or_else(|| panic!("invalid bitcode file name: {}", path.display()));
         let include_path = path.display().to_string();
-        contents.push_str(&format!(
-            "    ({name:?}, include_bytes!({include_path:?})),\n"
-        ));
+        contents.push_str(&format!("    ({name:?}, include_bytes!({include_path:?})),\n"));
     }
     contents.push_str("];\n");
 
-    fs::write(destination, contents)
-        .unwrap_or_else(|err| panic!("failed to write {}: {err}", destination.display()));
+    fs::write(destination, contents).unwrap_or_else(|err| panic!("failed to write {}: {err}", destination.display()));
 }
 
 fn resolve_icu_include_dirs(input_dir: &Path) -> Vec<PathBuf> {
@@ -221,10 +216,7 @@ fn compile_source(
 
     let bc_output = output_bc_dir.join(format!("{stem}.bc"));
     let ll_output = output_ll_dir.join(format!("{stem}.ll"));
-    let mut include_args = vec![
-        OsStr::new("-I").to_os_string(),
-        input_dir.join("lib").into_os_string(),
-    ];
+    let mut include_args = vec![OsStr::new("-I").to_os_string(), input_dir.join("lib").into_os_string()];
     for include_dir in icu_include_dirs {
         include_args.push(OsStr::new("-I").to_os_string());
         include_args.push(include_dir.as_os_str().to_os_string());

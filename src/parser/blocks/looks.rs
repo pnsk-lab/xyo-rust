@@ -2,8 +2,8 @@ use crate::{
     parser::{
         parser::parse_input,
         types::{
-            CostumeStatueTarget, Expr, Literal, LooksEffects, LooksExpr, LooksFowardBackward,
-            LooksFrontback, LooksStmt, ParseResult, ParserError,
+            CostumeStatueTarget, Expr, Literal, LooksEffects, LooksExpr, LooksFowardBackward, LooksFrontback,
+            LooksStmt, ParseResult, ParserError,
         },
     },
     types::{Block, BlockOpCodes, Fields, Input, ScratchProject},
@@ -35,9 +35,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -55,17 +53,11 @@ fn required_expr_input<'a>(
     missing_input_error: &'static str,
     parse_error: &'static str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
-pub fn parse_looks_expr<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, Expr> {
+pub fn parse_looks_expr<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, Expr> {
     match block.opcode {
         BlockOpCodes::LooksCostumeNumberName => {
             let fields = block_fields(block, "missing fields in LooksCostumeNumberName block")?;
@@ -80,13 +72,9 @@ pub fn parse_looks_expr<'a>(
             } else if number_or_name == "name" {
                 CostumeStatueTarget::Name
             } else {
-                return Err(ParserError::InvalidValue(
-                    "NUMBER_NAME can supported in number or name",
-                ));
+                return Err(ParserError::InvalidValue("NUMBER_NAME can supported in number or name"));
             };
-            Ok(Expr::Looks(LooksExpr::CostumeStatus {
-                target: number_or_name,
-            }))
+            Ok(Expr::Looks(LooksExpr::CostumeStatus { target: number_or_name }))
         }
         BlockOpCodes::LooksBackdropNumberName => {
             let fields = block_fields(block, "missing fields in LooksBackdropNumberName block")?;
@@ -101,32 +89,20 @@ pub fn parse_looks_expr<'a>(
             } else if number_or_name == "name" {
                 CostumeStatueTarget::Name
             } else {
-                return Err(ParserError::InvalidValue(
-                    "NUMBER_NAME can supported in number or name",
-                ));
+                return Err(ParserError::InvalidValue("NUMBER_NAME can supported in number or name"));
             };
-            Ok(Expr::Looks(LooksExpr::BackdropStatus {
-                target: number_or_name,
-            }))
+            Ok(Expr::Looks(LooksExpr::BackdropStatus { target: number_or_name }))
         }
         BlockOpCodes::LooksSize => Ok(Expr::Looks(LooksExpr::Size)),
         BlockOpCodes::LooksCostume => {
             let fields = block_fields(block, "missing fields in LooksCostume block")?;
-            let field = required_field(
-                fields,
-                "COSTUME",
-                "missing COSTUME field in LooksCostume block",
-            )?;
+            let field = required_field(fields, "COSTUME", "missing COSTUME field in LooksCostume block")?;
             let costume = field_text(field);
             Ok(Expr::Literal(Literal::String(costume.clone())))
         }
         BlockOpCodes::LooksBackdrops => {
             let fields = block_fields(block, "missing fields in LooksBackdrops block")?;
-            let field = required_field(
-                fields,
-                "BACKDROP",
-                "missing BACKDROP field in LooksBackdrops block",
-            )?;
+            let field = required_field(fields, "BACKDROP", "missing BACKDROP field in LooksBackdrops block")?;
             let backdrop = field_text(field);
             Ok(Expr::Literal(Literal::String(backdrop.clone())))
         }
@@ -264,11 +240,7 @@ pub fn parse_looks_stmt<'a>(
                 "failed to parse CHANGE input in LooksChangeEffectBy block",
             )?;
             let fields = block_fields(block, "missing fields in LooksChangeEffectBy block")?;
-            let field = required_field(
-                fields,
-                "EFFECT",
-                "missing EFFECT field in LooksChangeEffectBy block",
-            )?;
+            let field = required_field(fields, "EFFECT", "missing EFFECT field in LooksChangeEffectBy block")?;
             let effect = field_text(field);
             let effect = match effect.as_str() {
                 "COLOR" => LooksEffects::Color,
@@ -293,11 +265,7 @@ pub fn parse_looks_stmt<'a>(
                 "failed to parse VALUE input in LooksSetEffectTo block",
             )?;
             let fields = block_fields(block, "missing fields in LooksSetEffectTo block")?;
-            let field = required_field(
-                fields,
-                "EFFECT",
-                "missing EFFECT field in LooksSetEffectTo block",
-            )?;
+            let field = required_field(fields, "EFFECT", "missing EFFECT field in LooksSetEffectTo block")?;
             let effect = field_text(field);
             let effect = match effect.as_str() {
                 "COLOR" => LooksEffects::Color,
@@ -327,15 +295,10 @@ pub fn parse_looks_stmt<'a>(
                 "back" => LooksFrontback::Back,
                 _ => return Err(ParserError::InvalidValue("expected front or back")),
             };
-            Ok(LooksStmt::GotoFrontback {
-                frontback: frontback,
-            })
+            Ok(LooksStmt::GotoFrontback { frontback: frontback })
         }
         BlockOpCodes::LooksGoForwardBackwardLayers => {
-            let fields = block_fields(
-                block,
-                "missing fields in LooksGoForwardBackwardLayers block",
-            )?;
+            let fields = block_fields(block, "missing fields in LooksGoForwardBackwardLayers block")?;
             let field = required_field(
                 fields,
                 "FORWARD_BACKWARD",
@@ -375,10 +338,7 @@ pub fn parse_looks_stmt<'a>(
         }
         BlockOpCodes::LooksHideAllSprites => Ok(LooksStmt::HideAllSprites),
         BlockOpCodes::LooksSwitchBackdropToAndWait => {
-            let inputs = block_inputs(
-                block,
-                "missing inputs in LooksSwitchBackdropToAndWait block",
-            )?;
+            let inputs = block_inputs(block, "missing inputs in LooksSwitchBackdropToAndWait block")?;
             let backdrop = required_expr_input(
                 project,
                 target_idx,

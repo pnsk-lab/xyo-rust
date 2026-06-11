@@ -4,8 +4,7 @@ use crate::{
     compiler::{
         compiler::{ScratchReturnTypes, generate_expr_ir},
         types::{
-            Builders, CostumeInfoKeys, SpriteKeys, create_costume_struct_type,
-            create_sprite_struct_type,
+            Builders, CompilerState, CostumeInfoKeys, SpriteKeys, create_costume_struct_type, create_sprite_struct_type,
         },
         utils::scratch_return_to_number,
     },
@@ -37,10 +36,7 @@ pub fn parse_looks_expr<'ctx>(
     }
 }
 
-fn get_size_ptr<'ctx>(
-    builders: &Builders<'ctx>,
-    function: &FunctionValue<'ctx>,
-) -> PointerValue<'ctx> {
+fn get_size_ptr<'ctx>(builders: &Builders<'ctx>, function: &FunctionValue<'ctx>) -> PointerValue<'ctx> {
     let p = function.get_first_param().unwrap().into_pointer_value();
     let sprite_type = create_sprite_struct_type(builders.context);
     builders
@@ -83,23 +79,13 @@ fn set_size_to<'ctx>(builders: &Builders<'ctx>, size: FloatValue<'ctx>, function
     let costume_ptr = unsafe {
         builders
             .builder
-            .build_in_bounds_gep(
-                costume_type,
-                costumes_base_ptr,
-                &[costume_id],
-                "sprite_costume_n_ptr",
-            )
+            .build_in_bounds_gep(costume_type, costumes_base_ptr, &[costume_id], "sprite_costume_n_ptr")
             .unwrap()
     };
 
     let width_ptr = builders
         .builder
-        .build_struct_gep(
-            costume_type,
-            costume_ptr,
-            CostumeInfoKeys::Width.into(),
-            "width_ptr",
-        )
+        .build_struct_gep(costume_type, costume_ptr, CostumeInfoKeys::Width.into(), "width_ptr")
         .unwrap();
     let width_val = builders
         .builder
@@ -108,12 +94,7 @@ fn set_size_to<'ctx>(builders: &Builders<'ctx>, size: FloatValue<'ctx>, function
         .into_float_value();
     let height_ptr = builders
         .builder
-        .build_struct_gep(
-            costume_type,
-            costume_ptr,
-            CostumeInfoKeys::Height.into(),
-            "height_ptr",
-        )
+        .build_struct_gep(costume_type, costume_ptr, CostumeInfoKeys::Height.into(), "height_ptr")
         .unwrap();
     let height_val = builders
         .builder
@@ -134,11 +115,7 @@ fn set_size_to<'ctx>(builders: &Builders<'ctx>, size: FloatValue<'ctx>, function
                         &[
                             builders
                                 .builder
-                                .build_float_div(
-                                    builders.context.f64_type().const_float(5.0),
-                                    width_val,
-                                    "scale_width",
-                                )
+                                .build_float_div(builders.context.f64_type().const_float(5.0), width_val, "scale_width")
                                 .unwrap()
                                 .into(),
                             builders
@@ -251,6 +228,7 @@ pub fn parse_looks_stmt<'ctx>(
     stmt: &LooksStmt,
     function: &FunctionValue<'ctx>,
     target_idx: usize,
+    compiler_state: &mut CompilerState,
 ) {
     match stmt {
         LooksStmt::SetSizeTo { size } => {
@@ -260,6 +238,7 @@ pub fn parse_looks_stmt<'ctx>(
                 function,
             );
             set_size_to(builders, size, function);
+            compiler_state.request_redraw = true;
         }
         LooksStmt::ChangeSizeBy { change } => {
             let change = scratch_return_to_number(
@@ -273,11 +252,9 @@ pub fn parse_looks_stmt<'ctx>(
                 .build_load(builders.context.f64_type(), old_size_ptr, "size")
                 .unwrap()
                 .into_float_value();
-            let new_size = builders
-                .builder
-                .build_float_add(old_size, change, "new_size")
-                .unwrap();
+            let new_size = builders.builder.build_float_add(old_size, change, "new_size").unwrap();
             set_size_to(builders, new_size, function);
+            compiler_state.request_redraw = true;
         }
         _ => todo!("未実装!!!"),
     }

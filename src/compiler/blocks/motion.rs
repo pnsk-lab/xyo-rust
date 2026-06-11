@@ -6,8 +6,7 @@ use crate::{
     compiler::{
         compiler::generate_expr_ir,
         types::{
-            Builders, CostumeInfoKeys, SpriteKeys, create_costume_struct_type,
-            create_sprite_struct_type,
+            Builders, CompilerState, CostumeInfoKeys, SpriteKeys, create_costume_struct_type, create_sprite_struct_type,
         },
         utils::scratch_return_to_number,
     },
@@ -15,10 +14,7 @@ use crate::{
     types::RotationStyle,
 };
 
-pub fn get_x_ptr<'ctx>(
-    builders: &Builders<'ctx>,
-    function: &FunctionValue<'ctx>,
-) -> PointerValue<'ctx> {
+pub fn get_x_ptr<'ctx>(builders: &Builders<'ctx>, function: &FunctionValue<'ctx>) -> PointerValue<'ctx> {
     let p = function.get_first_param().unwrap().into_pointer_value();
     let sprite_type = create_sprite_struct_type(builders.context);
     builders
@@ -26,10 +22,7 @@ pub fn get_x_ptr<'ctx>(
         .build_struct_gep(sprite_type, p, SpriteKeys::SpriteX.into(), "field0")
         .unwrap()
 }
-pub fn get_y_ptr<'ctx>(
-    builders: &Builders<'ctx>,
-    function: &FunctionValue<'ctx>,
-) -> PointerValue<'ctx> {
+pub fn get_y_ptr<'ctx>(builders: &Builders<'ctx>, function: &FunctionValue<'ctx>) -> PointerValue<'ctx> {
     let p = function.get_first_param().unwrap().into_pointer_value();
     let sprite_type = create_sprite_struct_type(builders.context);
     builders
@@ -46,11 +39,7 @@ fn build_float_min<'ctx>(
 ) -> FloatValue<'ctx> {
     builders
         .builder
-        .build_call(
-            builders.functions.llvm_min,
-            &[left.into(), right.into()],
-            name,
-        )
+        .build_call(builders.functions.llvm_min, &[left.into(), right.into()], name)
         .unwrap()
         .try_as_basic_value()
         .basic()
@@ -66,11 +55,7 @@ fn build_float_max<'ctx>(
 ) -> FloatValue<'ctx> {
     builders
         .builder
-        .build_call(
-            builders.functions.llvm_max,
-            &[left.into(), right.into()],
-            name,
-        )
+        .build_call(builders.functions.llvm_max, &[left.into(), right.into()], name)
         .unwrap()
         .try_as_basic_value()
         .basic()
@@ -78,11 +63,7 @@ fn build_float_max<'ctx>(
         .into_float_value()
 }
 
-fn build_floor<'ctx>(
-    builders: &Builders<'ctx>,
-    value: FloatValue<'ctx>,
-    name: &str,
-) -> FloatValue<'ctx> {
+fn build_floor<'ctx>(builders: &Builders<'ctx>, value: FloatValue<'ctx>, name: &str) -> FloatValue<'ctx> {
     builders
         .builder
         .build_call(builders.functions.llvm_floor, &[value.into()], name)
@@ -93,11 +74,7 @@ fn build_floor<'ctx>(
         .into_float_value()
 }
 
-fn build_ceil<'ctx>(
-    builders: &Builders<'ctx>,
-    value: FloatValue<'ctx>,
-    name: &str,
-) -> FloatValue<'ctx> {
+fn build_ceil<'ctx>(builders: &Builders<'ctx>, value: FloatValue<'ctx>, name: &str) -> FloatValue<'ctx> {
     builders
         .builder
         .build_call(builders.functions.llvm_ceil, &[value.into()], name)
@@ -120,19 +97,11 @@ fn build_scratch_fenced_axis<'ctx>(
     // Scratch fences against the costume bounds, leaving a small visible strip on stage.
     let visible_limit = builders
         .builder
-        .build_float_sub(
-            stage_half_extent,
-            inset,
-            &format!("{axis_name}_visible_limit"),
-        )
+        .build_float_sub(stage_half_extent, inset, &format!("{axis_name}_visible_limit"))
         .unwrap();
     let max_unrounded = builders
         .builder
-        .build_float_add(
-            visible_limit,
-            half_extent,
-            &format!("{axis_name}_max_unrounded"),
-        )
+        .build_float_add(visible_limit, half_extent, &format!("{axis_name}_max_unrounded"))
         .unwrap();
     let min_unrounded = builders
         .builder
@@ -145,18 +114,8 @@ fn build_scratch_fenced_axis<'ctx>(
 
     let min_rounded = build_ceil(builders, min_unrounded, &format!("{axis_name}_min_ceil"));
     let max_rounded = build_floor(builders, max_unrounded, &format!("{axis_name}_max_floor"));
-    let low_fenced = build_float_max(
-        builders,
-        value,
-        min_rounded,
-        &format!("{axis_name}_low_fenced"),
-    );
-    build_float_min(
-        builders,
-        low_fenced,
-        max_rounded,
-        &format!("{axis_name}_fenced"),
-    )
+    let low_fenced = build_float_max(builders, value, min_rounded, &format!("{axis_name}_low_fenced"));
+    build_float_min(builders, low_fenced, max_rounded, &format!("{axis_name}_fenced"))
 }
 
 pub fn fence_goto<'ctx>(
@@ -207,15 +166,9 @@ pub fn fence_goto<'ctx>(
         .build_is_null(costumes_base_ptr, "sprite_costumes_is_null")
         .unwrap();
 
-    let with_costume_block = builders
-        .context
-        .append_basic_block(*function, "fence_with_costume");
-    let without_costume_block = builders
-        .context
-        .append_basic_block(*function, "fence_without_costume");
-    let merge_block = builders
-        .context
-        .append_basic_block(*function, "fence_merge");
+    let with_costume_block = builders.context.append_basic_block(*function, "fence_with_costume");
+    let without_costume_block = builders.context.append_basic_block(*function, "fence_without_costume");
+    let merge_block = builders.context.append_basic_block(*function, "fence_merge");
     builders
         .builder
         .build_conditional_branch(costumes_missing, without_costume_block, with_costume_block)
@@ -225,23 +178,13 @@ pub fn fence_goto<'ctx>(
     let costume_ptr = unsafe {
         builders
             .builder
-            .build_in_bounds_gep(
-                costume_type,
-                costumes_base_ptr,
-                &[costume_id],
-                "sprite_costume_n_ptr",
-            )
+            .build_in_bounds_gep(costume_type, costumes_base_ptr, &[costume_id], "sprite_costume_n_ptr")
             .unwrap()
     };
 
     let width_ptr = builders
         .builder
-        .build_struct_gep(
-            costume_type,
-            costume_ptr,
-            CostumeInfoKeys::Width.into(),
-            "width_ptr",
-        )
+        .build_struct_gep(costume_type, costume_ptr, CostumeInfoKeys::Width.into(), "width_ptr")
         .unwrap();
     let width_val = builders
         .builder
@@ -250,12 +193,7 @@ pub fn fence_goto<'ctx>(
         .into_float_value();
     let height_ptr = builders
         .builder
-        .build_struct_gep(
-            costume_type,
-            costume_ptr,
-            CostumeInfoKeys::Height.into(),
-            "height_ptr",
-        )
+        .build_struct_gep(costume_type, costume_ptr, CostumeInfoKeys::Height.into(), "height_ptr")
         .unwrap();
     let height_val = builders
         .builder
@@ -282,11 +220,7 @@ pub fn fence_goto<'ctx>(
         .unwrap();
     let half_height_with_costume = builders
         .builder
-        .build_float_div(
-            scaled_height,
-            f64_type.const_float(2.0),
-            "fence_half_height",
-        )
+        .build_float_div(scaled_height, f64_type.const_float(2.0), "fence_half_height")
         .unwrap();
     let min_axis = build_float_min(builders, scaled_width, scaled_height, "fence_min_axis");
     let half_min_axis = builders
@@ -294,43 +228,27 @@ pub fn fence_goto<'ctx>(
         .build_float_div(min_axis, f64_type.const_float(2.0), "fence_half_min_axis")
         .unwrap();
     let inset_with_costume = build_floor(builders, half_min_axis, "fence_inset_floor");
-    let inset_with_costume =
-        build_float_min(builders, fence_width, inset_with_costume, "fence_inset");
-    builders
-        .builder
-        .build_unconditional_branch(merge_block)
-        .unwrap();
+    let inset_with_costume = build_float_min(builders, fence_width, inset_with_costume, "fence_inset");
+    builders.builder.build_unconditional_branch(merge_block).unwrap();
 
     builders.builder.position_at_end(without_costume_block);
-    builders
-        .builder
-        .build_unconditional_branch(merge_block)
-        .unwrap();
+    builders.builder.build_unconditional_branch(merge_block).unwrap();
 
     builders.builder.position_at_end(merge_block);
     let zero = f64_type.const_float(0.0);
-    let inset = builders
-        .builder
-        .build_phi(f64_type, "fence_inset_phi")
-        .unwrap();
+    let inset = builders.builder.build_phi(f64_type, "fence_inset_phi").unwrap();
     inset.add_incoming(&[
         (&inset_with_costume, with_costume_block),
         (&fence_width, without_costume_block),
     ]);
     let inset = inset.as_basic_value().into_float_value();
-    let half_width = builders
-        .builder
-        .build_phi(f64_type, "fence_half_width_phi")
-        .unwrap();
+    let half_width = builders.builder.build_phi(f64_type, "fence_half_width_phi").unwrap();
     half_width.add_incoming(&[
         (&half_width_with_costume, with_costume_block),
         (&zero, without_costume_block),
     ]);
     let half_width = half_width.as_basic_value().into_float_value();
-    let half_height = builders
-        .builder
-        .build_phi(f64_type, "fence_half_height_phi")
-        .unwrap();
+    let half_height = builders.builder.build_phi(f64_type, "fence_half_height_phi").unwrap();
     half_height.add_incoming(&[
         (&half_height_with_costume, with_costume_block),
         (&zero, without_costume_block),
@@ -370,15 +288,14 @@ pub fn parse_motion_stmt<'ctx>(
     stmt: &MotionStmt,
     function: &FunctionValue<'ctx>,
     target_idx: usize,
+    compiler_state: &mut CompilerState,
 ) {
     match stmt {
         MotionStmt::SetX { x } => {
-            let val = scratch_return_to_number(
-                builders,
-                &generate_expr_ir(builders, x, function, target_idx),
-                function,
-            );
+            let val =
+                scratch_return_to_number(builders, &generate_expr_ir(builders, x, function, target_idx), function);
             fence_goto(builders, function, Some(&val), None);
+            compiler_state.request_redraw = true;
         }
         MotionStmt::ChangeXBy { dx } => {
             let val = scratch_return_to_number(
@@ -392,19 +309,15 @@ pub fn parse_motion_stmt<'ctx>(
                 .build_load(builders.context.f64_type(), field_ptr, "old_x")
                 .unwrap()
                 .into_float_value();
-            let new_val = builders
-                .builder
-                .build_float_add(old_val, val, "new_x")
-                .unwrap();
+            let new_val = builders.builder.build_float_add(old_val, val, "new_x").unwrap();
             fence_goto(builders, function, Some(&new_val), None);
+            compiler_state.request_redraw = true;
         }
         MotionStmt::SetY { y } => {
-            let val = scratch_return_to_number(
-                builders,
-                &generate_expr_ir(builders, y, function, target_idx),
-                function,
-            );
+            let val =
+                scratch_return_to_number(builders, &generate_expr_ir(builders, y, function, target_idx), function);
             fence_goto(builders, function, None, Some(&val));
+            compiler_state.request_redraw = true;
         }
         MotionStmt::ChangeYBy { dy } => {
             let val = scratch_return_to_number(
@@ -418,24 +331,17 @@ pub fn parse_motion_stmt<'ctx>(
                 .build_load(builders.context.f64_type(), field_ptr, "old_y")
                 .unwrap()
                 .into_float_value();
-            let new_val = builders
-                .builder
-                .build_float_add(old_val, val, "new_y")
-                .unwrap();
+            let new_val = builders.builder.build_float_add(old_val, val, "new_y").unwrap();
             fence_goto(builders, function, None, Some(&new_val));
+            compiler_state.request_redraw = true;
         }
         MotionStmt::GotoXY { x, y } => {
-            let x_val = scratch_return_to_number(
-                builders,
-                &generate_expr_ir(builders, x, function, target_idx),
-                function,
-            );
-            let y_val = scratch_return_to_number(
-                builders,
-                &generate_expr_ir(builders, y, function, target_idx),
-                function,
-            );
+            let x_val =
+                scratch_return_to_number(builders, &generate_expr_ir(builders, x, function, target_idx), function);
+            let y_val =
+                scratch_return_to_number(builders, &generate_expr_ir(builders, y, function, target_idx), function);
             fence_goto(builders, function, Some(&x_val), Some(&y_val));
+            compiler_state.request_redraw = true;
         }
         MotionStmt::TurnRight { degrees } => {
             let p = function.get_first_param().unwrap().into_pointer_value();
@@ -454,11 +360,9 @@ pub fn parse_motion_stmt<'ctx>(
                 .build_load(builders.context.f64_type(), field_ptr, "old_degree")
                 .unwrap()
                 .into_float_value();
-            let new_val = builders
-                .builder
-                .build_float_add(old_val, val, "old_degree")
-                .unwrap();
+            let new_val = builders.builder.build_float_add(old_val, val, "old_degree").unwrap();
             builders.builder.build_store(field_ptr, new_val).unwrap();
+            compiler_state.request_redraw = true;
         }
         MotionStmt::TurnLeft { degrees } => {
             let p = function.get_first_param().unwrap().into_pointer_value();
@@ -477,11 +381,9 @@ pub fn parse_motion_stmt<'ctx>(
                 .build_load(builders.context.f64_type(), field_ptr, "old_degree")
                 .unwrap()
                 .into_float_value();
-            let new_val = builders
-                .builder
-                .build_float_sub(old_val, val, "old_degree")
-                .unwrap();
+            let new_val = builders.builder.build_float_sub(old_val, val, "old_degree").unwrap();
             builders.builder.build_store(field_ptr, new_val).unwrap();
+            compiler_state.request_redraw = true;
         }
         MotionStmt::PointInDirection { direction } => {
             let p = function.get_first_param().unwrap().into_pointer_value();
@@ -496,6 +398,7 @@ pub fn parse_motion_stmt<'ctx>(
                 function,
             );
             builders.builder.build_store(field_ptr, val).unwrap();
+            compiler_state.request_redraw = true;
         }
         MotionStmt::AlignScene => {
             // No op
@@ -530,11 +433,7 @@ pub fn parse_motion_stmt<'ctx>(
                     builders.functions.llvm_sin,
                     &[builders
                         .builder
-                        .build_float_mul(
-                            theta,
-                            builders.context.f64_type().const_float(PI / 180.0),
-                            "rad",
-                        )
+                        .build_float_mul(theta, builders.context.f64_type().const_float(PI / 180.0), "rad")
                         .unwrap()
                         .into()],
                     "sin",
@@ -550,11 +449,7 @@ pub fn parse_motion_stmt<'ctx>(
                     builders.functions.llvm_cos,
                     &[builders
                         .builder
-                        .build_float_mul(
-                            theta,
-                            builders.context.f64_type().const_float(PI / 180.0),
-                            "rad",
-                        )
+                        .build_float_mul(theta, builders.context.f64_type().const_float(PI / 180.0), "rad")
                         .unwrap()
                         .into()],
                     "sin",
@@ -564,49 +459,30 @@ pub fn parse_motion_stmt<'ctx>(
                 .basic()
                 .unwrap()
                 .into_float_value();
-            let dx = builders
-                .builder
-                .build_float_mul(sin_theta, steps, "dx")
-                .unwrap();
-            let dy = builders
-                .builder
-                .build_float_mul(cos_theta, steps, "dy")
-                .unwrap();
+            let dx = builders.builder.build_float_mul(sin_theta, steps, "dx").unwrap();
+            let dy = builders.builder.build_float_mul(cos_theta, steps, "dy").unwrap();
             let field_ptr = get_x_ptr(builders, function);
             let old_val = builders
                 .builder
                 .build_load(builders.context.f64_type(), field_ptr, "old_x")
                 .unwrap()
                 .into_float_value();
-            let new_x = builders
-                .builder
-                .build_float_add(old_val, dx, "new_x")
-                .unwrap();
+            let new_x = builders.builder.build_float_add(old_val, dx, "new_x").unwrap();
             let field_ptr = get_y_ptr(builders, function);
             let old_val = builders
                 .builder
                 .build_load(builders.context.f64_type(), field_ptr, "old_y")
                 .unwrap()
                 .into_float_value();
-            let new_y = builders
-                .builder
-                .build_float_add(old_val, dy, "new_y")
-                .unwrap();
+            let new_y = builders.builder.build_float_add(old_val, dy, "new_y").unwrap();
             fence_goto(builders, function, Some(&new_x), Some(&new_y));
+            compiler_state.request_redraw = true;
         }
-        MotionStmt::GlideTo { secs, to } => {}
-        MotionStmt::Goto { to } => {}
         MotionStmt::GlideToXY { secs, x, y } => {
-            let new_x = scratch_return_to_number(
-                builders,
-                &generate_expr_ir(builders, x, function, target_idx),
-                function,
-            );
-            let new_y = scratch_return_to_number(
-                builders,
-                &generate_expr_ir(builders, y, function, target_idx),
-                function,
-            );
+            let new_x =
+                scratch_return_to_number(builders, &generate_expr_ir(builders, x, function, target_idx), function);
+            let new_y =
+                scratch_return_to_number(builders, &generate_expr_ir(builders, y, function, target_idx), function);
             let old_x_ptr = get_x_ptr(builders, function);
             let old_y_ptr = get_y_ptr(builders, function);
             let old_x = builders
@@ -633,11 +509,7 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             let frames = builders
                 .builder
-                .build_call(
-                    builders.functions.llvm_ceil,
-                    &[frames_double.into()],
-                    "ceil",
-                )
+                .build_call(builders.functions.llvm_ceil, &[frames_double.into()], "ceil")
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
@@ -704,11 +576,7 @@ pub fn parse_motion_stmt<'ctx>(
                                     new_x,
                                     builders
                                         .builder
-                                        .build_signed_int_to_float(
-                                            inc_idx,
-                                            builders.context.f64_type(),
-                                            "x",
-                                        )
+                                        .build_signed_int_to_float(inc_idx, builders.context.f64_type(), "x")
                                         .unwrap(),
                                     "x",
                                 )
@@ -723,11 +591,7 @@ pub fn parse_motion_stmt<'ctx>(
                                             frames_double,
                                             builders
                                                 .builder
-                                                .build_signed_int_to_float(
-                                                    inc_idx,
-                                                    builders.context.f64_type(),
-                                                    "x",
-                                                )
+                                                .build_signed_int_to_float(inc_idx, builders.context.f64_type(), "x")
                                                 .unwrap(),
                                             "a",
                                         )
@@ -754,11 +618,7 @@ pub fn parse_motion_stmt<'ctx>(
                                     new_y,
                                     builders
                                         .builder
-                                        .build_signed_int_to_float(
-                                            inc_idx,
-                                            builders.context.f64_type(),
-                                            "y",
-                                        )
+                                        .build_signed_int_to_float(inc_idx, builders.context.f64_type(), "y")
                                         .unwrap(),
                                     "y",
                                 )
@@ -773,11 +633,7 @@ pub fn parse_motion_stmt<'ctx>(
                                             frames_double,
                                             builders
                                                 .builder
-                                                .build_signed_int_to_float(
-                                                    inc_idx,
-                                                    builders.context.f64_type(),
-                                                    "y",
-                                                )
+                                                .build_signed_int_to_float(inc_idx, builders.context.f64_type(), "y")
                                                 .unwrap(),
                                             "a",
                                         )
@@ -807,20 +663,14 @@ pub fn parse_motion_stmt<'ctx>(
                 .unwrap();
             builders.builder.position_at_end(loop_finish);
             fence_goto(builders, function, Some(&new_x), Some(&new_y));
+            compiler_state.request_redraw = true;
         }
-        MotionStmt::IfOnEdgeBounce => {}
-        MotionStmt::PointToTowards { towards } => {}
         MotionStmt::SetRotationStyle { style } => {
             let p = function.get_first_param().unwrap().into_pointer_value();
             let sprite_type = create_sprite_struct_type(builders.context);
             let field_ptr = builders
                 .builder
-                .build_struct_gep(
-                    sprite_type,
-                    p,
-                    SpriteKeys::SpriteRotationStyle.into(),
-                    "field0",
-                )
+                .build_struct_gep(sprite_type, p, SpriteKeys::SpriteRotationStyle.into(), "field0")
                 .unwrap();
             builders
                 .builder
@@ -836,6 +686,8 @@ pub fn parse_motion_stmt<'ctx>(
                     ),
                 )
                 .unwrap();
+            compiler_state.request_redraw = true;
         }
+        _ => todo!("未実装"),
     }
 }

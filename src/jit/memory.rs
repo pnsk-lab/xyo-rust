@@ -46,18 +46,10 @@ struct Allocation {
 
 #[cfg(unix)]
 impl SectionMemoryManager {
-    fn allocate_section(
-        &mut self,
-        size: libc::uintptr_t,
-        alignment: libc::c_uint,
-        kind: AllocationKind,
-    ) -> *mut u8 {
+    fn allocate_section(&mut self, size: libc::uintptr_t, alignment: libc::c_uint, kind: AllocationKind) -> *mut u8 {
         let requested = usize::max(size, 1);
         let requested_alignment = usize::max(alignment as usize, 1);
-        let reserve_size = round_up_to_page(
-            requested.saturating_add(requested_alignment),
-            self.page_size,
-        );
+        let reserve_size = round_up_to_page(requested.saturating_add(requested_alignment), self.page_size);
 
         let base_ptr = unsafe {
             libc::mmap(
@@ -168,12 +160,8 @@ impl McjitMemoryManager for SectionMemoryManager {
         #[cfg(unix)]
         {
             for allocation in self.allocations.drain(..) {
-                let _ = unsafe {
-                    libc::munmap(
-                        allocation.base_ptr.as_ptr().cast::<libc::c_void>(),
-                        allocation.map_len,
-                    )
-                };
+                let _ =
+                    unsafe { libc::munmap(allocation.base_ptr.as_ptr().cast::<libc::c_void>(), allocation.map_len) };
             }
         }
     }
@@ -182,11 +170,7 @@ impl McjitMemoryManager for SectionMemoryManager {
 #[cfg(unix)]
 fn page_size() -> usize {
     let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    if page_size <= 0 {
-        4096
-    } else {
-        page_size as usize
-    }
+    if page_size <= 0 { 4096 } else { page_size as usize }
 }
 
 #[cfg(unix)]

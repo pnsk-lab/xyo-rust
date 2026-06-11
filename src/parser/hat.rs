@@ -21,17 +21,14 @@ pub fn is_hat_block(op: &BlockOpCodes) -> bool {
         _ => false,
     }
 }
-pub fn parse_hat<'a>(
-    project: &'a ScratchProject,
-    target_idx: usize,
-    block: &'a Block,
-) -> ParseResult<'a, HatStmt> {
+pub fn parse_hat<'a>(project: &'a ScratchProject, target_idx: usize, block: &'a Block) -> ParseResult<'a, HatStmt> {
     match block.opcode {
         BlockOpCodes::EventWhenFlagClicked => Ok(HatStmt::WhenFlagClicked),
         BlockOpCodes::EventWhenKeyPressed => {
-            let fields = block.fields.as_ref().ok_or(ParserError::InvalidValue(
-                "missing fields in EventWhenKeyPressed block",
-            ))?;
+            let fields = block
+                .fields
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing fields in EventWhenKeyPressed block"))?;
             let field = fields
                 .get("KEY_OPTION")
                 .ok_or(ParserError::InvalidValue("missing KEY_OPTION field"))?;
@@ -69,9 +66,7 @@ pub fn parse_hat<'a>(
                 .iter()
                 .position(|costume| costume.name == *backdrop)
                 .ok_or(ParserError::InvalidValue("Can't find costumes"))?;
-            Ok(HatStmt::WhenBacdropSwitchesTo {
-                backdrop: stage_idx,
-            })
+            Ok(HatStmt::WhenBacdropSwitchesTo { backdrop: stage_idx })
         }
         BlockOpCodes::EventWhenBroadcastReceived => {
             let fields = block.fields.as_ref().ok_or(ParserError::InvalidValue(
@@ -97,9 +92,7 @@ pub fn parse_hat<'a>(
             ))?;
             let field = fields
                 .get("WHENGREATERTHANMENU")
-                .ok_or(ParserError::InvalidValue(
-                    "missing WHENGREATERTHANMENU field",
-                ))?;
+                .ok_or(ParserError::InvalidValue("missing WHENGREATERTHANMENU field"))?;
             let listen_target = match field {
                 Fields::V1(v) => &v.0,
                 Fields::V2(v) => &v.0,
@@ -119,9 +112,8 @@ pub fn parse_hat<'a>(
             let index_input = inputs
                 .get("VALUE")
                 .ok_or(ParserError::InvalidValue("missing VALUE input"))?;
-            let idx = parse_input(project, target_idx, index_input).map_err(|err| {
-                err.context("failed to parse VALUE input in EventWhenGreaterThan block")
-            })?;
+            let idx = parse_input(project, target_idx, index_input)
+                .map_err(|err| err.context("failed to parse VALUE input in EventWhenGreaterThan block"))?;
             Ok(HatStmt::WhenGreaterThan {
                 target: listen_target,
                 value: idx,
@@ -135,14 +127,11 @@ pub fn parse_hat<'a>(
             let index_input = inputs
                 .get("custom_block")
                 .ok_or(ParserError::InvalidValue("missing custom_block input"))?;
-            let prototype = parse_input(project, target_idx, index_input).map_err(|err| {
-                err.context("failed to parse custom_block input in ProceduresDefinition block")
-            })?;
+            let prototype = parse_input(project, target_idx, index_input)
+                .map_err(|err| err.context("failed to parse custom_block input in ProceduresDefinition block"))?;
             if let Expr::Procedures(p) = prototype {
                 match p {
-                    ProceduresExpr::ProceduresPrototype { prototype } => {
-                        Ok(HatStmt::ProcedureDefinition { prototype })
-                    }
+                    ProceduresExpr::ProceduresPrototype { prototype } => Ok(HatStmt::ProcedureDefinition { prototype }),
                     _ => Err(ParserError::InvalidValue(
                         "procedures custom_block must be ProceduresPrototype",
                     )),
@@ -159,13 +148,9 @@ pub fn parse_hat<'a>(
             ))?;
             let index_input = inputs
                 .get("TOUCHINGOBJECTMENU")
-                .ok_or(ParserError::InvalidValue(
-                    "missing TOUCHINGOBJECTMENU input",
-                ))?;
+                .ok_or(ParserError::InvalidValue("missing TOUCHINGOBJECTMENU input"))?;
             let target = parse_input(project, target_idx, index_input).map_err(|err| {
-                err.context(
-                    "failed to parse TOUCHINGOBJECTMENU input in EventWhenTouchingObject block",
-                )
+                err.context("failed to parse TOUCHINGOBJECTMENU input in EventWhenTouchingObject block")
             })?;
             Ok(HatStmt::WhenTouchingObject { object: target })
         }

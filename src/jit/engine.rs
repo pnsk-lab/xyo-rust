@@ -8,6 +8,7 @@ use std::{
 
 use inkwell::{
     OptimizationLevel,
+    execution_engine::ExecutionEngine,
     execution_engine::JitFunction,
     llvm_sys::support::LLVMLoadLibraryPermanently,
     module::Module,
@@ -17,9 +18,10 @@ use inkwell::{
 };
 
 use crate::{
-    compiler::types::{Builders, CostumeInfo, SpriteStruct},
+    compiler::types::{Builders, CostumeInfo, DynamicKind, DynamicStruct, SpriteStruct, StringStruct},
     jit::memory::SectionMemoryManager,
 };
+use llvm_sys::execution_engine::LLVMGetGlobalValueAddress;
 
 type ThreadThunk = unsafe extern "C" fn(*mut SpriteStruct);
 
@@ -110,12 +112,10 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
 
     let target_machine = prepare_module(&builders.module);
     optimize_module(&builders.module, &target_machine);
-    builders.module.verify().unwrap_or_else(|err| {
-        panic!(
-            "generated module is invalid:\n{err}\n{}",
-            builders.module.to_string()
-        )
-    });
+    builders
+        .module
+        .verify()
+        .unwrap_or_else(|err| panic!("generated module is invalid:\n{err}\n{}", builders.module.to_string()));
 
     load_visible_symbols();
     unsafe {
@@ -150,9 +150,8 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
     for function_name in thread_functions {
         eprintln!("{function_name} has started");
 
-        let function: JitFunction<'_, ThreadThunk> =
-            unsafe { execution_engine.get_function(function_name) }
-                .unwrap_or_else(|err| panic!("failed to find JIT function {function_name}: {err}"));
+        let function: JitFunction<'_, ThreadThunk> = unsafe { execution_engine.get_function(function_name) }
+            .unwrap_or_else(|err| panic!("failed to find JIT function {function_name}: {err}"));
         let function = unsafe { function.as_raw() };
 
         let mut state = SpriteStruct::default();
@@ -173,18 +172,78 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
             println!("{:?}", state);
             thread::sleep(Duration::from_millis(33));
         }
+        handle.join().unwrap_or_else(|err| std::panic::resume_unwind(err));
         println!("\nelasped: {:?}", Instant::now() - started_at);
         println!("final state: {:?}", state);
+        print_global_variables(builders, &execution_engine);
     }
 }
 
+fn print_global_variables(builders: &Builders<'_>, execution_engine: &ExecutionEngine<'_>) {
+    if builders.global_variable_metadata.is_empty() {
+        println!("global variables: <none>");
+        return;
+    }
+
+    println!("global variables:");
+    let mut variables = builders.global_variable_metadata.clone();
+    variables.sort_by_key(|variable| variable.variable_idx);
+
+    for variable in variables {
+        let global_name = format!("global_{}", variable.variable_idx);
+        let value = unsafe { read_global_variable(execution_engine, &global_name) };
+        println!("  {} ({}): {}", variable.display_name, variable.variable_id, value);
+    }
+}
+
+unsafe fn read_global_variable(execution_engine: &ExecutionEngine<'_>, global_name: &str) -> String {
+    let name = CString::new(global_name).unwrap_or_else(|_| panic!("global name contains NUL byte: {global_name}"));
+    let global_addr = unsafe { LLVMGetGlobalValueAddress(execution_engine.as_mut_ptr(), name.as_ptr()) };
+    if global_addr == 0 {
+        return "<unavailable>".to_string();
+    }
+
+    let dynamic_ptr = unsafe { *(global_addr as *const *const DynamicStruct) };
+    if dynamic_ptr.is_null() {
+        return "<null>".to_string();
+    }
+
+    let dynamic = unsafe { &*dynamic_ptr };
+    unsafe { format_dynamic(dynamic) }
+}
+
+unsafe fn format_dynamic(dynamic: &DynamicStruct) -> String {
+    if dynamic.pointer.is_null() {
+        return "<null payload>".to_string();
+    }
+
+    match dynamic.kind {
+        DynamicKind::String => unsafe { format_string(dynamic.pointer.cast::<StringStruct>()) },
+        DynamicKind::Number => unsafe { (*(dynamic.pointer.cast::<f64>())).to_string() },
+        DynamicKind::Bool => unsafe { (*(dynamic.pointer.cast::<bool>())).to_string() },
+    }
+}
+
+unsafe fn format_string(value: *const StringStruct) -> String {
+    if value.is_null() {
+        return "<null string>".to_string();
+    }
+
+    let value = unsafe { &*value };
+    if value.container.is_null() {
+        return String::new();
+    }
+
+    let chars = unsafe { std::slice::from_raw_parts(value.container, value.length as usize) };
+    String::from_utf16_lossy(chars)
+}
+
 fn prepare_module<'ctx>(module: &Module<'ctx>) -> TargetMachine {
-    Target::initialize_native(&InitializationConfig::default())
-        .expect("failed to initialize native LLVM target");
+    Target::initialize_native(&InitializationConfig::default()).expect("failed to initialize native LLVM target");
 
     let target_triple = TargetMachine::get_default_triple();
-    let target = Target::from_triple(&target_triple)
-        .unwrap_or_else(|err| panic!("failed to resolve target from triple: {err}"));
+    let target =
+        Target::from_triple(&target_triple).unwrap_or_else(|err| panic!("failed to resolve target from triple: {err}"));
     let target_machine = target
         .create_target_machine(
             &target_triple,

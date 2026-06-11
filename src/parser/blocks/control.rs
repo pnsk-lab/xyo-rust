@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use crate::{
     parser::{
         parser::{parse_input, parse_input_thread},
-        types::{
-            ControlExpr, ControlStmt, Expr, Literal, ParseResult, ParserError, Stmt, StopOption,
-        },
+        types::{ControlExpr, ControlStmt, Expr, Literal, ParseResult, ParserError, Stmt, StopOption},
     },
     types::{Block, BlockOpCodes, Fields, ScratchProject},
 };
@@ -24,9 +22,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -44,18 +40,11 @@ fn get_variable_id<'a>(
         .ok_or(ParserError::InvalidValue(missing_field_error))?;
     match field {
         Fields::V1(_) => Err(ParserError::InvalidValue("VARIABLE Fields")),
-        Fields::V2(v) => {
-            v.1.as_ref()
-                .ok_or(ParserError::InvalidValue("missing VARIABLE id"))
-        }
+        Fields::V2(v) => v.1.as_ref().ok_or(ParserError::InvalidValue("missing VARIABLE id")),
     }
 }
 
-pub fn parse_control_expr<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, Expr> {
+pub fn parse_control_expr<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, Expr> {
     match block.opcode {
         BlockOpCodes::ControlCreateCloneOfMenu => {
             let fields = block_fields(block, "missing fields in ControlCreateCloneOfMenu block")?;
@@ -78,21 +67,22 @@ pub fn parse_control_stmt<'a>(
 ) -> ParseResult<'a, ControlStmt> {
     match block.opcode {
         BlockOpCodes::ControlWait => {
-            let inputs = block.inputs.as_ref().ok_or(ParserError::InvalidValue(
-                "missing inputs in ControlWait block",
-            ))?;
+            let inputs = block
+                .inputs
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing inputs in ControlWait block"))?;
             let duration_input = inputs
                 .get("DURATION")
                 .ok_or(ParserError::InvalidValue("missing DURATION input"))?;
-            let duration = parse_input(project, target_idx, duration_input).map_err(|err| {
-                err.context("failed to parse DURATION input in ControlWait block")
-            })?;
+            let duration = parse_input(project, target_idx, duration_input)
+                .map_err(|err| err.context("failed to parse DURATION input in ControlWait block"))?;
             Ok(ControlStmt::Wait { duration })
         }
         BlockOpCodes::ControlRepeat => {
-            let inputs = block.inputs.as_ref().ok_or(ParserError::InvalidValue(
-                "missing inputs in ControlRepeat block",
-            ))?;
+            let inputs = block
+                .inputs
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing inputs in ControlRepeat block"))?;
             let times_input = inputs
                 .get("TIMES")
                 .ok_or(ParserError::InvalidValue("missing TIMES input"))?;
@@ -102,9 +92,8 @@ pub fn parse_control_stmt<'a>(
 
             let substack: Option<Vec<Stmt>> = if let Some(substack_input) = substack_input {
                 Some(
-                    parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                        err.context("failed to parse SUBSTACK input in ControlRepeat block")
-                    })?,
+                    parse_input_thread(project, target_idx, substack_input)
+                        .map_err(|err| err.context("failed to parse SUBSTACK input in ControlRepeat block"))?,
                 )
             } else {
                 None
@@ -118,9 +107,8 @@ pub fn parse_control_stmt<'a>(
                 && let Some(substack_input) = inputs.unwrap().get("SUBSTACK")
             {
                 Some(
-                    parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                        err.context("failed to parse SUBSTACK input in ControlForever block")
-                    })?,
+                    parse_input_thread(project, target_idx, substack_input)
+                        .map_err(|err| err.context("failed to parse SUBSTACK input in ControlForever block"))?,
                 )
             } else {
                 None
@@ -134,9 +122,8 @@ pub fn parse_control_stmt<'a>(
                 let condition_input = inputs.unwrap().get("CONDITION");
                 let condition = if let Some(condition_input) = condition_input {
                     Some(
-                        parse_input(project, target_idx, condition_input).map_err(|err| {
-                            err.context("failed to parse CONDITION input in ControlIf block")
-                        })?,
+                        parse_input(project, target_idx, condition_input)
+                            .map_err(|err| err.context("failed to parse CONDITION input in ControlIf block"))?,
                     )
                 } else {
                     None
@@ -144,9 +131,8 @@ pub fn parse_control_stmt<'a>(
                 let substack_input = inputs.unwrap().get("SUBSTACK");
                 let substack: Option<Vec<Stmt>> = if let Some(substack_input) = substack_input {
                     Some(
-                        parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                            err.context("failed to parse SUBSTACK input in ControlIf block")
-                        })?,
+                        parse_input_thread(project, target_idx, substack_input)
+                            .map_err(|err| err.context("failed to parse SUBSTACK input in ControlIf block"))?,
                     )
                 } else {
                     None
@@ -156,10 +142,7 @@ pub fn parse_control_stmt<'a>(
                 (None, None)
             };
 
-            Ok(ControlStmt::If {
-                condition,
-                substack,
-            })
+            Ok(ControlStmt::If { condition, substack })
         }
         BlockOpCodes::ControlIfElse => {
             let inputs = block.inputs.as_ref();
@@ -168,9 +151,8 @@ pub fn parse_control_stmt<'a>(
                 let condition_input = inputs.unwrap().get("CONDITION");
                 let condition = if let Some(condition_input) = condition_input {
                     Some(
-                        parse_input(project, target_idx, condition_input).map_err(|err| {
-                            err.context("failed to parse CONDITION input in ControlIfElse block")
-                        })?,
+                        parse_input(project, target_idx, condition_input)
+                            .map_err(|err| err.context("failed to parse CONDITION input in ControlIfElse block"))?,
                     )
                 } else {
                     None
@@ -178,9 +160,8 @@ pub fn parse_control_stmt<'a>(
                 let substack_input = inputs.unwrap().get("SUBSTACK");
                 let substack: Option<Vec<Stmt>> = if let Some(substack_input) = substack_input {
                     Some(
-                        parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                            err.context("failed to parse SUBSTACK input in ControlIfElse block")
-                        })?,
+                        parse_input_thread(project, target_idx, substack_input)
+                            .map_err(|err| err.context("failed to parse SUBSTACK input in ControlIfElse block"))?,
                     )
                 } else {
                     None
@@ -188,13 +169,8 @@ pub fn parse_control_stmt<'a>(
                 let substack2_input = inputs.unwrap().get("SUBSTACK2");
                 let substack2: Option<Vec<Stmt>> = if let Some(substack2_input) = substack2_input {
                     Some(
-                        parse_input_thread(project, target_idx, substack2_input).map_err(
-                            |err| {
-                                err.context(
-                                    "failed to parse SUBSTACK2 input in ControlIfElse block",
-                                )
-                            },
-                        )?,
+                        parse_input_thread(project, target_idx, substack2_input)
+                            .map_err(|err| err.context("failed to parse SUBSTACK2 input in ControlIfElse block"))?,
                     )
                 } else {
                     None
@@ -215,9 +191,8 @@ pub fn parse_control_stmt<'a>(
             let condition = if inputs.is_some() {
                 if let Some(condition_input) = inputs.unwrap().get("CONDITION") {
                     Some(
-                        parse_input(project, target_idx, condition_input).map_err(|err| {
-                            err.context("failed to parse CONDITION input in ControlWaitUntil block")
-                        })?,
+                        parse_input(project, target_idx, condition_input)
+                            .map_err(|err| err.context("failed to parse CONDITION input in ControlWaitUntil block"))?,
                     )
                 } else {
                     None
@@ -233,25 +208,19 @@ pub fn parse_control_stmt<'a>(
 
             let (condition, substack) = if inputs.is_some() {
                 let condition_input = inputs.unwrap().get("CONDITION");
-                let condition = if let Some(condition_input) = condition_input {
-                    Some(
-                        parse_input(project, target_idx, condition_input).map_err(|err| {
-                            err.context(
-                                "failed to parse CONDITION input in ControlRepeatUntil block",
-                            )
-                        })?,
-                    )
-                } else {
-                    None
-                };
+                let condition =
+                    if let Some(condition_input) = condition_input {
+                        Some(parse_input(project, target_idx, condition_input).map_err(|err| {
+                            err.context("failed to parse CONDITION input in ControlRepeatUntil block")
+                        })?)
+                    } else {
+                        None
+                    };
                 let substack_input = inputs.unwrap().get("SUBSTACK");
                 let substack: Option<Vec<Stmt>> = if let Some(substack_input) = substack_input {
                     Some(
-                        parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                            err.context(
-                                "failed to parse SUBSTACK input in ControlRepeatUntil block",
-                            )
-                        })?,
+                        parse_input_thread(project, target_idx, substack_input)
+                            .map_err(|err| err.context("failed to parse SUBSTACK input in ControlRepeatUntil block"))?,
                     )
                 } else {
                     None
@@ -261,33 +230,25 @@ pub fn parse_control_stmt<'a>(
                 (None, None)
             };
 
-            Ok(ControlStmt::RepeatUntil {
-                condition,
-                substack,
-            })
+            Ok(ControlStmt::RepeatUntil { condition, substack })
         }
         BlockOpCodes::ControlWhile => {
             let inputs = block.inputs.as_ref();
 
             let (condition, substack) = if inputs.is_some() {
-                let condition: Option<Expr> =
-                    if let Some(condition_input) = inputs.unwrap().get("CONDITION") {
-                        Some(
-                            parse_input(project, target_idx, condition_input).map_err(|err| {
-                                err.context("failed to parse CONDITION input in ControlWhile block")
-                            })?,
-                        )
-                    } else {
-                        None
-                    };
-
-                let substack: Option<Vec<Stmt>> = if let Some(substack_input) =
-                    inputs.unwrap().get("SUBSTACK")
-                {
+                let condition: Option<Expr> = if let Some(condition_input) = inputs.unwrap().get("CONDITION") {
                     Some(
-                        parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                            err.context("failed to parse SUBSTACK input in ControlWhile block")
-                        })?,
+                        parse_input(project, target_idx, condition_input)
+                            .map_err(|err| err.context("failed to parse CONDITION input in ControlWhile block"))?,
+                    )
+                } else {
+                    None
+                };
+
+                let substack: Option<Vec<Stmt>> = if let Some(substack_input) = inputs.unwrap().get("SUBSTACK") {
+                    Some(
+                        parse_input_thread(project, target_idx, substack_input)
+                            .map_err(|err| err.context("failed to parse SUBSTACK input in ControlWhile block"))?,
                     )
                 } else {
                     None
@@ -296,21 +257,18 @@ pub fn parse_control_stmt<'a>(
             } else {
                 (None, None)
             };
-            Ok(ControlStmt::RepeatWhile {
-                condition,
-                substack,
-            })
+            Ok(ControlStmt::RepeatWhile { condition, substack })
         }
         BlockOpCodes::ControlAllAtOnce => {
-            let inputs = block.inputs.as_ref().ok_or(ParserError::InvalidValue(
-                "missing inputs in ControlAllAtOnce block",
-            ))?;
+            let inputs = block
+                .inputs
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing inputs in ControlAllAtOnce block"))?;
             let substack_input = inputs.get("SUBSTACK");
             let substack: Option<Vec<Stmt>> = if let Some(substack_input) = substack_input {
                 Some(
-                    parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                        err.context("failed to parse SUBSTACK input in ControlWhile block")
-                    })?,
+                    parse_input_thread(project, target_idx, substack_input)
+                        .map_err(|err| err.context("failed to parse SUBSTACK input in ControlWhile block"))?,
                 )
             } else {
                 None
@@ -324,19 +282,14 @@ pub fn parse_control_stmt<'a>(
             let clone_option = inputs
                 .get("CLONE_OPTION")
                 .ok_or(ParserError::InvalidValue("missing CLONE_OPTION input"))?;
-            let clone_option = parse_input(project, target_idx, clone_option).map_err(|err| {
-                err.context("failed to parse CLONE_OPTION input in ControlCreateCloneOf block")
-            })?;
+            let clone_option = parse_input(project, target_idx, clone_option)
+                .map_err(|err| err.context("failed to parse CLONE_OPTION input in ControlCreateCloneOf block"))?;
             Ok(ControlStmt::CreateCloneOf { clone_option })
         }
         BlockOpCodes::ControlDeleteThisClone => Ok(ControlStmt::DeleteThisClone),
         BlockOpCodes::ControlStop => {
             let fields = block_fields(block, "missing fields in ControlStop block")?;
-            let field = required_field(
-                fields,
-                "STOP_OPTION",
-                "missing NUMBER_NAME field in ControlStop block",
-            )?;
+            let field = required_field(fields, "STOP_OPTION", "missing NUMBER_NAME field in ControlStop block")?;
             let stop_option = field_text(field);
             let stop_option = match stop_option.as_str() {
                 "all" => StopOption::All,
@@ -348,20 +301,18 @@ pub fn parse_control_stmt<'a>(
                     ));
                 }
             };
-            Ok(ControlStmt::Stop {
-                option: stop_option,
-            })
+            Ok(ControlStmt::Stop { option: stop_option })
         }
         BlockOpCodes::ControlForEach => {
-            let inputs = block.inputs.as_ref().ok_or(ParserError::InvalidValue(
-                "missing inputs in ControlForEach block",
-            ))?;
+            let inputs = block
+                .inputs
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing inputs in ControlForEach block"))?;
             let substack_input = inputs.get("SUBSTACK");
             let substack: Option<Vec<Stmt>> = if let Some(substack_input) = substack_input {
                 Some(
-                    parse_input_thread(project, target_idx, substack_input).map_err(|err| {
-                        err.context("failed to parse SUBSTACK input in ControlForEach block")
-                    })?,
+                    parse_input_thread(project, target_idx, substack_input)
+                        .map_err(|err| err.context("failed to parse SUBSTACK input in ControlForEach block"))?,
                 )
             } else {
                 None
@@ -369,14 +320,13 @@ pub fn parse_control_stmt<'a>(
             let value = inputs
                 .get("VALUE")
                 .ok_or(ParserError::InvalidValue("missing VALUE input"))?;
-            let value = parse_input(project, target_idx, value).map_err(|err| {
-                err.context("failed to parse VALUE input in ControlForEach block")
-            })?;
-            let fields = block.fields.as_ref().ok_or(ParserError::InvalidValue(
-                "missing fields in DataSetVariableTo block",
-            ))?;
-            let variable =
-                get_variable_id(fields, "missing VARIABLE field in ControlForEach block")?;
+            let value = parse_input(project, target_idx, value)
+                .map_err(|err| err.context("failed to parse VALUE input in ControlForEach block"))?;
+            let fields = block
+                .fields
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing fields in DataSetVariableTo block"))?;
+            let variable = get_variable_id(fields, "missing VARIABLE field in ControlForEach block")?;
             Ok(ControlStmt::ForEach {
                 variable: variable.clone(),
                 value,

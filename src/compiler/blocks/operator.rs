@@ -9,22 +9,13 @@ use crate::{
     compiler::{
         compiler::{ScratchReturnTypes, generate_expr_ir},
         types::{Builders, DynamicKind, create_dynamic_struct_type},
-        utils::{
-            is_num, scratch_return_to_bool, scratch_return_to_number, scratch_return_to_string,
-        },
+        utils::{is_num, scratch_return_to_bool, scratch_return_to_number, scratch_return_to_string},
     },
     parser::types::{CalcOp, OperatorExpr},
 };
 
-fn build_rem<'ctx>(
-    builders: &Builders<'ctx>,
-    left: FloatValue<'ctx>,
-    right: FloatValue<'ctx>,
-) -> FloatValue<'ctx> {
-    let rem = builders
-        .builder
-        .build_float_rem(left, right, "aaaa")
-        .unwrap();
+fn build_rem<'ctx>(builders: &Builders<'ctx>, left: FloatValue<'ctx>, right: FloatValue<'ctx>) -> FloatValue<'ctx> {
+    let rem = builders.builder.build_float_rem(left, right, "aaaa").unwrap();
     let rem = builders
         .builder
         .build_float_add(
@@ -153,21 +144,13 @@ pub fn parse_operator_expr<'ctx>(
                 .into_int_value();
             let rand_bits = builders
                 .builder
-                .build_right_shift(
-                    rand,
-                    builders.context.i64_type().const_int(12, false),
-                    false,
-                    "left",
-                )
+                .build_right_shift(rand, builders.context.i64_type().const_int(12, false), false, "left")
                 .unwrap();
             let rand_bits = builders
                 .builder
                 .build_or(
                     rand_bits,
-                    builders
-                        .context
-                        .i64_type()
-                        .const_int(0x3FF0000000000000, false),
+                    builders.context.i64_type().const_int(0x3FF0000000000000, false),
                     "rand",
                 )
                 .unwrap();
@@ -188,12 +171,7 @@ pub fn parse_operator_expr<'ctx>(
                 .build_select(
                     builders
                         .builder
-                        .build_float_compare(
-                            FloatPredicate::OLT,
-                            parsed_from_number,
-                            parsed_to_number,
-                            "a",
-                        )
+                        .build_float_compare(FloatPredicate::OLT, parsed_from_number, parsed_to_number, "a")
                         .unwrap(),
                     parsed_from_number,
                     parsed_to_number,
@@ -206,12 +184,7 @@ pub fn parse_operator_expr<'ctx>(
                 .build_select(
                     builders
                         .builder
-                        .build_float_compare(
-                            FloatPredicate::OLT,
-                            parsed_from_number,
-                            parsed_to_number,
-                            "a",
-                        )
+                        .build_float_compare(FloatPredicate::OLT, parsed_from_number, parsed_to_number, "a")
                         .unwrap(),
                     parsed_to_number,
                     parsed_from_number,
@@ -223,19 +196,13 @@ pub fn parse_operator_expr<'ctx>(
                 let range = builders
                     .builder
                     .build_float_add(
-                        builders
-                            .builder
-                            .build_float_sub(max, min, "range_sub")
-                            .unwrap(),
+                        builders.builder.build_float_sub(max, min, "range_sub").unwrap(),
                         builders.context.f64_type().const_float(1.0),
                         "range_add",
                     )
                     .unwrap();
 
-                let scaled = builders
-                    .builder
-                    .build_float_mul(rand_float, range, "scaled")
-                    .unwrap();
+                let scaled = builders.builder.build_float_mul(rand_float, range, "scaled").unwrap();
 
                 let floor = builders
                     .builder
@@ -246,10 +213,7 @@ pub fn parse_operator_expr<'ctx>(
                     .unwrap()
                     .into_float_value();
 
-                builders
-                    .builder
-                    .build_float_add(floor, min, "int_rand")
-                    .unwrap()
+                builders.builder.build_float_add(floor, min, "int_rand").unwrap()
             };
 
             ScratchReturnTypes::Number(
@@ -266,10 +230,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .builder
                                     .build_float_mul(
                                         rand_float,
-                                        builders
-                                            .builder
-                                            .build_float_sub(max, min, "real_range")
-                                            .unwrap(),
+                                        builders.builder.build_float_sub(max, min, "real_range").unwrap(),
                                         "real_scaled",
                                     )
                                     .unwrap(),
@@ -328,10 +289,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .build_load(builders.context.i8_type(), kind_ptr, "kind")
                                     .unwrap()
                                     .into_int_value(),
-                                builders
-                                    .context
-                                    .i8_type()
-                                    .const_int(DynamicKind::String as u64, false),
+                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                                 "is_string",
                             )
                             .unwrap()
@@ -357,10 +315,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .build_load(builders.context.i8_type(), kind_ptr, "kind")
                                     .unwrap()
                                     .into_int_value(),
-                                builders
-                                    .context
-                                    .i8_type()
-                                    .const_int(DynamicKind::String as u64, false),
+                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                                 "is_string",
                             )
                             .unwrap()
@@ -371,10 +326,8 @@ pub fn parse_operator_expr<'ctx>(
                     .builder
                     .build_or(is_left_string, is_right_string, "is_string_compare")
                     .unwrap();
-                let string_compare_block =
-                    builders.context.append_basic_block(*function, "string_cmp");
-                let number_compare_block =
-                    builders.context.append_basic_block(*function, "number_cmp");
+                let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
+                let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
                 let finally_block = builders.context.append_basic_block(*function, "finally");
                 builders
                     .builder
@@ -395,10 +348,7 @@ pub fn parse_operator_expr<'ctx>(
                     .basic()
                     .unwrap()
                     .into_int_value();
-                builders
-                    .builder
-                    .build_unconditional_branch(finally_block)
-                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_block).unwrap();
                 builders.builder.position_at_end(number_compare_block);
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
                 let right_hand = scratch_return_to_number(builders, parsed_right, function);
@@ -406,19 +356,10 @@ pub fn parse_operator_expr<'ctx>(
                     .builder
                     .build_float_compare(FloatPredicate::OGT, left_hand, right_hand, "gt")
                     .unwrap();
-                builders
-                    .builder
-                    .build_unconditional_branch(finally_block)
-                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_block).unwrap();
                 builders.builder.position_at_end(finally_block);
-                let phi = builders
-                    .builder
-                    .build_phi(builders.context.bool_type(), "phi")
-                    .unwrap();
-                phi.add_incoming(&[
-                    (&string_cmp, string_compare_block),
-                    (&number_cmp, number_compare_block),
-                ]);
+                let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
+                phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
                 ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
             } else {
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
@@ -477,10 +418,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .build_load(builders.context.i8_type(), kind_ptr, "kind")
                                     .unwrap()
                                     .into_int_value(),
-                                builders
-                                    .context
-                                    .i8_type()
-                                    .const_int(DynamicKind::String as u64, false),
+                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                                 "is_string",
                             )
                             .unwrap()
@@ -506,10 +444,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .build_load(builders.context.i8_type(), kind_ptr, "kind")
                                     .unwrap()
                                     .into_int_value(),
-                                builders
-                                    .context
-                                    .i8_type()
-                                    .const_int(DynamicKind::String as u64, false),
+                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                                 "is_string",
                             )
                             .unwrap()
@@ -520,10 +455,8 @@ pub fn parse_operator_expr<'ctx>(
                     .builder
                     .build_or(is_left_string, is_right_string, "is_string_compare")
                     .unwrap();
-                let string_compare_block =
-                    builders.context.append_basic_block(*function, "string_cmp");
-                let number_compare_block =
-                    builders.context.append_basic_block(*function, "number_cmp");
+                let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
+                let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
                 let finally_block = builders.context.append_basic_block(*function, "finally");
                 builders
                     .builder
@@ -544,10 +477,7 @@ pub fn parse_operator_expr<'ctx>(
                     .basic()
                     .unwrap()
                     .into_int_value();
-                builders
-                    .builder
-                    .build_unconditional_branch(finally_block)
-                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_block).unwrap();
                 builders.builder.position_at_end(number_compare_block);
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
                 let right_hand = scratch_return_to_number(builders, parsed_right, function);
@@ -555,19 +485,10 @@ pub fn parse_operator_expr<'ctx>(
                     .builder
                     .build_float_compare(FloatPredicate::OLT, left_hand, right_hand, "lt")
                     .unwrap();
-                builders
-                    .builder
-                    .build_unconditional_branch(finally_block)
-                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_block).unwrap();
                 builders.builder.position_at_end(finally_block);
-                let phi = builders
-                    .builder
-                    .build_phi(builders.context.bool_type(), "phi")
-                    .unwrap();
-                phi.add_incoming(&[
-                    (&string_cmp, string_compare_block),
-                    (&number_cmp, number_compare_block),
-                ]);
+                let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
+                phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
                 ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
             } else {
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
@@ -626,10 +547,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .build_load(builders.context.i8_type(), kind_ptr, "kind")
                                     .unwrap()
                                     .into_int_value(),
-                                builders
-                                    .context
-                                    .i8_type()
-                                    .const_int(DynamicKind::String as u64, false),
+                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                                 "is_string",
                             )
                             .unwrap()
@@ -655,10 +573,7 @@ pub fn parse_operator_expr<'ctx>(
                                     .build_load(builders.context.i8_type(), kind_ptr, "kind")
                                     .unwrap()
                                     .into_int_value(),
-                                builders
-                                    .context
-                                    .i8_type()
-                                    .const_int(DynamicKind::String as u64, false),
+                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
                                 "is_string",
                             )
                             .unwrap()
@@ -669,10 +584,8 @@ pub fn parse_operator_expr<'ctx>(
                     .builder
                     .build_or(is_left_string, is_right_string, "is_string_compare")
                     .unwrap();
-                let string_compare_block =
-                    builders.context.append_basic_block(*function, "string_cmp");
-                let number_compare_block =
-                    builders.context.append_basic_block(*function, "number_cmp");
+                let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
+                let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
                 let finally_block = builders.context.append_basic_block(*function, "finally");
                 builders
                     .builder
@@ -693,10 +606,7 @@ pub fn parse_operator_expr<'ctx>(
                     .basic()
                     .unwrap()
                     .into_int_value();
-                builders
-                    .builder
-                    .build_unconditional_branch(finally_block)
-                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_block).unwrap();
                 builders.builder.position_at_end(number_compare_block);
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
                 let right_hand = scratch_return_to_number(builders, parsed_right, function);
@@ -704,19 +614,10 @@ pub fn parse_operator_expr<'ctx>(
                     .builder
                     .build_float_compare(FloatPredicate::OEQ, left_hand, right_hand, "eq")
                     .unwrap();
-                builders
-                    .builder
-                    .build_unconditional_branch(finally_block)
-                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_block).unwrap();
                 builders.builder.position_at_end(finally_block);
-                let phi = builders
-                    .builder
-                    .build_phi(builders.context.bool_type(), "phi")
-                    .unwrap();
-                phi.add_incoming(&[
-                    (&string_cmp, string_compare_block),
-                    (&number_cmp, number_compare_block),
-                ]);
+                let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
+                phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
                 ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
             } else {
                 let left_hand = scratch_return_to_number(builders, parsed_left, function);
@@ -737,17 +638,9 @@ pub fn parse_operator_expr<'ctx>(
                 let right_parsed = generate_expr_ir(builders, right_expr, function, target_idx);
                 let left_bool = scratch_return_to_bool(builders, &left_parsed, function);
                 let right_bool = scratch_return_to_bool(builders, &right_parsed, function);
-                ScratchReturnTypes::Bool(
-                    builders
-                        .builder
-                        .build_and(left_bool, right_bool, "and")
-                        .unwrap(),
-                )
+                ScratchReturnTypes::Bool(builders.builder.build_and(left_bool, right_bool, "and").unwrap())
             } else {
-                ScratchReturnTypes::BoolLiteral((
-                    false,
-                    builders.context.bool_type().const_int(0, false),
-                ))
+                ScratchReturnTypes::BoolLiteral((false, builders.context.bool_type().const_int(0, false)))
             }
         }
         OperatorExpr::Or { left, right } => {
@@ -770,17 +663,9 @@ pub fn parse_operator_expr<'ctx>(
                 } else {
                     builders.context.bool_type().const_int(0, false)
                 };
-                ScratchReturnTypes::Bool(
-                    builders
-                        .builder
-                        .build_or(left_parsed, right_parsed, "or")
-                        .unwrap(),
-                )
+                ScratchReturnTypes::Bool(builders.builder.build_or(left_parsed, right_parsed, "or").unwrap())
             } else {
-                ScratchReturnTypes::BoolLiteral((
-                    false,
-                    builders.context.bool_type().const_int(0, false),
-                ))
+                ScratchReturnTypes::BoolLiteral((false, builders.context.bool_type().const_int(0, false)))
             }
         }
         OperatorExpr::Not { target } => {
@@ -792,10 +677,7 @@ pub fn parse_operator_expr<'ctx>(
                 );
                 ScratchReturnTypes::Bool(builders.builder.build_not(target_parsed, "not").unwrap())
             } else {
-                ScratchReturnTypes::BoolLiteral((
-                    true,
-                    builders.context.bool_type().const_int(1, false),
-                ))
+                ScratchReturnTypes::BoolLiteral((true, builders.context.bool_type().const_int(1, false)))
             }
         }
         OperatorExpr::Mod { left, right } => {
@@ -894,18 +776,12 @@ pub fn parse_operator_expr<'ctx>(
                 function,
             );
             let parsed_target_old = &parsed_target;
-            let parsed_target = if matches!(op, CalcOp::Sin)
-                || matches!(op, CalcOp::Cos)
-                || matches!(op, CalcOp::Tan)
-            {
+            let parsed_target = if matches!(op, CalcOp::Sin) || matches!(op, CalcOp::Cos) || matches!(op, CalcOp::Tan) {
                 builders
                     .builder
                     .build_float_mul(
                         parsed_target,
-                        builders
-                            .context
-                            .f64_type()
-                            .const_float(f64::consts::PI / 180.0),
+                        builders.context.f64_type().const_float(f64::consts::PI / 180.0),
                         "degrees_to_rad",
                     )
                     .unwrap()
@@ -939,10 +815,7 @@ pub fn parse_operator_expr<'ctx>(
                 .basic()
                 .unwrap()
                 .into_float_value();
-            let ret_val = if matches!(op, CalcOp::Sin)
-                || matches!(op, CalcOp::Cos)
-                || matches!(op, CalcOp::Tan)
-            {
+            let ret_val = if matches!(op, CalcOp::Sin) || matches!(op, CalcOp::Cos) || matches!(op, CalcOp::Tan) {
                 let tm = if matches!(op, CalcOp::Tan) {
                     builders
                         .builder
@@ -1004,10 +877,7 @@ pub fn parse_operator_expr<'ctx>(
                                             .builder
                                             .build_float_mul(
                                                 tm,
-                                                builders
-                                                    .context
-                                                    .f64_type()
-                                                    .const_float(10.0_f64.powi(10)),
+                                                builders.context.f64_type().const_float(10.0_f64.powi(10)),
                                                 "mul_10_000_000_000",
                                             )
                                             .unwrap(),
@@ -1027,18 +897,12 @@ pub fn parse_operator_expr<'ctx>(
                         "aaaa",
                     )
                     .unwrap()
-            } else if matches!(op, CalcOp::Asin)
-                || matches!(op, CalcOp::Acos)
-                || matches!(op, CalcOp::Atan)
-            {
+            } else if matches!(op, CalcOp::Asin) || matches!(op, CalcOp::Acos) || matches!(op, CalcOp::Atan) {
                 builders
                     .builder
                     .build_float_mul(
                         ret_val,
-                        builders
-                            .context
-                            .f64_type()
-                            .const_float(180.0 / f64::consts::PI),
+                        builders.context.f64_type().const_float(180.0 / f64::consts::PI),
                         "rad_to_degrees",
                     )
                     .unwrap()
@@ -1091,10 +955,7 @@ mod tests {
         .unwrap()
     }
 
-    fn test_function<'ctx>(
-        context: &'ctx Context,
-        builders: &Builders<'ctx>,
-    ) -> FunctionValue<'ctx> {
+    fn test_function<'ctx>(context: &'ctx Context, builders: &Builders<'ctx>) -> FunctionValue<'ctx> {
         let fn_type = context
             .void_type()
             .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false);

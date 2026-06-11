@@ -8,16 +8,17 @@ use std::path::PathBuf;
 use crate::{
     compiler::{
         blocks::{
+            control::parse_control_stmt,
             data::parse_data_stmt,
             literal::parse_literal_expr,
             looks::{parse_looks_expr, parse_looks_stmt},
             motion::parse_motion_stmt,
             operator::parse_operator_expr,
         },
-        types::Builders,
+        types::{Builders, CompilerState},
     },
     jit,
-    parser::types::{Expr, Stmt, Thread},
+    parser::types::{Expr, Keys::B, Stmt, Thread},
     types::ScratchProject,
 };
 
@@ -39,6 +40,8 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>, option: Compile
         builders.module.print_to_file(emit_llvm).unwrap();
     }
 
+    builders.module.verify().unwrap();
+
     if option.run_jit {
         jit::run(&builders, &thread_functions);
     }
@@ -46,23 +49,40 @@ pub fn compiler(project: &ScratchProject, threads: &Vec<Thread>, option: Compile
 
 pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread) -> String {
     let ptr_type = builders.context.ptr_type(AddressSpace::default());
-    let fn_type = builders
-        .context
-        .void_type()
-        .fn_type(&[ptr_type.into()], false);
+    let fn_type = builders.context.void_type().fn_type(&[ptr_type.into()], false);
     let function_name = builders.create_function_name();
     let function = builders.module.add_function(&function_name, fn_type, None);
     let entry = builders.context.append_basic_block(function, "entry");
     builders.builder.position_at_end(entry);
+    let mut compiler_state: CompilerState = CompilerState {
+        request_redraw: false,
+        has_terminator: false,
+    };
     for block in &thread.stmts {
         match block {
-            Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
-            Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx),
-            Stmt::DataStmt(v) => parse_data_stmt(builders, v, &function, thread.target_idx),
+            Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
+            Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
+            Stmt::DataStmt(v) => parse_data_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
+            Stmt::Control(v) => parse_control_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
             _ => todo!("やります"),
         }
+        if compiler_state.has_terminator {
+            break;
+        }
     }
-    builders.builder.build_return(None).unwrap();
+    if compiler_state.request_redraw {
+        builders
+            .builder
+            .build_call(
+                builders.functions.wait_tick,
+                &[builders.context.f64_type().const_float(builders.fps).into()],
+                "forever_wait_tick",
+            )
+            .unwrap();
+    }
+    if !compiler_state.has_terminator {
+        builders.builder.build_return(None).unwrap();
+    }
     function_name
 }
 

@@ -32,9 +32,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -52,17 +50,11 @@ fn required_expr_input<'a>(
     missing_input_error: &'static str,
     parse_error: &'static str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
-pub fn parse_sound_expr<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, Expr> {
+pub fn parse_sound_expr<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, Expr> {
     match block.opcode {
         BlockOpCodes::SoundVolume => Ok(Expr::Sound(SoundExpr::Volume)),
         BlockOpCodes::SoundSoundsMenu => {
@@ -77,21 +69,13 @@ pub fn parse_sound_expr<'a>(
         }
         BlockOpCodes::SoundBeatsMenu => {
             let fields = block_fields(block, "missing fields in SoundBeatsMenu block")?;
-            let field = required_field(
-                fields,
-                "BEATS",
-                "missing BEATS field in SoundBeatsMenu block",
-            )?;
+            let field = required_field(fields, "BEATS", "missing BEATS field in SoundBeatsMenu block")?;
             let operator = field_text(field);
             Ok(Expr::Literal(Literal::String(operator.clone())))
         }
         BlockOpCodes::SoundEffectsMenu => {
             let fields = block_fields(block, "missing fields in SoundEffectsMenu block")?;
-            let field = required_field(
-                fields,
-                "EFFECT",
-                "missing EFFECT field in SoundEffectsMenu block",
-            )?;
+            let field = required_field(fields, "EFFECT", "missing EFFECT field in SoundEffectsMenu block")?;
             let operator = field_text(field);
             Ok(Expr::Literal(Literal::String(operator.clone())))
         }
@@ -141,21 +125,14 @@ pub fn parse_sound_stmt<'a>(
                 "failed to parse VALUE input in SoundChangeEffectBy block",
             )?;
             let fields = block_fields(block, "missing fields in SoundChangeEffectBy block")?;
-            let field = required_field(
-                fields,
-                "EFFECT",
-                "missing EFFECT field in SoundChangeEffectBy block",
-            )?;
+            let field = required_field(fields, "EFFECT", "missing EFFECT field in SoundChangeEffectBy block")?;
             let effect = field_text(field);
             let effect = match effect.as_str() {
                 "PITCH" => SoundEffect::Pitch,
                 "PAN" => SoundEffect::Pan,
                 _ => return Err(ParserError::InvalidValue("Unknown SoundEffect")),
             };
-            Ok(SoundStmt::ChangeSoundEffectBy {
-                value,
-                target: effect,
-            })
+            Ok(SoundStmt::ChangeSoundEffectBy { value, target: effect })
         }
         BlockOpCodes::SoundSetEffectTo => {
             let inputs = block_inputs(block, "missing inputs in SoundSetEffectTo block")?;
@@ -168,21 +145,14 @@ pub fn parse_sound_stmt<'a>(
                 "failed to parse VALUE input in SoundSetEffectTo block",
             )?;
             let fields = block_fields(block, "missing fields in SoundSetEffectTo block")?;
-            let field = required_field(
-                fields,
-                "EFFECT",
-                "missing EFFECT field in SoundSetEffectTo block",
-            )?;
+            let field = required_field(fields, "EFFECT", "missing EFFECT field in SoundSetEffectTo block")?;
             let effect = field_text(field);
             let effect = match effect.as_str() {
                 "PITCH" => SoundEffect::Pitch,
                 "PAN" => SoundEffect::Pan,
                 _ => return Err(ParserError::InvalidValue("Unknown SoundEffect")),
             };
-            Ok(SoundStmt::SetSoundEffectTo {
-                value,
-                target: effect,
-            })
+            Ok(SoundStmt::SetSoundEffectTo { value, target: effect })
         }
         BlockOpCodes::SoundClearEffects => Ok(SoundStmt::ClearSoundEffect),
         BlockOpCodes::SoundChangeVolumeBy => {

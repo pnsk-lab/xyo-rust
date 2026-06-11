@@ -32,9 +32,7 @@ fn required_field<'a>(
     key: &'static str,
     missing_field_error: &'static str,
 ) -> ParseResult<'a, &'a Fields> {
-    fields
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_field_error))
+    fields.get(key).ok_or(ParserError::InvalidValue(missing_field_error))
 }
 
 fn field_text(field: &Fields) -> &String {
@@ -52,22 +50,17 @@ fn required_expr_input<'a>(
     missing_input_error: &'static str,
     parse_error: &'static str,
 ) -> ParseResult<'a, Expr> {
-    let input = inputs
-        .get(key)
-        .ok_or(ParserError::InvalidValue(missing_input_error))?;
+    let input = inputs.get(key).ok_or(ParserError::InvalidValue(missing_input_error))?;
     parse_input(project, target_idx, input).map_err(|err| err.context(parse_error))
 }
 
-pub fn parse_pen_expr<'a>(
-    _: &'a ScratchProject,
-    _: usize,
-    block: &'a Block,
-) -> ParseResult<'a, Expr> {
+pub fn parse_pen_expr<'a>(_: &'a ScratchProject, _: usize, block: &'a Block) -> ParseResult<'a, Expr> {
     match block.opcode {
         BlockOpCodes::PenMenuColorParam => {
-            let fields = block.fields.as_ref().ok_or(ParserError::InvalidValue(
-                "missing fields in PenMenuColorParam block",
-            ))?;
+            let fields = block
+                .fields
+                .as_ref()
+                .ok_or(ParserError::InvalidValue("missing fields in PenMenuColorParam block"))?;
             let color_param = required_field(
                 fields,
                 "colorParam",
