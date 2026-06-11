@@ -98,6 +98,50 @@ copy_tree() {
     fi
 }
 
+copy_if_exists() {
+    local source="$1"
+    local destination="$2"
+
+    if [[ ! -e "${source}" && ! -L "${source}" ]]; then
+        return 0
+    fi
+
+    mkdir -p "$(dirname "${destination}")"
+    cp -a "${source}" "${destination}"
+}
+
+copy_minimal_tree() {
+    local source_root="$1"
+    local destination_root="$2"
+    local tool
+    local entry
+
+    rm -rf "${destination_root}"
+    mkdir -p "${destination_root}/bin" "${destination_root}/include" "${destination_root}/lib"
+
+    for tool in clang clang-21 clang++ clang++-21 llvm-ar llvm-ar-21 llvm-config llvm-config-21; do
+        copy_if_exists "${source_root}/bin/${tool}" "${destination_root}/bin/${tool}"
+    done
+
+    copy_if_exists "${source_root}/include/llvm" "${destination_root}/include/llvm"
+    copy_if_exists "${source_root}/include/llvm-c" "${destination_root}/include/llvm-c"
+    copy_if_exists "${source_root}/lib/clang" "${destination_root}/lib/clang"
+
+    while IFS= read -r entry; do
+        copy_if_exists "${entry}" "${destination_root}/lib/$(basename "${entry}")"
+    done < <(
+        find "${source_root}/lib" -maxdepth 1 \
+            \( -type f -o -type l \) \
+            \( -name '*.a' -o -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.tbd' \) \
+            -print
+    )
+
+    if [[ ! -x "${destination_root}/bin/llvm-config" && ! -x "${destination_root}/bin/llvm-config.exe" ]]; then
+        echo "failed to install LLVM into ${destination_root}" >&2
+        exit 1
+    fi
+}
+
 copy_resolved_include_dir() {
     local source_dir="$1"
     local include_name="$2"
@@ -199,6 +243,7 @@ install_from_archive() {
         tar -xf "${archive_path}" -C "${extract_dir}"
         ;;
     esac
+    rm -f "${archive_path}"
 
     local llvm_config_path
     llvm_config_path="$(find "${extract_dir}" -type f \( -name llvm-config -o -name llvm-config.exe \) | head -n 1)"
@@ -209,7 +254,7 @@ install_from_archive() {
 
     local source_root
     source_root="$(dirname "$(dirname "${llvm_config_path}")")"
-    copy_tree "${source_root}" "${LLVM_INSTALL_DIR}"
+    copy_minimal_tree "${source_root}" "${LLVM_INSTALL_DIR}"
 }
 
 install_from_brew() {
@@ -219,7 +264,7 @@ install_from_brew() {
     fi
 
     brew install llvm@21
-    copy_tree "$(brew --prefix llvm@21)" "${LLVM_INSTALL_DIR}"
+    copy_minimal_tree "$(brew --prefix llvm@21)" "${LLVM_INSTALL_DIR}"
 }
 
 install_from_apt_llvm() {
@@ -265,7 +310,7 @@ install_from_apt_llvm() {
 
     local source_root
     source_root="$(llvm-config-21 --prefix)"
-    copy_tree "${source_root}" "${LLVM_INSTALL_DIR}"
+    copy_minimal_tree "${source_root}" "${LLVM_INSTALL_DIR}"
     copy_resolved_library_symlinks "${llvm_lib_dir}"
     copy_tool_runtime_dependencies
     rm -rf "${LLVM_INSTALL_DIR}/build"

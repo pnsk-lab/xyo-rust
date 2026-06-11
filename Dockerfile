@@ -26,7 +26,8 @@ COPY tools/install_llvm_prebuilt.sh tools/install_llvm_prebuilt.sh
 RUN LLVM_VERSION="${LLVM_VERSION}" tools/install_llvm_prebuilt.sh
 
 COPY . .
-RUN ./setup.sh
+RUN ./setup.sh \
+    && tools/build_icu_runtime.sh
 
 FROM debian:bookworm-slim AS runtime
 
@@ -37,7 +38,9 @@ RUN apt-get update \
     zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/xyo /usr/local/bin/xyo
+COPY --from=builder /app/target/release/xyo /opt/xyo/bin/xyo
+COPY --from=builder /app/target/icu-runtime/lib/libicudata.so* /opt/xyo/lib/
+COPY --from=builder /app/target/icu-runtime/lib/libicuuc.so* /opt/xyo/lib/
 
-ENTRYPOINT ["xyo"]
+ENTRYPOINT ["/opt/xyo/bin/xyo"]
 CMD ["--help"]
