@@ -1,8 +1,8 @@
 use core::f64;
 
 use inkwell::{
-    FloatPredicate, IntPredicate,
-    values::{FloatValue, FunctionValue},
+    FloatPredicate,
+    values::{FloatValue, FunctionValue, IntValue, PointerValue},
 };
 
 use crate::{
@@ -42,6 +42,194 @@ fn build_rem<'ctx>(builders: &Builders<'ctx>, left: FloatValue<'ctx>, right: Flo
         )
         .unwrap();
     return rem;
+}
+
+fn build_float_is_nan<'ctx>(builders: &Builders<'ctx>, value: FloatValue<'ctx>) -> IntValue<'ctx> {
+    builders
+        .builder
+        .build_float_compare(FloatPredicate::UNO, value, value, "is_nan")
+        .unwrap()
+}
+
+fn build_string_compare_is_nan<'ctx>(builders: &Builders<'ctx>, value: PointerValue<'ctx>) -> IntValue<'ctx> {
+    builders
+        .builder
+        .build_call(
+            builders.functions.str_compare_is_nan,
+            &[value.into()],
+            "str_compare_is_nan",
+        )
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_int_value()
+}
+
+fn compare_value_is_nan<'ctx>(
+    builders: &Builders<'ctx>,
+    value: &ScratchReturnTypes<'ctx>,
+    function: &FunctionValue<'ctx>,
+) -> IntValue<'ctx> {
+    match value {
+        ScratchReturnTypes::Number(v) => build_float_is_nan(builders, *v),
+        ScratchReturnTypes::Bool(_) | ScratchReturnTypes::BoolLiteral(_) => {
+            builders.context.bool_type().const_int(0, false)
+        }
+        ScratchReturnTypes::String(v) => build_string_compare_is_nan(builders, *v),
+        ScratchReturnTypes::NumberLiteral((v, _)) => builders.context.bool_type().const_int(v.is_nan() as u64, false),
+        ScratchReturnTypes::StringLiteral(v) => build_float_is_nan(
+            builders,
+            builders
+                .context
+                .f64_type()
+                .const_float(v.0.parse::<f64>().unwrap_or(f64::NAN)),
+        ),
+        ScratchReturnTypes::Dynamic(v) => {
+            let dynamic_struct = create_dynamic_struct_type(builders.context);
+            let dispatch_block = builders
+                .builder
+                .get_insert_block()
+                .expect("builder has no insert block");
+            let kind_ptr = builders
+                .builder
+                .build_struct_gep(dynamic_struct, *v, 0, "dynamic_kind_ptr")
+                .unwrap();
+            let payload_ptr = builders
+                .builder
+                .build_struct_gep(dynamic_struct, *v, 1, "dynamic_payload_ptr")
+                .unwrap();
+            let kind = builders
+                .builder
+                .build_load(builders.context.i8_type(), kind_ptr, "dynamic_kind")
+                .unwrap()
+                .into_int_value();
+            let payload = builders
+                .builder
+                .build_load(
+                    builders.context.ptr_type(inkwell::AddressSpace::default()),
+                    payload_ptr,
+                    "dynamic_payload",
+                )
+                .unwrap()
+                .into_pointer_value();
+            let number_block = builders.context.append_basic_block(*function, "compare_number_nan");
+            let string_block = builders.context.append_basic_block(*function, "compare_string_nan");
+            let bool_block = builders.context.append_basic_block(*function, "compare_bool_nan");
+            let finally = builders.context.append_basic_block(*function, "compare_nan_finally");
+            builders
+                .builder
+                .build_switch(
+                    kind,
+                    finally,
+                    &[
+                        (
+                            builders.context.i8_type().const_int(DynamicKind::Number as u64, false),
+                            number_block,
+                        ),
+                        (
+                            builders.context.i8_type().const_int(DynamicKind::String as u64, false),
+                            string_block,
+                        ),
+                        (
+                            builders.context.i8_type().const_int(DynamicKind::Bool as u64, false),
+                            bool_block,
+                        ),
+                    ],
+                )
+                .unwrap();
+
+            builders.builder.position_at_end(number_block);
+            let number_value = builders
+                .builder
+                .build_load(builders.context.f64_type(), payload, "dynamic_number")
+                .unwrap()
+                .into_float_value();
+            let number_ret = build_float_is_nan(builders, number_value);
+            builders.builder.build_unconditional_branch(finally).unwrap();
+
+            builders.builder.position_at_end(string_block);
+            let string_ret = build_string_compare_is_nan(builders, payload);
+            builders.builder.build_unconditional_branch(finally).unwrap();
+
+            builders.builder.position_at_end(bool_block);
+            let false_value = builders.context.bool_type().const_int(0, false);
+            builders.builder.build_unconditional_branch(finally).unwrap();
+
+            builders.builder.position_at_end(finally);
+            let phi = builders
+                .builder
+                .build_phi(builders.context.bool_type(), "compare_is_nan")
+                .unwrap();
+            phi.add_incoming(&[
+                (&false_value, dispatch_block),
+                (&number_ret, number_block),
+                (&string_ret, string_block),
+                (&false_value, bool_block),
+            ]);
+            phi.as_basic_value().into_int_value()
+        }
+    }
+}
+
+fn build_compare<'ctx>(
+    builders: &Builders<'ctx>,
+    function: &FunctionValue<'ctx>,
+    parsed_left: &ScratchReturnTypes<'ctx>,
+    parsed_right: &ScratchReturnTypes<'ctx>,
+    str_cmp_function: FunctionValue<'ctx>,
+    str_cmp_name: &str,
+    float_predicate: FloatPredicate,
+    float_cmp_name: &str,
+) -> ScratchReturnTypes<'ctx> {
+    let left_compare_nan = compare_value_is_nan(builders, parsed_left, function);
+    let right_compare_nan = compare_value_is_nan(builders, parsed_right, function);
+    let is_string_compare = builders
+        .builder
+        .build_or(left_compare_nan, right_compare_nan, "is_string_compare")
+        .unwrap();
+    let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
+    let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
+    let finally_block = builders.context.append_basic_block(*function, "finally");
+    builders
+        .builder
+        .build_conditional_branch(is_string_compare, string_compare_block, number_compare_block)
+        .unwrap();
+
+    builders.builder.position_at_end(string_compare_block);
+    let left_hand = scratch_return_to_string(builders, parsed_left, function);
+    let right_hand = scratch_return_to_string(builders, parsed_right, function);
+    let string_cmp = builders
+        .builder
+        .build_call(str_cmp_function, &[left_hand.into(), right_hand.into()], str_cmp_name)
+        .unwrap()
+        .try_as_basic_value()
+        .basic()
+        .unwrap()
+        .into_int_value();
+    let string_compare_block = builders
+        .builder
+        .get_insert_block()
+        .expect("builder has no insert block");
+    builders.builder.build_unconditional_branch(finally_block).unwrap();
+
+    builders.builder.position_at_end(number_compare_block);
+    let left_hand = scratch_return_to_number(builders, parsed_left, function);
+    let right_hand = scratch_return_to_number(builders, parsed_right, function);
+    let number_cmp = builders
+        .builder
+        .build_float_compare(float_predicate, left_hand, right_hand, float_cmp_name)
+        .unwrap();
+    let number_compare_block = builders
+        .builder
+        .get_insert_block()
+        .expect("builder has no insert block");
+    builders.builder.build_unconditional_branch(finally_block).unwrap();
+
+    builders.builder.position_at_end(finally_block);
+    let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
+    phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
+    ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
 }
 
 pub fn parse_operator_expr<'ctx>(
@@ -244,391 +432,46 @@ pub fn parse_operator_expr<'ctx>(
             )
         }
         OperatorExpr::GreaterThan { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, target_idx);
-            let parsed_right = &generate_expr_ir(builders, right, function, target_idx);
-            let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
-                || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
-            let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
-                || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
-            let is_string_compare = is_parsed_left_string || is_parsed_right_string;
-            let is_dynamic = matches!(parsed_left, ScratchReturnTypes::Dynamic(_))
-                | matches!(parsed_right, ScratchReturnTypes::Dynamic(_));
-            if is_string_compare {
-                let left_hand = scratch_return_to_string(builders, parsed_left, function);
-                let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let cmp = builders
-                    .builder
-                    .build_call(
-                        builders.functions.str_cmp_gt,
-                        &[left_hand.into(), right_hand.into()],
-                        "str_cmp_gt",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                    .basic()
-                    .unwrap()
-                    .into_int_value();
-                ScratchReturnTypes::Bool(cmp)
-            } else if is_dynamic {
-                let is_left_string = match parsed_left {
-                    ScratchReturnTypes::String(_) | ScratchReturnTypes::StringLiteral(_) => {
-                        builders.context.bool_type().const_int(1, false)
-                    }
-                    ScratchReturnTypes::Dynamic(d) => {
-                        let dynamic_struct = create_dynamic_struct_type(builders.context);
-                        let kind_ptr = builders
-                            .builder
-                            .build_struct_gep(dynamic_struct, *d, 0, "dynamic_kind_ptr")
-                            .unwrap();
-                        builders
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                builders
-                                    .builder
-                                    .build_load(builders.context.i8_type(), kind_ptr, "kind")
-                                    .unwrap()
-                                    .into_int_value(),
-                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                                "is_string",
-                            )
-                            .unwrap()
-                    }
-                    _ => builders.context.bool_type().const_int(0, false),
-                };
-                let is_right_string = match parsed_right {
-                    ScratchReturnTypes::String(_) | ScratchReturnTypes::StringLiteral(_) => {
-                        builders.context.bool_type().const_int(1, false)
-                    }
-                    ScratchReturnTypes::Dynamic(d) => {
-                        let dynamic_struct = create_dynamic_struct_type(builders.context);
-                        let kind_ptr = builders
-                            .builder
-                            .build_struct_gep(dynamic_struct, *d, 0, "dynamic_kind_ptr")
-                            .unwrap();
-                        builders
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                builders
-                                    .builder
-                                    .build_load(builders.context.i8_type(), kind_ptr, "kind")
-                                    .unwrap()
-                                    .into_int_value(),
-                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                                "is_string",
-                            )
-                            .unwrap()
-                    }
-                    _ => builders.context.bool_type().const_int(0, false),
-                };
-                let is_string = builders
-                    .builder
-                    .build_or(is_left_string, is_right_string, "is_string_compare")
-                    .unwrap();
-                let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
-                let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
-                let finally_block = builders.context.append_basic_block(*function, "finally");
-                builders
-                    .builder
-                    .build_conditional_branch(is_string, string_compare_block, number_compare_block)
-                    .unwrap();
-                builders.builder.position_at_end(string_compare_block);
-                let left_hand = scratch_return_to_string(builders, parsed_left, function);
-                let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let string_cmp = builders
-                    .builder
-                    .build_call(
-                        builders.functions.str_cmp_gt,
-                        &[left_hand.into(), right_hand.into()],
-                        "str_cmp_gt",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                    .basic()
-                    .unwrap()
-                    .into_int_value();
-                builders.builder.build_unconditional_branch(finally_block).unwrap();
-                builders.builder.position_at_end(number_compare_block);
-                let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_right, function);
-                let number_cmp = builders
-                    .builder
-                    .build_float_compare(FloatPredicate::OGT, left_hand, right_hand, "gt")
-                    .unwrap();
-                builders.builder.build_unconditional_branch(finally_block).unwrap();
-                builders.builder.position_at_end(finally_block);
-                let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
-                phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
-                ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
-            } else {
-                let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_right, function);
-                ScratchReturnTypes::Bool(
-                    builders
-                        .builder
-                        .build_float_compare(FloatPredicate::OGT, left_hand, right_hand, "gt")
-                        .unwrap(),
-                )
-            }
+            let parsed_left = generate_expr_ir(builders, left, function, target_idx);
+            let parsed_right = generate_expr_ir(builders, right, function, target_idx);
+            build_compare(
+                builders,
+                function,
+                &parsed_left,
+                &parsed_right,
+                builders.functions.str_cmp_gt,
+                "str_cmp_gt",
+                FloatPredicate::OGT,
+                "gt",
+            )
         }
         OperatorExpr::LessThan { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, target_idx);
-            let parsed_right = &generate_expr_ir(builders, right, function, target_idx);
-            let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
-                || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
-            let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
-                || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
-            let is_dynamic = matches!(parsed_left, ScratchReturnTypes::Dynamic(_))
-                | matches!(parsed_right, ScratchReturnTypes::Dynamic(_));
-            let is_string_compare = is_parsed_left_string || is_parsed_right_string;
-            if is_string_compare {
-                let left_hand = scratch_return_to_string(builders, parsed_left, function);
-                let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let cmp = builders
-                    .builder
-                    .build_call(
-                        builders.functions.str_cmp_lt,
-                        &[left_hand.into(), right_hand.into()],
-                        "str_cmp_lt",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                    .basic()
-                    .unwrap()
-                    .into_int_value();
-                ScratchReturnTypes::Bool(cmp)
-            } else if is_dynamic {
-                let is_left_string = match parsed_left {
-                    ScratchReturnTypes::String(_) | ScratchReturnTypes::StringLiteral(_) => {
-                        builders.context.bool_type().const_int(1, false)
-                    }
-                    ScratchReturnTypes::Dynamic(d) => {
-                        let dynamic_struct = create_dynamic_struct_type(builders.context);
-                        let kind_ptr = builders
-                            .builder
-                            .build_struct_gep(dynamic_struct, *d, 0, "dynamic_kind_ptr")
-                            .unwrap();
-                        builders
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                builders
-                                    .builder
-                                    .build_load(builders.context.i8_type(), kind_ptr, "kind")
-                                    .unwrap()
-                                    .into_int_value(),
-                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                                "is_string",
-                            )
-                            .unwrap()
-                    }
-                    _ => builders.context.bool_type().const_int(0, false),
-                };
-                let is_right_string = match parsed_right {
-                    ScratchReturnTypes::String(_) | ScratchReturnTypes::StringLiteral(_) => {
-                        builders.context.bool_type().const_int(1, false)
-                    }
-                    ScratchReturnTypes::Dynamic(d) => {
-                        let dynamic_struct = create_dynamic_struct_type(builders.context);
-                        let kind_ptr = builders
-                            .builder
-                            .build_struct_gep(dynamic_struct, *d, 0, "dynamic_kind_ptr")
-                            .unwrap();
-                        builders
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                builders
-                                    .builder
-                                    .build_load(builders.context.i8_type(), kind_ptr, "kind")
-                                    .unwrap()
-                                    .into_int_value(),
-                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                                "is_string",
-                            )
-                            .unwrap()
-                    }
-                    _ => builders.context.bool_type().const_int(0, false),
-                };
-                let is_string = builders
-                    .builder
-                    .build_or(is_left_string, is_right_string, "is_string_compare")
-                    .unwrap();
-                let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
-                let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
-                let finally_block = builders.context.append_basic_block(*function, "finally");
-                builders
-                    .builder
-                    .build_conditional_branch(is_string, string_compare_block, number_compare_block)
-                    .unwrap();
-                builders.builder.position_at_end(string_compare_block);
-                let left_hand = scratch_return_to_string(builders, parsed_left, function);
-                let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let string_cmp = builders
-                    .builder
-                    .build_call(
-                        builders.functions.str_cmp_lt,
-                        &[left_hand.into(), right_hand.into()],
-                        "str_cmp_lt",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                    .basic()
-                    .unwrap()
-                    .into_int_value();
-                builders.builder.build_unconditional_branch(finally_block).unwrap();
-                builders.builder.position_at_end(number_compare_block);
-                let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_right, function);
-                let number_cmp = builders
-                    .builder
-                    .build_float_compare(FloatPredicate::OLT, left_hand, right_hand, "lt")
-                    .unwrap();
-                builders.builder.build_unconditional_branch(finally_block).unwrap();
-                builders.builder.position_at_end(finally_block);
-                let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
-                phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
-                ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
-            } else {
-                let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_right, function);
-                ScratchReturnTypes::Bool(
-                    builders
-                        .builder
-                        .build_float_compare(FloatPredicate::OLT, left_hand, right_hand, "lt")
-                        .unwrap(),
-                )
-            }
+            let parsed_left = generate_expr_ir(builders, left, function, target_idx);
+            let parsed_right = generate_expr_ir(builders, right, function, target_idx);
+            build_compare(
+                builders,
+                function,
+                &parsed_left,
+                &parsed_right,
+                builders.functions.str_cmp_lt,
+                "str_cmp_lt",
+                FloatPredicate::OLT,
+                "lt",
+            )
         }
         OperatorExpr::Eq { left, right } => {
-            let parsed_left = &generate_expr_ir(builders, left, function, target_idx);
-            let parsed_right = &generate_expr_ir(builders, right, function, target_idx);
-            let is_parsed_left_string = matches!(parsed_left, ScratchReturnTypes::String(_))
-                || matches!(parsed_left, ScratchReturnTypes::StringLiteral(_));
-            let is_parsed_right_string = matches!(parsed_right, ScratchReturnTypes::String(_))
-                || matches!(parsed_right, ScratchReturnTypes::StringLiteral(_));
-            let is_dynamic = matches!(parsed_left, ScratchReturnTypes::Dynamic(_))
-                | matches!(parsed_right, ScratchReturnTypes::Dynamic(_));
-            let is_string_compare = is_parsed_left_string || is_parsed_right_string;
-            if is_string_compare {
-                let left_hand = scratch_return_to_string(builders, parsed_left, function);
-                let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let cmp = builders
-                    .builder
-                    .build_call(
-                        builders.functions.str_cmp_eq,
-                        &[left_hand.into(), right_hand.into()],
-                        "str_cmp_eq",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                    .basic()
-                    .unwrap()
-                    .into_int_value();
-                ScratchReturnTypes::Bool(cmp)
-            } else if is_dynamic {
-                let is_left_string = match parsed_left {
-                    ScratchReturnTypes::String(_) | ScratchReturnTypes::StringLiteral(_) => {
-                        builders.context.bool_type().const_int(1, false)
-                    }
-                    ScratchReturnTypes::Dynamic(d) => {
-                        let dynamic_struct = create_dynamic_struct_type(builders.context);
-                        let kind_ptr = builders
-                            .builder
-                            .build_struct_gep(dynamic_struct, *d, 0, "dynamic_kind_ptr")
-                            .unwrap();
-                        builders
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                builders
-                                    .builder
-                                    .build_load(builders.context.i8_type(), kind_ptr, "kind")
-                                    .unwrap()
-                                    .into_int_value(),
-                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                                "is_string",
-                            )
-                            .unwrap()
-                    }
-                    _ => builders.context.bool_type().const_int(0, false),
-                };
-                let is_right_string = match parsed_right {
-                    ScratchReturnTypes::String(_) | ScratchReturnTypes::StringLiteral(_) => {
-                        builders.context.bool_type().const_int(1, false)
-                    }
-                    ScratchReturnTypes::Dynamic(d) => {
-                        let dynamic_struct = create_dynamic_struct_type(builders.context);
-                        let kind_ptr = builders
-                            .builder
-                            .build_struct_gep(dynamic_struct, *d, 0, "dynamic_kind_ptr")
-                            .unwrap();
-                        builders
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                builders
-                                    .builder
-                                    .build_load(builders.context.i8_type(), kind_ptr, "kind")
-                                    .unwrap()
-                                    .into_int_value(),
-                                builders.context.i8_type().const_int(DynamicKind::String as u64, false),
-                                "is_string",
-                            )
-                            .unwrap()
-                    }
-                    _ => builders.context.bool_type().const_int(0, false),
-                };
-                let is_string = builders
-                    .builder
-                    .build_or(is_left_string, is_right_string, "is_string_compare")
-                    .unwrap();
-                let string_compare_block = builders.context.append_basic_block(*function, "string_cmp");
-                let number_compare_block = builders.context.append_basic_block(*function, "number_cmp");
-                let finally_block = builders.context.append_basic_block(*function, "finally");
-                builders
-                    .builder
-                    .build_conditional_branch(is_string, string_compare_block, number_compare_block)
-                    .unwrap();
-                builders.builder.position_at_end(string_compare_block);
-                let left_hand = scratch_return_to_string(builders, parsed_left, function);
-                let right_hand = scratch_return_to_string(builders, parsed_right, function);
-                let string_cmp = builders
-                    .builder
-                    .build_call(
-                        builders.functions.str_cmp_eq,
-                        &[left_hand.into(), right_hand.into()],
-                        "str_cmp_eq",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                    .basic()
-                    .unwrap()
-                    .into_int_value();
-                builders.builder.build_unconditional_branch(finally_block).unwrap();
-                builders.builder.position_at_end(number_compare_block);
-                let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_right, function);
-                let number_cmp = builders
-                    .builder
-                    .build_float_compare(FloatPredicate::OEQ, left_hand, right_hand, "eq")
-                    .unwrap();
-                builders.builder.build_unconditional_branch(finally_block).unwrap();
-                builders.builder.position_at_end(finally_block);
-                let phi = builders.builder.build_phi(builders.context.bool_type(), "phi").unwrap();
-                phi.add_incoming(&[(&string_cmp, string_compare_block), (&number_cmp, number_compare_block)]);
-                ScratchReturnTypes::Bool(phi.as_basic_value().into_int_value())
-            } else {
-                let left_hand = scratch_return_to_number(builders, parsed_left, function);
-                let right_hand = scratch_return_to_number(builders, parsed_right, function);
-                ScratchReturnTypes::Bool(
-                    builders
-                        .builder
-                        .build_float_compare(FloatPredicate::OEQ, left_hand, right_hand, "eq")
-                        .unwrap(),
-                )
-            }
+            let parsed_left = generate_expr_ir(builders, left, function, target_idx);
+            let parsed_right = generate_expr_ir(builders, right, function, target_idx);
+            build_compare(
+                builders,
+                function,
+                &parsed_left,
+                &parsed_right,
+                builders.functions.str_cmp_eq,
+                "str_cmp_eq",
+                FloatPredicate::OEQ,
+                "eq",
+            )
         }
         OperatorExpr::And { left, right } => {
             if let Some(left_expr) = left
@@ -955,6 +798,37 @@ mod tests {
         .unwrap()
     }
 
+    fn project_with_variable() -> ScratchProject {
+        serde_json::from_value(json!({
+            "meta": {
+                "semver": "3.0.0",
+                "vm": null,
+                "agent": null,
+                "origin": null
+            },
+            "targets": [{
+                "isStage": true,
+                "name": "Stage",
+                "currentCostume": 0,
+                "blocks": {},
+                "variables": {
+                    "score": ["score", "50"]
+                },
+                "lists": {},
+                "broadcasts": {},
+                "comments": null,
+                "costumes": [],
+                "sounds": [],
+                "tempo": null,
+                "videoTransparency": null,
+                "videoState": null,
+                "layerOrder": null,
+                "volume": null
+            }]
+        }))
+        .unwrap()
+    }
+
     fn test_function<'ctx>(context: &'ctx Context, builders: &Builders<'ctx>) -> FunctionValue<'ctx> {
         let fn_type = context
             .void_type()
@@ -967,6 +841,28 @@ mod tests {
 
     fn literal(value: &str) -> Box<Expr> {
         Box::new(Expr::Literal(Literal::String(value.to_string())))
+    }
+
+    fn verify_dynamic_compare(expr: OperatorExpr) {
+        let context = Context::create();
+        let project = project_with_variable();
+        let builders = Builders::new(&context, &project);
+        let function = test_function(&context, &builders);
+
+        let _ = parse_operator_expr(&builders, &expr, &function, 0);
+        builders.builder.build_return(None).unwrap();
+
+        assert!(builders.module.verify().is_ok(), "{}", builders.module.to_string());
+    }
+
+    fn variable_score() -> Box<Expr> {
+        Box::new(Expr::Literal(Literal::Variable {
+            target: "score".to_string(),
+        }))
+    }
+
+    fn number_expr(value: &str) -> Box<Expr> {
+        Box::new(Expr::Literal(Literal::Number(value.to_string())))
     }
 
     #[test]
@@ -1010,5 +906,29 @@ mod tests {
             }
             _ => panic!("expected boolean literal result"),
         }
+    }
+
+    #[test]
+    fn dynamic_less_than_builds_verifiable_phi_incoming_blocks() {
+        verify_dynamic_compare(OperatorExpr::LessThan {
+            left: variable_score(),
+            right: number_expr("100"),
+        });
+    }
+
+    #[test]
+    fn dynamic_greater_than_builds_verifiable_phi_incoming_blocks() {
+        verify_dynamic_compare(OperatorExpr::GreaterThan {
+            left: variable_score(),
+            right: number_expr("100"),
+        });
+    }
+
+    #[test]
+    fn dynamic_equals_builds_verifiable_phi_incoming_blocks() {
+        verify_dynamic_compare(OperatorExpr::Eq {
+            left: variable_score(),
+            right: number_expr("100"),
+        });
     }
 }

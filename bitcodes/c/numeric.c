@@ -143,6 +143,30 @@ double xyo_atod(const struct xyo_string_struct *input)
     return x;
 }
 
+bool str_compare_is_nan(const struct xyo_string_struct *input)
+{
+    if (input == NULL || input->data == NULL)
+    {
+        return true;
+    }
+
+    double value = xyo_atod(input);
+    if (value != 0.0)
+    {
+        return isnan(value);
+    }
+
+    for (uint64_t i = 0; i < input->length; ++i)
+    {
+        if (!is_ecma_ws_or_lt_u16(input->data[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 struct xyo_string_struct *xyo_dtoa(double n, uint64_t hash_seed_1, uint64_t hash_base_1, uint64_t hash_seed_2, uint64_t hash_base_2)
 {
     char buf[1024];

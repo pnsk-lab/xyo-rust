@@ -4,7 +4,7 @@ use crate::{
     compiler::{
         compiler::{generate_expr_ir, generate_thread_ir},
         types::{Builders, CompilerState},
-        utils::scratch_return_to_number,
+        utils::{scratch_return_to_bool, scratch_return_to_number},
     },
     parser::types::{ControlStmt, Thread},
 };
@@ -126,6 +126,45 @@ pub fn parse_control_stmt<'ctx>(
                 builders.builder.build_store(counter, new_counter_value).unwrap();
                 builders.builder.build_unconditional_branch(loop_label).unwrap();
                 builders.builder.position_at_end(out);
+            }
+        }
+        ControlStmt::If { condition, substack } => {
+            if let Some(condition) = condition
+                && let Some(substack) = substack
+            {
+                let current_block = builders
+                    .builder
+                    .get_insert_block()
+                    .expect("builder has no insert block");
+                let thread: Thread = Thread {
+                    hat: None,
+                    stmts: substack.clone(),
+                    target_idx,
+                };
+                let func_name = generate_thread_ir(builders, &thread);
+                let func = builders.module.get_function(&func_name).unwrap();
+                builders.builder.position_at_end(current_block);
+                let then_label = builders.context.append_basic_block(*function, "then");
+                let finally_label = builders.context.append_basic_block(*function, "finally");
+                builders
+                    .builder
+                    .build_conditional_branch(
+                        scratch_return_to_bool(
+                            builders,
+                            &generate_expr_ir(builders, condition, function, target_idx),
+                            function,
+                        ),
+                        then_label,
+                        finally_label,
+                    )
+                    .unwrap();
+                builders.builder.position_at_end(then_label);
+                builders
+                    .builder
+                    .build_call(func, &[function.get_first_param().unwrap().into()], "forever_thread")
+                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_label).unwrap();
+                builders.builder.position_at_end(finally_label);
             }
         }
         _ => todo!("未実装"),

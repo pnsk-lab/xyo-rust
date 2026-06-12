@@ -125,7 +125,7 @@ pub fn run<'ctx>(builders: &Builders<'ctx>, thread_functions: &[String]) {
         .module
         .create_mcjit_execution_engine_with_memory_manager(
             SectionMemoryManager::new(),
-            OptimizationLevel::None,
+            OptimizationLevel::Aggressive,
             CodeModel::JITDefault,
             false,
             false,
