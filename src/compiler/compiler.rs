@@ -14,6 +14,7 @@ use crate::{
             looks::{parse_looks_expr, parse_looks_stmt},
             motion::parse_motion_stmt,
             operator::parse_operator_expr,
+            sensing::{parse_sensing_expr, parse_sensing_stmt},
         },
         types::{Builders, CompilerState},
     },
@@ -64,6 +65,7 @@ pub fn generate_thread_ir(builders: &mut Builders, thread: &Thread) -> String {
             Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
             Stmt::DataStmt(v) => parse_data_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
             Stmt::Control(v) => parse_control_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
+            Stmt::Sensing(v) => parse_sensing_stmt(builders, v, &function, thread.target_idx, &mut compiler_state),
             _ => todo!("やります"),
         }
         if compiler_state.has_terminator {
@@ -96,6 +98,7 @@ pub fn generate_expr_ir<'ctx>(
         Expr::Literal(l) => parse_literal_expr(builders, l, function, target_idx),
         Expr::Operator(l) => parse_operator_expr(builders, l, function, target_idx),
         Expr::Looks(l) => parse_looks_expr(builders, l, function, target_idx),
+        Expr::Sensing(l) => parse_sensing_expr(builders, l, function, target_idx),
         _ => todo!("やる"),
     }
 }

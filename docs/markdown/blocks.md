@@ -25,7 +25,7 @@ Parser で通ることと、`run` サブコマンドで最後まで通ること�
 | 音 | ✅ 全 8 opcode | ✅ 全 4 opcode | ❌ なし | ❌ なし |
 | イベント | ✅ 全 2 opcode | — | ❌ なし | — |
 | 制御 | ✅ 全 15 opcode | ✅ 全 2 opcode | ❌ なし | ❌ なし |
-| 調べる | ✅ 全 3 opcode | ✅ 全 22 opcode | ❌ なし | ❌ なし |
+| 調べる | ✅ 全 3 opcode | ✅ 全 22 opcode | 🟡 一部 (1/3) | 🟡 一部 (Timer のみ) |
 | 演算 | — | ✅ 全 18 opcode | — | 🟡 一部 (14/18、比較は文字列 / Dynamic 分岐あり) |
 | データ | ✅ 全 11 opcode | ✅ 全 6 opcode | 🟡 一部 (1/11) | 🟡 一部 (変数参照のみ) |
 | 独自ブロック | ✅ 全 1 opcode | ✅ 全 3 opcode | ❌ なし | ❌ なし |
@@ -329,8 +329,10 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `SensingCurrent` — 現在の `[年/月/日/時/分/秒]`
     - `SensingLoud` — 音が大きい？
 - Parser: `Expr`
-- IR: なし
-- 備考: `SensingOf` のプロパティ（`x position`, `y position`, `direction` など）は `StatusTarget` 列挙型、時刻の種類は `TimeTarget` 列挙型として解釈されます
+- IR: 一部のみ
+    - `SensingTimer` → 現在のタイマー値を秒で返す
+    - `SensingResetTimer` → タイマー基準時刻を `get_now` の値に更新する
+- 備考: `SensingOf` のプロパティ（`x position`, `y position`, `direction` など）は `StatusTarget` 列挙型、時刻の種類は `TimeTarget` 列挙型として解釈されます。`SensingAskAndWait` と `SensingSetDragMode` は現時点では parser までの対応です
 
 ### 演算
 
@@ -438,12 +440,12 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ## IR 生成の現状
 
-現在の LLVM IR 生成は、スレッド本体では動き系の一部命令、見た目の大きさ変更系、変数代入を扱います。式側はリテラル、演算子、変数参照、見た目の大きさレポーターを扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
+現在の LLVM IR 生成は、スレッド本体では動き系の一部命令、見た目の大きさ変更系、変数代入、タイマーリセットを扱います。式側はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターを扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
 
 | 層      | 対応内容                                                                                                                                                                                                                                                         |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`, `LooksSetSizeTo`, `LooksChangeSizeBy`, `DataSetVariableTo`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
-| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc`（数学関数）, `LooksSize`, 変数参照 |
+| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`, `LooksSetSizeTo`, `LooksChangeSizeBy`, `DataSetVariableTo`, `SensingResetTimer`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
+| Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc`（数学関数）, `LooksSize`, `SensingTimer`, 変数参照 |
 | Literal | 数値入力と文字列入力、変数参照の変換経路あり。数値・文字列は現状 `StringStruct` として作られ、利用側の coercion で数値・真偽値へ変換されます。変数参照は `DynamicStruct` として読み出されます |
 
 ## `run` の前に使える確認コマンド

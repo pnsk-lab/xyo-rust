@@ -12,13 +12,12 @@ use inkwell::{
     memory_buffer::MemoryBuffer,
     module::Module,
     types::StructType,
-    values::BasicValue,
-    values::{FunctionValue, PointerValue},
+    values::{BasicValue, FunctionValue, GlobalValue, PointerValue},
 };
 use llvm_sys::core::LLVMCreateMemoryBufferWithMemoryRange;
 
 use crate::{
-    compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime},
+    compiler::utils::{build_xor_shift_128_plus, gen_nbit_prime, xyo_now_ns},
     types::{ScalarVal, ScalarVariable, ScratchProject, StageOrSprite},
 };
 
@@ -192,6 +191,7 @@ pub struct Builders<'ctx> {
     pub rolling_hash_base_2: u64,
     pub string_literals: HashMap<String, PointerValue<'ctx>>,
     pub fps: f64,
+    pub timer: GlobalValue<'ctx>,
 }
 #[derive(Debug)]
 pub struct Functions<'ctx> {
@@ -219,6 +219,7 @@ pub struct Functions<'ctx> {
     pub str_compare_is_nan: FunctionValue<'ctx>,
     pub str_to_bool: FunctionValue<'ctx>,
     pub wait_tick: FunctionValue<'ctx>,
+    pub get_now: FunctionValue<'ctx>,
     pub is_num: FunctionValue<'ctx>,
     pub rand: FunctionValue<'ctx>,
 }
@@ -306,6 +307,7 @@ impl<'ctx> Builders<'ctx> {
             is_num: module.get_function("str_is_num").unwrap(),
             str_to_bool: module.get_function("str_to_bool").unwrap(),
             wait_tick: module.get_function("xyo_wait_until_next_frame").unwrap(),
+            get_now: module.get_function("xyo_now_ns").unwrap(),
             rand: build_xor_shift_128_plus(&context, &module),
         };
         let hash_seed_1 = gen_nbit_prime(64);
@@ -328,6 +330,8 @@ impl<'ctx> Builders<'ctx> {
             hash_seed_1,
             hash_seed_2,
         );
+        let timer = module.add_global(context.i64_type(), Some(AddressSpace::default()), "timer");
+        timer.set_initializer(&context.i64_type().const_int(xyo_now_ns() as u64, true));
         Self {
             context,
             module,
@@ -346,6 +350,7 @@ impl<'ctx> Builders<'ctx> {
             string_literals: HashMap::new(),
             fps: 30.0,
             global_variable_globals,
+            timer,
         }
     }
     fn link_generated_bitcodes(module: &Module<'ctx>, context: &'ctx Context) {

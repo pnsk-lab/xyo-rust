@@ -1099,3 +1099,47 @@ mod tests {
         assert!(builders.module.verify().is_ok(), "{}", builders.module.to_string());
     }
 }
+
+#[cfg(windows)]
+pub fn xyo_now_ns() -> i64 {
+    use std::mem::MaybeUninit;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn QueryPerformanceCounter(lp_performance_count: *mut i64) -> i32;
+        fn QueryPerformanceFrequency(lp_frequency: *mut i64) -> i32;
+    }
+
+    unsafe {
+        let mut counter = MaybeUninit::<i64>::uninit();
+        let mut frequency = MaybeUninit::<i64>::uninit();
+
+        let ok_counter = QueryPerformanceCounter(counter.as_mut_ptr());
+        let ok_frequency = QueryPerformanceFrequency(frequency.as_mut_ptr());
+
+        assert!(ok_counter != 0);
+        assert!(ok_frequency != 0);
+
+        let counter = counter.assume_init() as i128;
+        let frequency = frequency.assume_init() as i128;
+
+        ((counter * 1_000_000_000i128) / frequency) as i64
+    }
+}
+
+#[cfg(not(windows))]
+pub fn xyo_now_ns() -> i64 {
+    use libc::{CLOCK_MONOTONIC, clock_gettime, timespec};
+    use std::mem::MaybeUninit;
+
+    unsafe {
+        let mut ts = MaybeUninit::<timespec>::uninit();
+
+        let ret = clock_gettime(CLOCK_MONOTONIC, ts.as_mut_ptr());
+        assert_eq!(ret, 0);
+
+        let ts = ts.assume_init();
+
+        ts.tv_sec as i64 * 1_000_000_000i64 + ts.tv_nsec as i64
+    }
+}
