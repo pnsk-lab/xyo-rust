@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "unicode/ucasemap.h"
 #include "unicode/uchar.h"
 #include "unicode/utf16.h"
@@ -85,6 +86,53 @@ static int32_t str_cmp_lowered(const struct xyo_string_struct *a, const struct x
         return -1;
 
     return 0;
+}
+void xyo_print_u16(const struct xyo_string_struct *a)
+{
+    uint16_t *src = a->data;
+    int32_t src_len = a->length;
+
+    UErrorCode status = U_ZERO_ERROR;
+    int32_t utf8_len = 0;
+
+    // 必要な UTF-8 バッファ長を調べる
+    u_strToUTF8(
+        NULL,
+        0,
+        &utf8_len,
+        (const UChar *)src,
+        src_len,
+        &status);
+
+    if (status != U_BUFFER_OVERFLOW_ERROR && U_FAILURE(status))
+    {
+        fprintf(stderr, "u_strToUTF8 preflight failed: %s\n", u_errorName(status));
+        return;
+    }
+
+    status = U_ZERO_ERROR;
+
+    char *utf8 = malloc((size_t)utf8_len + 1);
+    if (!utf8)
+        return;
+
+    u_strToUTF8(
+        utf8,
+        utf8_len + 1,
+        NULL,
+        (const UChar *)src,
+        src_len,
+        &status);
+
+    if (U_FAILURE(status))
+    {
+        fprintf(stderr, "u_strToUTF8 failed: %s\n", u_errorName(status));
+        free(utf8);
+        return;
+    }
+
+    printf("%s\n", utf8);
+    free(utf8);
 }
 
 bool str_cmp_gt(const struct xyo_string_struct *a, const struct xyo_string_struct *b)

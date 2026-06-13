@@ -6,7 +6,7 @@ use crate::{
         types::{
             Builders, CompilerState, CostumeInfoKeys, SpriteKeys, create_costume_struct_type, create_sprite_struct_type,
         },
-        utils::scratch_return_to_number,
+        utils::{scratch_return_to_number, scratch_return_to_string},
     },
     parser::types::{LooksExpr, LooksStmt},
 };
@@ -255,6 +255,17 @@ pub fn parse_looks_stmt<'ctx>(
             let new_size = builders.builder.build_float_add(old_size, change, "new_size").unwrap();
             set_size_to(builders, new_size, function);
             compiler_state.request_redraw = true;
+        }
+        LooksStmt::Say { message } => {
+            let s = scratch_return_to_string(
+                builders,
+                &generate_expr_ir(builders, message, function, target_idx),
+                function,
+            );
+            builders
+                .builder
+                .build_call(builders.functions.print, &[s.into()], "say")
+                .unwrap();
         }
         _ => todo!("未実装!!!"),
     }

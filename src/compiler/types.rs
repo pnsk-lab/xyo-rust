@@ -177,12 +177,9 @@ pub struct Builders<'ctx> {
     pub context: &'ctx Context,
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
-    pub global_variables: HashMap<String, usize>,
+    pub global_variables: HashMap<String, GlobalVariableInfo<'ctx>>,
     pub global_variable_metadata: Vec<GlobalVariableMetadata>,
     pub local_variables: HashMap<usize, HashMap<String, usize>>,
-    local_variables_increments: HashMap<usize, usize>,
-    global_variable_increment: usize,
-    global_variable_globals: HashMap<usize, PointerValue<'ctx>>,
     counter: usize,
     pub functions: Functions<'ctx>,
     pub rolling_hash_seed_1: u64,
@@ -222,10 +219,18 @@ pub struct Functions<'ctx> {
     pub get_now: FunctionValue<'ctx>,
     pub is_num: FunctionValue<'ctx>,
     pub rand: FunctionValue<'ctx>,
+    pub print: FunctionValue<'ctx>,
 }
-pub struct VariableInfo {
+pub struct VariableInfo<'ctx> {
     is_global: bool,
     variable_idx: usize,
+    global_ptr: Option<PointerValue<'ctx>>,
+}
+
+#[derive(Copy, Clone)]
+pub struct GlobalVariableInfo<'ctx> {
+    variable_idx: usize,
+    global_ptr: PointerValue<'ctx>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -309,19 +314,13 @@ impl<'ctx> Builders<'ctx> {
             wait_tick: module.get_function("xyo_wait_until_next_frame").unwrap(),
             get_now: module.get_function("xyo_now_ns").unwrap(),
             rand: build_xor_shift_128_plus(&context, &module),
+            print: module.get_function("xyo_print_u16").unwrap(),
         };
         let hash_seed_1 = gen_nbit_prime(64);
         let hash_seed_2 = gen_nbit_prime(64);
         let hash_base_1 = gen_nbit_prime(17);
         let hash_base_2 = gen_nbit_prime(17);
-        let (
-            global_variables,
-            local_variables,
-            global_variable_increment,
-            local_variables_increments,
-            global_variable_globals,
-            global_variable_metadata,
-        ) = Self::create_variable_map(
+        let (global_variables, local_variables, global_variable_metadata) = Self::create_variable_map(
             project,
             &module,
             context,
@@ -341,15 +340,12 @@ impl<'ctx> Builders<'ctx> {
             global_variables,
             global_variable_metadata,
             local_variables,
-            global_variable_increment,
-            local_variables_increments,
             rolling_hash_seed_1: hash_seed_1,
             rolling_hash_seed_2: hash_seed_2,
             rolling_hash_base_1: hash_base_1,
             rolling_hash_base_2: hash_base_2,
             string_literals: HashMap::new(),
             fps: 30.0,
-            global_variable_globals,
             timer,
         }
     }
@@ -371,11 +367,12 @@ impl<'ctx> Builders<'ctx> {
                 .unwrap_or_else(|err| panic!("failed to link embedded {name}: {err}"));
         }
     }
-    pub fn get_global_variable_ptr(&self, v: VariableInfo) -> PointerValue<'ctx> {
+    pub fn get_global_variable_ptr(&self, v: VariableInfo<'ctx>) -> PointerValue<'ctx> {
         if !v.is_global {
-            panic!("ローカル変数じゃないわﾎﾞｹ")
+            panic!("local variables are not backed by global storage")
         }
-        *self.global_variable_globals.get(&v.variable_idx).unwrap()
+        v.global_ptr
+            .expect("global variable info must include a storage pointer")
     }
     fn scalar_variable_to_global_variable_ptr(
         variable: &ScalarVariable,
@@ -470,27 +467,21 @@ impl<'ctx> Builders<'ctx> {
         hash_seed_1: u64,
         hash_seed_2: u64,
     ) -> (
-        HashMap<String, usize>,
+        HashMap<String, GlobalVariableInfo<'ctx>>,
         HashMap<usize, HashMap<String, usize>>,
-        usize,
-        HashMap<usize, usize>,
-        HashMap<usize, PointerValue<'ctx>>,
         Vec<GlobalVariableMetadata>,
     ) {
         let targets = &project.targets;
         let mut local_variable: HashMap<usize, HashMap<String, usize>> = HashMap::new();
-        let mut global_variable: HashMap<String, usize> = HashMap::new();
         let mut global_variable_metadata = Vec::new();
         let mut global_variables_increment: usize = 0;
-        let mut local_variables_increments: HashMap<usize, usize> = HashMap::new();
-        let mut global_variable_globals: HashMap<usize, PointerValue> = HashMap::new();
+        let mut global_variable: HashMap<String, GlobalVariableInfo<'ctx>> = HashMap::new();
         for (target_idx, target) in targets.iter().enumerate() {
             match target {
                 StageOrSprite::Stage(v) => {
                     let mut variables = v.variables.iter().collect::<Vec<_>>();
                     variables.sort_by(|(a, _), (b, _)| a.cmp(b));
                     for (variable_id, variable) in variables {
-                        global_variable.insert(variable_id.clone(), global_variables_increment);
                         global_variable_metadata.push(GlobalVariableMetadata {
                             variable_id: variable_id.clone(),
                             display_name: variable.display_name(),
@@ -506,7 +497,13 @@ impl<'ctx> Builders<'ctx> {
                             hash_seed_1,
                             hash_seed_2,
                         );
-                        global_variable_globals.insert(global_variables_increment, global_ptr);
+                        global_variable.insert(
+                            variable_id.clone(),
+                            GlobalVariableInfo {
+                                variable_idx: global_variables_increment,
+                                global_ptr,
+                            },
+                        );
                         global_variables_increment += 1;
                     }
                 }
@@ -520,32 +517,26 @@ impl<'ctx> Builders<'ctx> {
                         counter += 1;
                     }
                     local_variable.insert(target_idx, local_variable_temp);
-                    local_variables_increments.insert(target_idx, counter);
                 }
             }
         }
-        (
-            global_variable,
-            local_variable,
-            global_variables_increment,
-            local_variables_increments,
-            global_variable_globals,
-            global_variable_metadata,
-        )
+        (global_variable, local_variable, global_variable_metadata)
     }
-    pub fn get_variable(&self, target_idx: usize, variable_id: &str) -> Option<VariableInfo> {
-        if let Some(idx) = self.global_variables.get(variable_id) {
+    pub fn get_variable(&self, target_idx: usize, variable_id: &str) -> Option<VariableInfo<'ctx>> {
+        if let Some(global) = self.global_variables.get(variable_id) {
             return Some(VariableInfo {
                 is_global: true,
-                variable_idx: *idx,
+                variable_idx: global.variable_idx,
+                global_ptr: Some(global.global_ptr),
             });
         }
         if let Some(local_variable_map) = self.local_variables.get(&target_idx)
-            && local_variable_map.contains_key(variable_id)
+            && let Some(idx) = local_variable_map.get(variable_id)
         {
             return Some(VariableInfo {
                 is_global: false,
-                variable_idx: *local_variable_map.get(variable_id).unwrap(),
+                variable_idx: *idx,
+                global_ptr: None,
             });
         }
         None
