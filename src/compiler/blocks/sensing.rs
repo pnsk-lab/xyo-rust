@@ -11,8 +11,8 @@ use crate::{
 pub fn parse_sensing_stmt<'ctx>(
     builders: &mut Builders<'ctx>,
     stmt: &SensingStmt,
-    function: &FunctionValue<'ctx>,
-    target_idx: usize,
+    _function: &FunctionValue<'ctx>,
+    _target_idx: usize,
     _compiler_state: &mut CompilerState,
 ) {
     match stmt {
@@ -39,8 +39,8 @@ pub fn parse_sensing_stmt<'ctx>(
 pub fn parse_sensing_expr<'ctx>(
     builders: &Builders<'ctx>,
     expr: &SensingExpr,
-    function: &FunctionValue<'ctx>,
-    target_idx: usize,
+    _function: &FunctionValue<'ctx>,
+    _target_idx: usize,
 ) -> ScratchReturnTypes<'ctx> {
     match expr {
         SensingExpr::Timer => ScratchReturnTypes::Number(
