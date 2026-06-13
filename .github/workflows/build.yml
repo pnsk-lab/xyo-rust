@@ -100,13 +100,13 @@ jobs:
                   LLVM_INSTALL_DIR="$GITHUB_WORKSPACE/.llvm/${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.rust_target }}"
                   LLVM_INSTALL_DIR="$LLVM_INSTALL_DIR" ./tools/install_llvm_prebuilt.sh
 
-            - name: Build LLVM 21.1.x (Windows)
+            - name: Install LLVM 21.1.x (Windows)
               if: runner.os == 'Windows'
               shell: pwsh
               run: |
                   $llvmRootDir = Join-Path $env:GITHUB_WORKSPACE '.llvm'
                   $llvmInstallDir = Join-Path $llvmRootDir "$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
-                  ./tools/install_llvm_source.ps1 -InstallDir $llvmInstallDir -TargetArch "${{ matrix.rust_target }}"
+                  ./tools/install_llvm_prebuilt.ps1 -InstallDir $llvmInstallDir -TargetArch "${{ matrix.rust_target }}"
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
