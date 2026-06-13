@@ -1105,7 +1105,7 @@ pub fn xyo_now_ns() -> i64 {
     use std::mem::MaybeUninit;
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn QueryPerformanceCounter(lp_performance_count: *mut i64) -> i32;
         fn QueryPerformanceFrequency(lp_frequency: *mut i64) -> i32;
     }
