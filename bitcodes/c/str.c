@@ -87,7 +87,7 @@ static int32_t str_cmp_lowered(const struct xyo_string_struct *a, const struct x
 
     return 0;
 }
-void xyo_print_u16(const struct xyo_string_struct *a)
+void xyo_print_u16(const struct xyo_string_struct *a, bool is_say)
 {
     uint16_t *src = a->data;
     int32_t src_len = a->length;
@@ -131,7 +131,10 @@ void xyo_print_u16(const struct xyo_string_struct *a)
         return;
     }
 
-    printf("%s\n", utf8);
+    if (is_say)
+        printf("say: %s\n", utf8);
+    else
+        printf("think: %s\n", utf8);
     free(utf8);
 }
 

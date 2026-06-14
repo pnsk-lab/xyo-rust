@@ -264,7 +264,26 @@ pub fn parse_looks_stmt<'ctx>(
             );
             builders
                 .builder
-                .build_call(builders.functions.print, &[s.into()], "say")
+                .build_call(
+                    builders.functions.print,
+                    &[s.into(), builders.context.bool_type().const_int(1, false).into()],
+                    "say",
+                )
+                .unwrap();
+        }
+        LooksStmt::Think { message } => {
+            let s = scratch_return_to_string(
+                builders,
+                &generate_expr_ir(builders, message, function, target_idx),
+                function,
+            );
+            builders
+                .builder
+                .build_call(
+                    builders.functions.print,
+                    &[s.into(), builders.context.bool_type().const_int(0, false).into()],
+                    "think",
+                )
                 .unwrap();
         }
         _ => todo!("未実装!!!"),
