@@ -58,6 +58,37 @@ impl From<StringKeys> for u32 {
         }
     }
 }
+#[repr(C)]
+pub struct ArrayStruct {
+    pub length: u64,
+    pub capacity: u64,
+    pub container: *mut *mut DynamicStruct,
+}
+unsafe impl Send for ArrayStruct {}
+pub fn create_array_struct_type<'a>(context: &'a Context) -> StructType<'a> {
+    context.struct_type(
+        &[
+            context.i64_type().into(),
+            context.i64_type().into(),
+            context.ptr_type(AddressSpace::default()).into(),
+        ],
+        false,
+    )
+}
+pub enum ArrayKeys {
+    Container,
+    Length,
+    Capacity,
+}
+impl From<ArrayKeys> for u32 {
+    fn from(field: ArrayKeys) -> Self {
+        match field {
+            ArrayKeys::Length => 0,
+            ArrayKeys::Capacity => 1,
+            ArrayKeys::Container => 2,
+        }
+    }
+}
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

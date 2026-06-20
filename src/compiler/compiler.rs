@@ -19,7 +19,7 @@ use crate::{
         types::{Builders, CompilerState},
     },
     jit,
-    parser::types::{Expr, Keys::B, Stmt, Thread},
+    parser::types::{Expr, Stmt, Thread},
     types::ScratchProject,
 };
 

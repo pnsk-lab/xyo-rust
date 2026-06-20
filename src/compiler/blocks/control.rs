@@ -167,6 +167,94 @@ pub fn parse_control_stmt<'ctx>(
                 builders.builder.position_at_end(finally_label);
             }
         }
+        ControlStmt::IfElse {
+            condition,
+            substack,
+            substack2,
+        } => {
+            if let Some(condition) = condition {
+                let current_block = builders
+                    .builder
+                    .get_insert_block()
+                    .expect("builder has no insert block");
+                let if_thread: Thread = Thread {
+                    hat: None,
+                    stmts: substack.clone().unwrap_or(vec![]),
+                    target_idx,
+                };
+                let else_thread: Thread = Thread {
+                    hat: None,
+                    stmts: substack2.clone().unwrap_or(vec![]),
+                    target_idx,
+                };
+                let if_func_name = generate_thread_ir(builders, &if_thread);
+                let if_func = builders.module.get_function(&if_func_name).unwrap();
+                let else_func_name = generate_thread_ir(builders, &else_thread);
+                let else_func = builders.module.get_function(&else_func_name).unwrap();
+                builders.builder.position_at_end(current_block);
+                let then_label = builders.context.append_basic_block(*function, "then");
+                let else_label = builders.context.append_basic_block(*function, "else");
+                let finally_label = builders.context.append_basic_block(*function, "finally");
+                builders
+                    .builder
+                    .build_conditional_branch(
+                        scratch_return_to_bool(
+                            builders,
+                            &generate_expr_ir(builders, condition, function, target_idx),
+                            function,
+                        ),
+                        then_label,
+                        else_label,
+                    )
+                    .unwrap();
+                builders.builder.position_at_end(then_label);
+                builders
+                    .builder
+                    .build_call(if_func, &[function.get_first_param().unwrap().into()], "if_then_block")
+                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_label).unwrap();
+                builders.builder.position_at_end(else_label);
+                builders
+                    .builder
+                    .build_call(
+                        else_func,
+                        &[function.get_first_param().unwrap().into()],
+                        "if_else_block",
+                    )
+                    .unwrap();
+                builders.builder.build_unconditional_branch(finally_label).unwrap();
+                builders.builder.position_at_end(finally_label);
+            }
+        }
+        ControlStmt::WaitUntil { condition } => {
+            if let Some(condition) = condition {
+                let wait_loop = builders.context.append_basic_block(*function, "wait_loop");
+                let finally = builders.context.append_basic_block(*function, "finally");
+                let cond = scratch_return_to_bool(
+                    builders,
+                    &generate_expr_ir(builders, condition, function, target_idx),
+                    function,
+                );
+                builders
+                    .builder
+                    .build_conditional_branch(cond, finally, wait_loop)
+                    .unwrap();
+                builders.builder.position_at_end(wait_loop);
+                builders
+                    .builder
+                    .build_call(
+                        builders.functions.wait_tick,
+                        &[builders.context.f64_type().const_float(builders.fps).into()],
+                        "wait",
+                    )
+                    .unwrap();
+                builders
+                    .builder
+                    .build_conditional_branch(cond, finally, wait_loop)
+                    .unwrap();
+                builders.builder.position_at_end(finally);
+            }
+        }
         _ => todo!("未実装"),
     }
 }

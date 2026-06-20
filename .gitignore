@@ -9,7 +9,6 @@
 # Generated output files
 *.ppm
 *.o
-examples/*
 docs/book/
 
 bitcodes/bc
