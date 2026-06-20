@@ -2,7 +2,7 @@ name: Build
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v13
+    LLVM_CACHE_VERSION: v14
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
     VCPKG_CACHE_VERSION: v1
@@ -43,7 +43,7 @@ jobs:
                       rust_target: x86_64-pc-windows-msvc
                       artifact_path: target/release/xyo-x86_64-pc-windows-msvc.zip
                       vcpkg_triplet: x64-windows
-                    - os: windows-11-arm
+                    - os: windows-11-vs2026-arm
                       rust_target: aarch64-pc-windows-msvc
                       artifact_path: target/release/xyo-aarch64-pc-windows-msvc.zip
                       vcpkg_triplet: arm64-windows

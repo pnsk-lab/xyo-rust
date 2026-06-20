@@ -64,6 +64,99 @@ function Get-CmakeArch {
     }
 }
 
+function Get-CmakeGeneratorNames {
+    try {
+        $capabilities = (& cmake -E capabilities | ConvertFrom-Json)
+    }
+    catch {
+        return @()
+    }
+
+    return @($capabilities.generators | ForEach-Object { $_.name })
+}
+
+function Get-ProgramFilesRoots {
+    $roots = [System.Collections.Generic.List[string]]::new()
+    foreach ($root in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+        if ([string]::IsNullOrWhiteSpace($root)) {
+            continue
+        }
+
+        if (-not $roots.Contains($root)) {
+            $roots.Add($root)
+        }
+    }
+
+    return @($roots)
+}
+
+function Get-InstalledVisualStudioMajorVersions {
+    $versions = [System.Collections.Generic.List[int]]::new()
+    $programFilesRoots = Get-ProgramFilesRoots
+    $vswhereCandidates = @($programFilesRoots | ForEach-Object { Join-Path $_ 'Microsoft Visual Studio\Installer\vswhere.exe' })
+
+    foreach ($vswhere in $vswhereCandidates) {
+        if (-not (Test-Path $vswhere)) {
+            continue
+        }
+
+        try {
+            $instances = @(& $vswhere -products * -format json -utf8 | ConvertFrom-Json)
+        }
+        catch {
+            continue
+        }
+
+        foreach ($instance in $instances) {
+            if ($null -eq $instance.installationVersion) {
+                continue
+            }
+
+            $majorText = ($instance.installationVersion -split '\.')[0]
+            $major = 0
+            if ([int]::TryParse($majorText, [ref]$major) -and -not $versions.Contains($major)) {
+                $versions.Add($major)
+            }
+        }
+    }
+
+    foreach ($major in @(18, 17)) {
+        $year = if ($major -eq 18) { '2026' } else { '2022' }
+        $roots = @($programFilesRoots | ForEach-Object { Join-Path $_ "Microsoft Visual Studio\$year" })
+
+        foreach ($root in $roots) {
+            if ((Test-Path $root) -and -not $versions.Contains($major)) {
+                $versions.Add($major)
+            }
+        }
+    }
+
+    return @($versions | Sort-Object -Descending)
+}
+
+function Get-CmakeGenerator {
+    $cmakeGenerators = Get-CmakeGeneratorNames
+    $installedVsVersions = Get-InstalledVisualStudioMajorVersions
+    $candidates = @(
+        @{ Major = 18; Name = 'Visual Studio 18 2026' },
+        @{ Major = 17; Name = 'Visual Studio 17 2022' }
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($installedVsVersions -notcontains $candidate['Major']) {
+            continue
+        }
+
+        if (($cmakeGenerators.Count -gt 0) -and ($cmakeGenerators -notcontains $candidate['Name'])) {
+            throw "installed CMake does not support generator '$($candidate['Name'])'"
+        }
+
+        return $candidate['Name']
+    }
+
+    throw 'could not find Visual Studio 2026 or Visual Studio 2022 with the MSVC C++ toolchain installed'
+}
+
 function Get-LlvmTargets {
     param(
         [string]$Arch
@@ -112,8 +205,10 @@ function Test-LlvmInstallArch {
 
 $arch = Get-RequestedArch -ExplicitArch $TargetArch
 $cmakeArch = Get-CmakeArch -Arch $arch
+$cmakeGenerator = Get-CmakeGenerator
 $llvmTargets = Get-LlvmTargets -Arch $arch
 Write-Host "using LLVM_TARGET_ARCH=$arch"
+Write-Host "using CMake generator=$cmakeGenerator"
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = $env:LLVM_INSTALL_DIR
@@ -155,7 +250,7 @@ Invoke-Checked -Command 'git' -Arguments @(
 $cmakeArgs = @(
     '-S', (Join-Path $llvmSourceDir 'llvm'),
     '-B', $llvmBuildDir,
-    '-G', 'Visual Studio 17 2022',
+    '-G', $cmakeGenerator,
     '-A', $cmakeArch,
     '-DCMAKE_BUILD_TYPE=Release',
     "-DCMAKE_INSTALL_PREFIX=$InstallDir",
