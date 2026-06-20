@@ -17,6 +17,7 @@ Scratch の `.sb3` プロジェクトを読み込み、解析し、LLVM IR を�
 - [CLI](./cli.md)
 - [対応ブロック一覧](./blocks.md)
 - [アーキテクチャ](./architecture.md)
+- [開発メモ](./development.md)
 
 ## Scratch と `.sb3` について
 
@@ -67,7 +68,7 @@ Scratch プロジェクトは `.sb3` という拡張子で保存されます。`
 | 2 | `project.json` を Scratch プロジェクト構造へ変換する | ✅ 完成 |
 | 3 | hat block からスレッドを解析する | ✅ 完成 |
 | 4 | `Stmt` / `Expr` に変換する（パーサー） | ✅ ほぼ完成（87 opcode） |
-| 5 | 一部の式 / 文を LLVM IR へ変換し、JIT で実行する | 🚧 一部実装（文は動き系、見た目の大きさ変更系、変数代入、タイマーリセット。動き系は `motion_movesteps` を含めて実装済み。式はリテラル + 演算子 + 変数参照 + 見た目の大きさレポーター + タイマーレポーター） |
+| 5 | 一部の式 / 文を LLVM IR へ変換し、JIT で実行する | 🚧 一部実装（文は動き系の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセット。動き系は `motion_movesteps` を含めて実装済み。式はリテラル + 演算子 + 変数参照 + 見た目の大きさレポーター + タイマーレポーター） |
 | 6 | 生成した IR から実行可能ファイルを作る | ❌ 未実装 |
 
 ```warn
@@ -115,18 +116,18 @@ IR 生成（src/compiler/）
 | コマンドの使い方を知りたい | [CLI](./cli.md) |
 | 対応済み opcode を確認したい | [対応ブロック一覧](./blocks.md) |
 | 内部構造を把握したい | [アーキテクチャ](./architecture.md) |
-| コントリビュートしたい | [アーキテクチャ](./architecture.md) → [対応ブロック一覧](./blocks.md) |
+| コントリビュートしたい | [開発メモ](./development.md) → [アーキテクチャ](./architecture.md) → [対応ブロック一覧](./blocks.md) |
 
 ## 現時点での注意点
 
 - Scratch VM との完全互換は未実装です
 - LLVM 21.1.x 系を前提にしています（他のバージョンではビルドが失敗します）
-- 配布用の `.sb3` サンプルは同梱されていません。Scratch エディタからエクスポートしてください
-- `run` サブコマンドは実験的で、スレッド本体は動き系文ブロック、見た目の大きさ変更系、変数代入、タイマーリセットのみ、入力式はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターのみ対応しています。動き系では `motion_movesteps` も実装済みです
+- 動作確認用の `.sb3` サンプルとして `examples/script.sb3` を同梱しています。追加の検証には Scratch エディタからエクスポートした `.sb3` を使ってください
+- `run` サブコマンドは実験的で、スレッド本体は動き系の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセットのみ、入力式はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターのみ対応しています。動き系では `motion_movesteps` も実装済みです
 
 ## 関連リンク
 
-- [リポジトリの README](../README.md)
+- [リポジトリの README](../../README.md)
 - [GitHub](https://github.com/pnsk-lab/xyo-rust)
 - [Scratch 公式サイト](https://scratch.mit.edu/)
 - [LLVM 公式サイト](https://llvm.org/)

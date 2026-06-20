@@ -147,17 +147,25 @@ cargo build
 cargo test
 ```
 
-現時点では `cargo test` がそのままビルド確認と smoke test の入口です。必要になったら `tests/` 配下に fixture を足して広げていくのがよさそうです。
+現時点では `cargo test` がそのままビルド確認と smoke test の入口です。CLI の読み込み経路を手早く確認したい場合は、同梱サンプルに対して `stats` を実行します。
 
-ヘルプだけ確認したい場合は次でも十分です。
+ヘルプと同梱サンプルの読み込みだけ確認したい場合は、次の 2 コマンドでも十分です。
 
 ```bash
 cargo run -- --help
+cargo run -- stats examples/script.sb3
 ```
 
 ## `.sb3` ファイルを用意する
 
-このリポジトリには現在、配布用の `.sb3` サンプルは含まれていません。Scratch エディタから自分のプロジェクトを書き出して使います。
+このリポジトリには動作確認用の `examples/script.sb3` が含まれています。まずは同梱サンプルで CLI の読み込み経路を確認し、追加の検証には Scratch エディタから自分のプロジェクトを書き出して使います。
+
+```bash
+cargo run -- stats examples/script.sb3
+cargo run -- json examples/script.sb3
+```
+
+`run` や `compile` は IR 生成の未実装範囲に当たることがあるため、失敗した場合は [対応ブロック一覧](./blocks.md) で使用 opcode と IR 対応状況を確認してください。
 
 ### Scratch エディタからのエクスポート方法
 
@@ -168,7 +176,7 @@ cargo run -- --help
 
 ### 動作確認に適したプロジェクト
 
-`run` コマンドで最後まで処理を通したい場合は、文ブロックを動き系（「〇歩動かす」「x座標を〇にする」など）、見た目の大きさ変更系、変数代入、タイマーリセットに絞り、その入力式にリテラル、演算子、変数参照、大きさレポーター、タイマーレポーターだけを使ったシンプルなプロジェクトから始めるとよいです。
+`run` コマンドで最後まで処理を通したい場合は、文ブロックを動き系の一部（「〇歩動かす」「x座標を〇にする」など）、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセットに絞り、その入力式にリテラル、演算子、変数参照、大きさレポーター、タイマーレポーターだけを使ったシンプルなプロジェクトから始めるとよいです。
 
 現在 `run` で最後まで通る命令の詳細は [対応ブロック一覧](./blocks.md) を参照してください。
 
@@ -220,7 +228,7 @@ cargo run -- run <path-to-project.sb3>
 
 > **補足**
 > `run` はもっとも実験的なコマンドです。入力によっては未実装の opcode や IR 変換で停止することがあります。
-> 動き系命令、見た目の大きさ変更系命令、変数代入、演算子だけを含むシンプルなプロジェクトから試すことを推奨します。
+> 動き系命令、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセット、演算子だけを含むシンプルなプロジェクトから試すことを推奨します。
 
 成功時はターミナルに各スレッドの実行後状態が出力されます。出力例:
 
@@ -266,7 +274,7 @@ Context:
 `run` コマンドが次のように停止することがあります。
 
 ```
-Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
+Parse error: invalid opcode: sound_play: target[0].blocks[blockId_xxx]
 ```
 
 これは `stats` コマンドで使用 opcode を確認したうえで、[対応ブロック一覧](./blocks.md) と照らし合わせると原因が分かります。

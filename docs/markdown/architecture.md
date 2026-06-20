@@ -439,6 +439,8 @@ for stmt in &thread.stmts {
         Stmt::Motion(v) => parse_motion_stmt(builders, v, &function, thread.target_idx),
         Stmt::Looks(v) => parse_looks_stmt(builders, v, &function, thread.target_idx),
         Stmt::DataStmt(v) => parse_data_stmt(builders, v, &function, thread.target_idx),
+        Stmt::Control(v) => parse_control_stmt(builders, v, &function, thread.target_idx),
+        Stmt::Sensing(v) => parse_sensing_stmt(builders, v, &function, thread.target_idx),
         _ => todo!("やります"),  // 未実装
     }
 }
@@ -448,7 +450,7 @@ builder.build_return(None);  // void return
 
 ### 実行状態
 
-各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` や `LooksSetSizeTo` などは `build_struct_gep` を使ってそのフィールドを更新します。大きさ変更系の Looks ブロックは、現在コスチュームの幅・高さから Scratch と同じ最小・最大スケールを計算し、`fmin` / `fmax` で丸めた値を `sprite_size` に保存します。`DataSetVariableTo` は対象変数 ID を解決し、入力値を `DynamicStruct` へ変換してグローバル変数スロットへ保存します。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
+各スレッドは `SpriteStruct` の状態ポインタを受け取り、`MotionSetX` や `LooksSetSizeTo` などは `build_struct_gep` を使ってそのフィールドを更新します。大きさ変更系の Looks ブロックは、現在コスチュームの幅・高さから Scratch と同じ最小・最大スケールを計算し、`fmin` / `fmax` で丸めた値を `sprite_size` に保存します。`LooksSay` / `LooksThink` は `print` ヘルパーに文字列を渡し、`DataSetVariableTo` と `DataChangeVariableBy` は対象変数 ID を解決してグローバル変数スロットへ反映します。`ControlRepeat` / `ControlForever` / `ControlIf` / `ControlIfElse` / `ControlWaitUntil` は、サブスタックを別関数として呼び出すか、`wait_tick` を挟むループに変換されます。JIT 実行時にも同じ `SpriteStruct` が `Debug` 形式で表示されます。
 
 ### 式の IR 変換
 
@@ -507,17 +509,19 @@ IR 生成後、`default<O3>` パスが適用されます。有効化されてい
 
 ### 現在の制約
 
-- **IR 生成**: スレッド本体は動き系命令、見た目の大きさ変更系、変数代入、タイマーリセットのみ。式はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターが中心。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
+- **IR 生成**: スレッド本体は動き系の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセットのみ。式はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターが中心。`run` で残りの文 opcode や未実装式に当たると `todo!()` パニックが起きる
 - **ランタイム**: Scratch のイベントループや broadcast / clone を含む完全な VM は未実装。いまの `run` は JIT で各 thread を実行し、状態を標準出力へ定期的に返す
 - **コスチューム・サウンド**: コスチューム寸法は大きさの丸めに使うが、コスチューム切り替えやサウンド再生の IR 生成は未対応
 - **スレッド間通信**: ブロードキャスト・メッセージ処理は未実装
 
 ### 今後の実装が期待される部分
 
-- `ControlStmt` (if/else, repeat, forever など) の IR 生成
-- `DataStmt` (変数加算、モニター表示、リスト操作) の IR 生成
-- `LooksStmt` (大きさ以外の見た目変更) の IR 生成（実際のレンダリングは別ライブラリが必要）
+- `ControlStmt` の残り分岐（wait, repeat until, while, clone, stop, counter など）の IR 生成
+- `DataExpr` / `DataStmt` のリスト系 IR 生成
+- `LooksStmt` の残り分岐（say/think 以外の見た目変更）の IR 生成（実際のレンダリングは別ライブラリが必要）
 - `run` の未実装分岐に対する安全なフォールバック（パニックを避けてエラー報告する）
 - 生成した IR を `clang` や `llc` でリンク・コンパイルするフロー
 
 前のページ: [CLI](./cli.md)
+
+次のページ: [開発メモ](./development.md)

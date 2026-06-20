@@ -157,15 +157,15 @@ Using Op Codes: ["event_whenflagclicked", "motion_movesteps", "motion_turnright"
 Using Op Codes: ["event_whenflagclicked", "motion_setx", "operator_add"]
 ```
 
-上記の場合、文ブロックは動き系で、入力式も演算子だけなので `run` が成功する可能性が高いです。見た目の大きさ変更系や変数代入も、未実装式を含まなければ IR 生成の対象です。
+上記の場合、文ブロックは動き系で、入力式も演算子だけなので `run` が成功する可能性が高いです。見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセットも、未実装式を含まなければ IR 生成の対象です。
 
 一方、次のような opcode が含まれている場合は `run` が途中で停止することがあります。
 
 ```
-Using Op Codes: ["event_whenflagclicked", "looks_sayforsecs", "control_if"]
+Using Op Codes: ["event_whenflagclicked", "looks_sayforsecs", "sound_play"]
 ```
 
-`looks_sayforsecs` や `control_if` は現在パーサーまでは対応していますが、IR 生成には未対応です。
+`looks_sayforsecs` や `sound_play` は現在パーサーまでは対応していますが、IR 生成には未対応です。
 
 ## `run`
 
@@ -301,7 +301,7 @@ Context:
 #### パースエラー (未実装 opcode)
 
 ```
-Parse error: invalid opcode: looks_sayforsecs: target[0].blocks[blockId_xxx]
+Parse error: invalid opcode: sound_play: target[0].blocks[blockId_xxx]
 ```
 
 プロジェクトに含まれる opcode がまだパーサーに実装されていません。[対応ブロック一覧](./blocks.md) で対応状況を確認してください。

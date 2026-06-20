@@ -13,21 +13,21 @@
 | Hat / Stmt / Expr | それぞれ hat block / 文ブロック / 値ブロックを表します |
 
 ```warn
-Parser で通ることと、`run` サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は動き系命令、見た目の大きさ変更系、変数代入、一部演算に限定されています。
+Parser で通ることと、`run` サブコマンドで最後まで通ることは同義ではありません。現状の IR 生成は動き系の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセット、一部演算に限定されています。
 ```
 
 ## 対応状況サマリー
 
 | カテゴリ | Stmt 対応 | Expr 対応 | IR Stmt | IR Expr |
 | -------- | --------- | --------- | ------- | ------- |
-| 動き | ✅ 全 18 opcode | ✅ 全 8 opcode | 🟡 一部 (12/18 + 3 NoOp) | ❌ なし |
-| 見た目 | ✅ 全 21 opcode | ✅ 全 5 opcode | 🟡 一部 (2/21) | 🟡 一部 (1/5) |
+| 動き | ✅ 全 18 opcode | ✅ 全 8 opcode | 🟡 一部 (11/18 + 3 NoOp) | ❌ なし |
+| 見た目 | ✅ 全 21 opcode | ✅ 全 5 opcode | 🟡 一部 (4/21) | 🟡 一部 (1/5) |
 | 音 | ✅ 全 8 opcode | ✅ 全 4 opcode | ❌ なし | ❌ なし |
 | イベント | ✅ 全 2 opcode | — | ❌ なし | — |
-| 制御 | ✅ 全 15 opcode | ✅ 全 2 opcode | ❌ なし | ❌ なし |
+| 制御 | ✅ 全 15 opcode | ✅ 全 2 opcode | 🟡 一部 (5/15) | ❌ なし |
 | 調べる | ✅ 全 3 opcode | ✅ 全 22 opcode | 🟡 一部 (1/3) | 🟡 一部 (Timer のみ) |
 | 演算 | — | ✅ 全 18 opcode | — | 🟡 一部 (14/18、比較は文字列 / Dynamic 分岐あり) |
-| データ | ✅ 全 11 opcode | ✅ 全 6 opcode | 🟡 一部 (1/11) | 🟡 一部 (変数参照のみ) |
+| データ | ✅ 全 11 opcode | ✅ 全 6 opcode | 🟡 一部 (2/11) | 🟡 一部 (変数参照のみ) |
 | 独自ブロック | ✅ 全 1 opcode | ✅ 全 3 opcode | ❌ なし | ❌ なし |
 | ペン | ✅ 全 13 opcode | ✅ 全 1 opcode | ❌ なし | ❌ なし |
 
@@ -78,7 +78,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `MotionScrollRight` — (NoOp: 右スクロール)
     - `MotionScrollUp` — (NoOp: 上スクロール)
 - Parser: `Stmt`
-- IR: 一部のみ（位置・向き更新系 + `glide secs to x/y`）
+- IR: 一部のみ（位置・向き更新系 + `move steps` + `glide secs to x/y`）
     - `MotionMoveSteps` → 向きに応じて X・Y 座標を更新し、端の補正を適用
     - `MotionSetX` → `build_struct_gep` で X フィールドを取り出して `store`
     - `MotionChangeXBy` → `build_struct_gep` + `load` + `fadd` + `store` で X 座標を加算
@@ -91,11 +91,11 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `MotionGlideSecsToXY` → `secs * fps` からフレーム数を計算し、`wait_tick` を挟みながら線形補間で X・Y 座標を更新
     - `MotionSetRotationStyle` → 回転方法を `SpriteStruct` の `sprite_rotation_style` に保存
     - `MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` → NoOp
-- 備考: `MotionGoTo`, `MotionGlideTo`, `MotionIfOnEdgeBounce`, `MotionPointTowards` は `parse_motion_stmt` の分岐はありますが、現状は空実装です
+- 備考: `MotionGoTo`, `MotionGlideTo`, `MotionIfOnEdgeBounce`, `MotionPointTowards` は parser まで対応していますが、compiler 側ではまだ `todo!()` に到達します
 
 ### 見た目
 
-見た目カテゴリはスプライトの外観（コスチューム・大きさ・エフェクト・表示/非表示など）を制御する命令です。IR 生成では、現在はスプライトの大きさ変更のみ対応しています。
+見た目カテゴリはスプライトの外観（コスチューム・大きさ・エフェクト・表示/非表示など）を制御する命令です。IR 生成では、現在は `say` / `think` とスプライトの大きさ変更に対応しています。
 
 - 対応 opcode:
     - `LooksSayForSecs` — `[テキスト]` を `[数値]` 秒言う
@@ -120,10 +120,10 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `LooksHideAllSprites` — すべてのスプライトを隠す
     - `LooksSwitchBackdropToAndWait` — 背景を `[名前]` にして待つ
 - Parser: `Stmt`
-- IR: 一部のみ（大きさ更新系）
+- IR: 一部のみ（`say` / `think` + 大きさ更新系）
     - `LooksSetSizeTo` → 入力値を数値へ変換し、現在コスチュームの幅・高さから Scratch 互換の範囲に丸めて `sprite_size` へ保存
     - `LooksChangeSizeBy` → 現在の `sprite_size` を読み出して加算し、`LooksSetSizeTo` と同じ丸め処理を通して保存
-- 備考: グラフィックエフェクトのパラメータ（`COLOR`, `FISHEYE` など）は `LooksEffects` 列挙型として解釈されます。大きさの丸めには現在コスチュームの幅・高さを使うため、`SpriteStruct` の `sprite_costumes` と `sprite_costume_id` も参照します
+- 備考: グラフィックエフェクトのパラメータ（`COLOR`, `FISHEYE` など）は `LooksEffects` 列挙型として解釈されます。`LooksSayForSecs`, `LooksThinkForSecs`, コスチューム切り替え、エフェクト、表示/非表示、レイヤー操作、横幅変更、背景待ち系は parser まで対応で、IR 生成では未対応です。大きさの丸めには現在コスチュームの幅・高さを使うため、`SpriteStruct` の `sprite_costumes` と `sprite_costume_id` も参照します
 
 ### 音
 
@@ -155,7 +155,7 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ### 制御
 
-制御カテゴリは繰り返し・条件分岐・クローン操作・スクリプト停止などの制御構造です。現在はパーサーで `SUBSTACK`（入れ子ブロック列）も再帰的に解析されますが、IR 生成は未対応です。
+制御カテゴリは繰り返し・条件分岐・クローン操作・スクリプト停止などの制御構造です。現在はパーサーで `SUBSTACK`（入れ子ブロック列）も再帰的に解析され、IR 生成では一部の制御構造を関数分割して扱います。
 
 - 対応 opcode:
     - `ControlWait` — `[数値]` 秒待つ
@@ -174,8 +174,10 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `ControlIncrCounter` — カウンターを増やす
     - `ControlClearCounter` — カウンターをリセットする
 - Parser: `Stmt`
-- IR: なし
-- 備考: `ControlRepeat`, `ControlForever`, `ControlIf`, `ControlIfElse` は入れ子の `SUBSTACK` を再帰的にパースして `Option<Vec<Stmt>>` として保持します
+- IR: 一部のみ（`Repeat` / `Forever` / `If` / `IfElse` / `WaitUntil`）
+    - `ControlRepeat` / `ControlForever` / `ControlIf` / `ControlIfElse` → `SUBSTACK` を別スレッド関数にして呼び出す
+    - `ControlWaitUntil` → 条件が満たされるまで `wait_tick` を挟んでループする
+- 備考: `ControlWait`, `ControlRepeatUntil`, `ControlWhile`, `ControlAllAtOnce`, `ControlCreateCloneOf`, `ControlDeleteThisClone`, `ControlStop`, `ControlForEach`, `ControlIncrCounter`, `ControlClearCounter` は parser まで対応で、IR 生成では未対応です
 
 ### 調べる
 
@@ -186,8 +188,9 @@ hat block はスクリプトの起点になるブロックです。各 hat block
     - `SensingSetDragMode` — ドラッグできる / できないにする
     - `SensingResetTimer` — タイマーをリセットする
 - Parser: `Stmt`
-- IR: なし
-- 備考: ドラッグ可否の設定は `SetDraggable { draggable: bool }` として変換されます
+- IR: 一部のみ（`ResetTimer`）
+    - `SensingResetTimer` → タイマー基準時刻を `get_now` の値に更新する
+- 備考: ドラッグ可否の設定は `SetDraggable { draggable: bool }` として変換されます。`SensingAskAndWait` と `SensingSetDragMode` は現時点では parser までの対応です
 
 ### データ
 
@@ -208,7 +211,8 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 - Parser: `Stmt`
 - IR: 一部のみ
     - `DataSetVariableTo` → 対象の変数 ID を `Builders::get_variable()` で解決し、入力値を `DynamicStruct` に変換してグローバル変数スロットへ保存
-- 備考: 変数・リストは名前ではなく ID（文字列）で参照されます。現状の IR 生成で扱える文は変数代入のみで、変数の加算・モニター表示・リスト操作は未実装です
+    - `DataChangeVariableBy` → 現在値を読み出して加算し、同じ変数スロットへ戻す
+- 備考: 変数・リストは名前ではなく ID（文字列）で参照されます。`DataVariable` は `Literal::Variable` として下流へ渡せますが、`DataItemOfList` / `DataItemNumOfList` / `DataLengthOfList` / `DataListContainsItem` と `DataListContents` は IR 生成では未対応です
 
 ### ペン
 
@@ -440,13 +444,13 @@ hat block はスクリプトの起点になるブロックです。各 hat block
 
 ## IR 生成の現状
 
-現在の LLVM IR 生成は、スレッド本体では動き系の一部命令、見た目の大きさ変更系、変数代入、タイマーリセットを扱います。式側はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターを扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
+現在の LLVM IR 生成は、スレッド本体では動き系の一部命令、見た目の say/think と大きさ変更系、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセットを扱います。式側はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターを扱い、比較演算では文字列と Dynamic の実行時分岐も生成します。
 
 | 層      | 対応内容                                                                                                                                                                                                                                                         |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`, `LooksSetSizeTo`, `LooksChangeSizeBy`, `DataSetVariableTo`, `SensingResetTimer`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
+| Stmt    | `MotionMoveSteps`, `MotionSetX`, `MotionChangeXBy`, `MotionSetY`, `MotionChangeYBy`, `MotionGoToXY`, `MotionGlideSecsToXY`, `MotionTurnRight`, `MotionTurnLeft`, `MotionPointInDirection`, `MotionSetRotationStyle`, `LooksSay`, `LooksThink`, `LooksSetSizeTo`, `LooksChangeSizeBy`, `DataSetVariableTo`, `DataChangeVariableBy`, `ControlRepeat`, `ControlForever`, `ControlIf`, `ControlIfElse`, `ControlWaitUntil`, `SensingResetTimer`。`MotionAlignScene` / `MotionScrollRight` / `MotionScrollUp` は NoOp |
 | Expr    | `OperatorAdd`, `OperatorSubtract`, `OperatorMultiply`, `OperatorDivide`, `OperatorRandom`, `OperatorGreaterThan`, `OperatorLessThan`, `OperatorEq`, `OperatorAnd`, `OperatorOr`, `OperatorNot`, `OperatorMod`, `OperatorRound`, `OperatorCalc`（数学関数）, `LooksSize`, `SensingTimer`, 変数参照 |
-| Literal | 数値入力と文字列入力、変数参照の変換経路あり。数値・文字列は現状 `StringStruct` として作られ、利用側の coercion で数値・真偽値へ変換されます。変数参照は `DynamicStruct` として読み出されます |
+| Literal | 数値入力と文字列入力、変数参照の変換経路あり。数値・文字列は現状 `StringStruct` として作られ、利用側の coercion で数値・真偽値へ変換されます。変数参照は `DynamicStruct` として読み出され、リスト参照は IR 未対応です |
 
 ## `run` の前に使える確認コマンド
 

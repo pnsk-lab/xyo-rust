@@ -48,14 +48,14 @@
 | `project.json` を取り出して表示する | `json` | ✅ |
 | ブロック数・使用 opcode を確認する | `stats` | ✅ |
 | hat block からスレッドを抽出する | `run` | ✅ |
-| 動き系命令、見た目の大きさ変更系命令、変数代入、それらの入力式に使われる演算子や変数参照を LLVM IR へ変換し、JIT で実行する | `run` | 🚧 一部 |
+| 動き系命令の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、それらの入力式に使われる演算子や変数参照を LLVM IR へ変換し、JIT で実行する | `run` | 🚧 一部 |
 | 生成した LLVM IR を `.ll` ファイルへ保存する | `compile` | ✅ |
 | JSON パースエラー時の位置情報・コンテキスト表示 | — | ✅ |
 | 完全な Scratch 互換実行 | — | ❌ |
 
 ## まだ開発途中のこと
 
-- Scratch opcode の網羅的な IR 実装（現状はスレッド本体が動き系、見た目の大きさ変更系、変数代入、タイマーリセットのみ。動き系は `motion_movesteps` を含めて実装済み。式はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターのみ）
+- Scratch opcode の網羅的な IR 実装（現状はスレッド本体が動き系の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセットのみ。動き系は `motion_movesteps` を含めて実装済み。式はリテラル、演算子、変数参照、見た目の大きさレポーター、タイマーレポーターのみ）
 - Scratch VM 相当のイベントランタイムの完成
 - 生成した IR から実行可能ファイルへつなぐフロー
 - 互換性検証とリグレッションテストの拡充
@@ -142,7 +142,7 @@ cargo run -- json my_project.sb3 | jq '[.targets[].blocks[].opcode] | unique | s
 cargo run -- run <path-to-project.sb3>
 ```
 
-`run` は現状もっとも実験的なコマンドです。文ブロックは動き系、見た目の大きさ変更系、変数代入、タイマーリセット、入力式はリテラル・演算子・変数参照・大きさレポーター・タイマーレポーターのみを含むシンプルなプロジェクトから試すことを推奨します。動き系では `motion_movesteps` も実装済みです。成功時は各スレッドの状態が実行中に定期的に標準出力へ表示されます。
+`run` は現状もっとも実験的なコマンドです。文ブロックは動き系の一部、見た目の say/think と大きさ変更、変数代入と加算、制御の repeat/forever/if/ifelse/wait until、タイマーリセット、入力式はリテラル・演算子・変数参照・大きさレポーター・タイマーレポーターのみを含むシンプルなプロジェクトから試すことを推奨します。動き系では `motion_movesteps` も実装済みです。成功時は各スレッドの状態が実行中に定期的に標準出力へ表示されます。
 
 ```text
 SpriteStruct { sprite_x: 100.0, sprite_y: 0.0, sprite_rotate: 90.0, sprite_size: 100.0, ... }
@@ -164,7 +164,7 @@ cargo run -- compile <path-to-project.sb3>
 
 ## 入力ファイルについて
 
-このリポジトリには現在、配布用の `.sb3` サンプルは含まれていません。Scratch エディタでプロジェクトを作成し、**「ファイル」→「コンピューターに保存する」** で `.sb3` を書き出して入力に使ってください。
+このリポジトリには動作確認用の `examples/script.sb3` が含まれています。まずはこのファイルで `stats` や `json` を試せます。追加の入力を用意したい場合は、Scratch エディタでプロジェクトを作成し、**「ファイル」→「コンピューターに保存する」** で `.sb3` を書き出してください。
 
 `run` で最後まで通したい場合は、文ブロックを動き系（「〇歩動かす」「x座標を〇にする」など）、見た目の大きさ変更系（「大きさを〇ずつ変える」「大きさを〇%にする」）、変数代入、タイマーリセットに絞り、その入力式にリテラル・演算子・変数参照・大きさレポーター・タイマーレポーターだけを使ったシンプルなプロジェクトから始めると確認しやすいです。
 
@@ -179,7 +179,7 @@ xyo-rust/
 │   ├── types/           Scratch JSON 構造を受ける型定義
 │   ├── parser/          Scratch ブロック列を Stmt / Expr に変換
 │   └── compiler/        LLVM IR 生成
-├── tests/               CLI テスト
+├── examples/            動作確認用の .sb3 サンプル
 ├── bitcodes/            C ソースと生成済み bitcode / IR
 ├── docs/                Markdown ソースと Taiga サイト生成ファイル
 ├── build.rs             ビルドスクリプト (C → bitcode)
@@ -228,6 +228,7 @@ CLANGXX=clang++-23 \
 | [CLI](./docs/markdown/cli.md) | サブコマンドの詳細・出力例・エラーの読み方 |
 | [対応ブロック一覧](./docs/markdown/blocks.md) | opcode ごとのパーサー / IR 対応状況 |
 | [アーキテクチャ](./docs/markdown/architecture.md) | パイプラインの詳細・モジュール設計 |
+| [開発メモ](./docs/markdown/development.md) | 開発時の確認手順・生成物・ドキュメント更新方針 |
 
 ## Star History
 
