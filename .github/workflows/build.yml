@@ -2,7 +2,7 @@ name: Build
 
 env:
     LLVM_VERSION: 21.1.8
-    LLVM_CACHE_VERSION: v12
+    LLVM_CACHE_VERSION: v13
     ICU_VERSION: 78.3
     ICU_CACHE_VERSION: v1
     VCPKG_CACHE_VERSION: v1
@@ -106,7 +106,7 @@ jobs:
               run: |
                   $llvmRootDir = Join-Path $env:GITHUB_WORKSPACE '.llvm'
                   $llvmInstallDir = Join-Path $llvmRootDir "$($env:RUNNER_OS)-$($env:RUNNER_ARCH)-${{ matrix.rust_target }}"
-                  ./tools/install_llvm_prebuilt.ps1 -InstallDir $llvmInstallDir -TargetArch "${{ matrix.rust_target }}"
+                  ./tools/install_llvm_source.ps1 -InstallDir $llvmInstallDir -TargetArch "${{ matrix.rust_target }}"
 
             - name: Export LLVM env (Unix)
               if: runner.os != 'Windows'
